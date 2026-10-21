@@ -1,0 +1,11 @@
+node_modules
+pnpm-lock.yaml
+.next
+.expo
+android
+ios
+coverage
+playwright-report
+test-results
+.design
+.superpowers

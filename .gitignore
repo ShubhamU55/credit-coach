@@ -1,0 +1,36 @@
+# dependencies
+node_modules/
+
+# env (only .env.example is committed)
+.env
+.env.*
+!.env.example
+
+# expo / react native
+.expo/
+android/
+ios/
+*.apk
+*.aab
+
+# next.js
+.next/
+out/
+
+# testing
+coverage/
+playwright-report/
+test-results/
+blob-report/
+
+# supabase
+supabase/.temp/
+supabase/.branches/
+
+# superpowers execution scratch
+.superpowers/
+
+# os / editors
+.DS_Store
+Thumbs.db
+*.log
