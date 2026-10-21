@@ -148,8 +148,31 @@ describe('.github/workflows/codeql.yml', () => {
 });
 
 describe('sonar-project.properties', () => {
+  const text = fs.readFileSync(path.join(repoRoot, 'sonar-project.properties'), 'utf8');
+
+  /** The comma-separated values of `key`, or [] when it is absent. */
+  function listProperty(key) {
+    const line = text.split(/\r?\n/).find((l) => l.startsWith(`${key}=`));
+    return line
+      ? line
+          .slice(key.length + 1)
+          .split(',')
+          .map((v) => v.trim())
+      : [];
+  }
+
   it('waits for the quality gate', () => {
-    const text = fs.readFileSync(path.join(repoRoot, 'sonar-project.properties'), 'utf8');
     expect(text).toMatch(/^sonar\.qualitygate\.wait=true$/m);
+  });
+
+  it('excludes the pasted contracts copies from duplication (CPD)', () => {
+    expect(listProperty('sonar.cpd.exclusions')).toEqual([
+      '.claude/workflows/**',
+      '.claude/hooks/lib/contracts.mjs',
+    ]);
+  });
+
+  it('excludes scratch/** from analysis', () => {
+    expect(listProperty('sonar.exclusions')).toContain('scratch/**');
   });
 });
