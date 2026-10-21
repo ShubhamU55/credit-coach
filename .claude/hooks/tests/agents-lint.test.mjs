@@ -2,7 +2,13 @@ import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parse } from 'yaml';
+import {
+  parseFrontmatter,
+  toolsListOf,
+  headingsOf,
+  firstLineUnderHeading,
+  bodyUnderHeading,
+} from '../lib/agent-lint.mjs';
 
 // Agent roster (spec §6 preamble). Every later agent file must pass these
 // checks, so failure messages below always name the file and the rule broken.
@@ -39,65 +45,6 @@ function listAgentFiles() {
     .filter((name) => name.endsWith('.md'))
     .map((name) => path.join(agentsDir, name))
     .sort();
-}
-
-/** Parses `---`-delimited YAML frontmatter from the top of a Markdown file. */
-function parseFrontmatter(text) {
-  const match = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
-  if (!match) return null;
-  return parse(match[1]) ?? {};
-}
-
-/** Returns the `## Heading` text of every top-level heading, in file order. */
-function headingsOf(text) {
-  return [...text.matchAll(/^##\s+(.+?)\s*$/gm)].map((m) => m[1].trim());
-}
-
-/**
- * Splits a frontmatter `tools` field into a list. Accepts either a scalar
- * ("Read, Grep, Glob") or a YAML list (`[Read, Grep]` / block form) — a
- * list must not fail open into an empty array, or a Write-capable agent
- * would silently clear the "Allowed paths: Nothing" and "Prompt Defense
- * Baseline" checks below.
- */
-function toolsListOf(frontmatter) {
-  const raw = frontmatter?.tools;
-  if (Array.isArray(raw)) {
-    return raw.map((tool) => String(tool).trim()).filter(Boolean);
-  }
-  if (typeof raw !== 'string') return [];
-  return raw
-    .split(',')
-    .map((tool) => tool.trim())
-    .filter(Boolean);
-}
-
-/** The first non-blank line of body text under a `## Heading` section, if any. */
-function firstLineUnderHeading(text, heading) {
-  const re = new RegExp(`^##\\s+${heading}\\s*$\\r?\\n`, 'm');
-  const match = text.match(re);
-  if (!match) return null;
-  const rest = text.slice(match.index + match[0].length);
-  const line = rest.split(/\r?\n/).find((l) => l.trim().length > 0);
-  return line ?? null;
-}
-
-/**
- * The body text of a `## Heading` section, up to the next `## ` heading or
- * EOF. Finds the heading line by index first, then slices the remainder,
- * rather than capturing the body inside one regex: with the `m` flag, `$`
- * matches at the end of *every* line, so a single combined regex with a
- * lazy body group stops after the section's first line instead of its last.
- */
-function bodyUnderHeading(text, heading) {
-  const headingRe = new RegExp(`^##\\s+${heading}\\s*$\\r?\\n`, 'm');
-  const headingMatch = text.match(headingRe);
-  if (!headingMatch) return null;
-
-  const rest = text.slice(headingMatch.index + headingMatch[0].length);
-  const nextHeadingMatch = rest.match(/\r?\n##\s/);
-  const bodyEnd = nextHeadingMatch ? nextHeadingMatch.index : rest.length;
-  return rest.slice(0, bodyEnd);
 }
 
 describe('agent lint (.claude/agents/*.md)', () => {
