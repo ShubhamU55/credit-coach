@@ -1,6 +1,7 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+  - '.claude/hooks'
 
 allowBuilds:
   sharp: false

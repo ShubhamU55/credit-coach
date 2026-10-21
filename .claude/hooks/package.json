@@ -1,0 +1,13 @@
+{
+  "name": "@credit-coach/hooks",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Claude Code hook scripts for this repo (protect-env, format-on-edit).",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^5.0.5"
+  }
+}
