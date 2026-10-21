@@ -33,6 +33,18 @@ describe('parsePlanTasks on Plan 4a', () => {
     expect(task.text).not.toContain('### Task 3');
   });
 
+  it('maps a trailing-slash directory to dir/** in files only (Task 11)', () => {
+    const task = byId(tasks, '11');
+    expect(task.files).toContain('docs/test-reports/ui-kit/**');
+    expect(task.createFiles).toEqual([
+      'apps/mobile/src/ui/index.ts',
+      'apps/mobile/src/kit/KitGallery.tsx',
+      'apps/mobile/.maestro/kit-gallery.yaml',
+    ]);
+    expect(task.createFiles.some((p) => p.includes('*') || p.endsWith('/'))).toBe(false);
+    expect(task.testFiles.some((p) => p.includes('*') || p.endsWith('/'))).toBe(false);
+  });
+
   it('reads dependsOn from Consumes lines, expanding ranges', () => {
     expect(byId(tasks, '3').dependsOn).toEqual(['1']);
     const last = tasks.find((task) => task.text.includes('everything from Tasks 1–10'));
@@ -103,9 +115,9 @@ describe('parsePlanTasks on Plan 1c', () => {
     expect(task.createFiles).toContain('.claude/hooks/block-no-verify.cjs');
   });
 
-  it('drops directory tokens ending in / (W0-4)', () => {
+  it('never puts a bare directory token or a glob in createFiles (W0-4)', () => {
     const task = byId(tasks, 'W0-4');
-    expect(task.createFiles.filter((p) => p.endsWith('/'))).toEqual([]);
+    expect(task.createFiles.filter((p) => p.endsWith('/') || p.includes('*'))).toEqual([]);
     expect(task.files.filter((p) => p.endsWith('/'))).toEqual([]);
     expect(task.createFiles).toContain('.claude/rules/agents.md');
   });
@@ -120,6 +132,49 @@ describe('parsePlanTasks on Plan 1c', () => {
 describe('parsePlanTasks on inline markdown', () => {
   it('returns [] for a plan with no tasks', () => {
     expect(parsePlanTasks('# Nothing here\n')).toEqual([]);
+  });
+
+  it('keeps a directory under a Test: label out of testFiles (the EXPECT list)', () => {
+    const [task] = parsePlanTasks(
+      [
+        '### Task 1: Dirs',
+        '',
+        '**Files:**',
+        '- Create: `src/a.ts`, `out/shots/`',
+        '- Test: `src/a.test.ts`, `tests/fixtures/`',
+        '',
+        '- [ ] **Step 1:** Do it.',
+      ].join('\n'),
+    );
+    expect(task.files).toEqual(['src/a.ts', 'out/shots/**', 'tests/fixtures/**']);
+    expect(task.createFiles).toEqual(['src/a.ts']);
+    expect(task.testFiles).toEqual(['src/a.test.ts']);
+  });
+
+  it('reproduces: a stray ~~~ inside a ``` fence does not expose a fenced task heading', () => {
+    const tasks = parsePlanTasks(
+      [
+        '### Task 1: Real',
+        '',
+        '```markdown',
+        '~~~',
+        '### Task 2: Fake, inside the fence',
+        '```',
+        '',
+        '### Task 3: Also real',
+      ].join('\n'),
+    );
+    expect(tasks.map((task) => task.id)).toEqual(['1', '3']);
+    expect(tasks[0].text).toContain('### Task 2: Fake, inside the fence');
+  });
+
+  it('reproduces: a longer fence is not closed by a shorter run inside it', () => {
+    const tasks = parsePlanTasks(
+      ['### Task 1: Real', '````md', '```', '### Task 2: Fake', '```', '````', '## Next'].join(
+        '\n',
+      ),
+    );
+    expect(tasks.map((task) => task.id)).toEqual(['1']);
   });
 
   it('gives a task without Files or a PASS step empty lists and a null command', () => {

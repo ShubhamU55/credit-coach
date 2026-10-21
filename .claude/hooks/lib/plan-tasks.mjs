@@ -1,6 +1,7 @@
 // Parses the repo's implementation-plan markdown (docs/superpowers/plans/*.md) into tasks the
 // feature-build workflow can drive: allowed files, files that must exist, the test command and
 // the tasks each one consumes.
+import { linesOutsideFences } from './markdown-fences.mjs';
 
 /**
  * @typedef {{
@@ -17,7 +18,6 @@
 
 const TASK_HEADING = /^### Task ([\w-]+): (.+)$/;
 const ANY_HEADING = /^#{1,3} /;
-const FENCE = /^\s*(```|~~~)/;
 const FILES_LABEL = /^\*\*Files:\*\*/;
 const BOLD_LABEL = /^\*\*[^*]+:\*\*/;
 const STEP_START = /^- \[[ xX]\]/;
@@ -35,22 +35,32 @@ const TASK_REFERENCE =
   /\bTasks?\s+(\d+(?:\s*(?:–|—|…|-|to|,|and|&)\s*\d+)*)|\b([A-Z]+\d*)-(\d+)(?:\s*(?:–|—|…|\.\.\.)\s*(\d+))?/g;
 const NUMBER_OR_RANGE = /(\d+)(?:\s*(?:–|—|…|-|to)\s*(\d+))?/g;
 
-/**
- * A backticked token is a path if it has no spaces, isn't a package, isn't a directory (ends in
- * `/`, which could never match a changed file or exist as a blob at HEAD), and has `/` or an
- * extension.
- */
+function isCandidate(token) {
+  return !/\s/.test(token) && !token.startsWith('@');
+}
+
+/** A backticked token is a file path if it has no spaces, isn't a package, and has `/` or an extension. */
 function isPath(token) {
-  if (/\s/.test(token) || token.startsWith('@') || token.endsWith('/')) return false;
+  if (!isCandidate(token) || token.endsWith('/')) return false;
   return token.includes('/') || FILE_EXTENSION.test(token);
+}
+
+/** A directory token (`dir/`): it can't exist as a blob at HEAD, so it only widens `files`. */
+function isDirectory(token) {
+  return isCandidate(token) && token.length > 1 && token.endsWith('/');
 }
 
 function unique(values) {
   return [...new Set(values)];
 }
 
+/** `{ path, isDir }` per backticked path; a directory becomes the glob `dir/**`. */
 function backtickedPaths(line) {
-  return [...line.matchAll(BACKTICKED)].map((match) => match[1]).filter(isPath);
+  return [...line.matchAll(BACKTICKED)].flatMap((match) => {
+    const token = match[1];
+    if (isDirectory(token)) return [{ path: `${token}**`, isDir: true }];
+    return isPath(token) ? [{ path: token, isDir: false }] : [];
+  });
 }
 
 /** `[from..to]` as strings, or just `[from]` when the range is absent, reversed or absurd. */
@@ -70,25 +80,29 @@ function referencedIds(line) {
   });
 }
 
-/** Splits the plan into task sections, ignoring headings inside fenced code blocks. */
+/**
+ * Splits the plan into task sections. Headings inside fenced code blocks (CommonMark rules, via
+ * the shared `linesOutsideFences`) neither start nor end a section, but every line, fenced or
+ * not, stays in its section's text.
+ */
 function splitSections(lines) {
+  const visible = new Set(linesOutsideFences(lines.join('\n')).map((l) => l.lineNumber - 1));
   const sections = [];
   let current = null;
-  let inFence = false;
 
-  for (const line of lines) {
-    if (FENCE.test(line)) inFence = !inFence;
-    const heading = inFence ? null : line.match(TASK_HEADING);
+  lines.forEach((line, index) => {
+    const isVisible = visible.has(index);
+    const heading = isVisible ? line.match(TASK_HEADING) : null;
 
     if (heading) {
       current = { id: heading[1], title: heading[2].trim(), lines: [line] };
       sections.push(current);
-    } else if (!inFence && ANY_HEADING.test(line)) {
+    } else if (isVisible && ANY_HEADING.test(line)) {
       current = null;
     } else if (current) {
       current.lines.push(line);
     }
-  }
+  });
   return sections;
 }
 
@@ -106,15 +120,16 @@ function parseFiles(lines) {
     const labelMatch = TOP_LEVEL_BULLET.test(line) ? line.match(TOP_LEVEL_LABEL) : null;
     if (TOP_LEVEL_BULLET.test(line)) label = labelMatch ? labelMatch[1].toLowerCase() : null;
     const body = labelMatch ? line.slice(labelMatch[0].length) : line;
-    entries.push(...backtickedPaths(body).map((path) => ({ label, path })));
+    entries.push(...backtickedPaths(body).map((entry) => ({ label, ...entry })));
   }
 
-  const pathsWhere = (predicate) =>
-    unique(entries.filter((entry) => predicate(entry.label)).map((entry) => entry.path));
+  // Directories (`dir/**`) widen the allowed `files` under any label, but never enter
+  // createFiles or testFiles: those form the gate's EXPECT list of blobs that must exist.
+  const pathsWhere = (predicate) => unique(entries.filter(predicate).map((entry) => entry.path));
   return {
-    files: pathsWhere((l) => l !== 'test'),
-    createFiles: pathsWhere((l) => l === 'create'),
-    testFiles: pathsWhere((l) => l === 'test'),
+    files: pathsWhere((e) => e.isDir || e.label !== 'test'),
+    createFiles: pathsWhere((e) => !e.isDir && e.label === 'create'),
+    testFiles: pathsWhere((e) => !e.isDir && e.label === 'test'),
   };
 }
 
