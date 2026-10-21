@@ -75,6 +75,6 @@ Input: cash available in the **next 30 days**, plus the card data. Output: order
 - Letting the LLM compute amounts, dates or scores. It only words engine output.
 
 ## Money and dates in code
-- **Amounts:** integer paise or rupees. Plan 2 decides which, and must use it everywhere. Never floats for currency arithmetic.
+- **Amounts:** **integer rupees** everywhere (owner decision, 21 Oct). Round half-up to whole rupees at the boundary (bureau import, manual entry). Never use floats for currency arithmetic.
 - **Dates:** pass `today` into every engine function. Use calendar dates (no time zone drift). "Month-end" means the last calendar day.
 - **Display:** Indian digit grouping (₹1,23,456).

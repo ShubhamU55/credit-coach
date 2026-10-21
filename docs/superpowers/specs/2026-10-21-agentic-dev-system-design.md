@@ -69,7 +69,8 @@ All agents live in `.claude/agents/<name>.md` and use one **agent template** (§
 | | `ui-tester` **(new)** | Maestro flows and screenshots vs `docs/design-mockups/v3`, touch targets ≥ 48, range never wraps, colour never the only signal, reduce-motion | `docs/test-reports/**` (screenshots); flows as proposals | S |
 | | `integration-tester` **(new)** | Cross-component: app ↔ Supabase ↔ admin (rule change reaches the app), the demo path end to end (try sample → plan within 60 s) | nothing (proposals → `tests/integration/**`, `.maestro/**`) | S |
 | | `security-reviewer` (have, **extended**) | Adds PAN masking and logging, consent records, RLS, secrets, OWASP Mobile Top 10, dependency audit | nothing (findings only) | S |
-| Review | `code-reviewer` (have) | General quality | nothing | S |
+| Review | `pr-reviewer` **(new)** | In-depth PR review and the merge-gate verdict (G8, §8.9). Drives the `pr-review` workflow fan-out, then posts the verified findings and verdict to GitHub | GitHub review only | O, high effort |
+| | `code-reviewer` (have) | General quality | nothing | S |
 | | `consistency-reviewer` **(new)** | Compares the diff to `docs/standards.md` **and** to the golden example of the same kind (§7). Flags pattern drift | nothing | S |
 | | `typescript-reviewer`, `react-reviewer`, `silent-failure-hunter` (have) | Specialist review | nothing | S |
 | Verify | `finding-verifier` **(new)** | Adversarial: tries to **refute** one finding with evidence, defaulting to refuted when unsure. Only confirmed findings are fixed | nothing | S, high effort |
@@ -122,7 +123,7 @@ model: <haiku|sonnet|opus>
 4. **`docs/standards.md`** holds only what lint can't check:
    - folder layout per package
    - error-handling pattern (typed results in the engine; boundary validation with Zod)
-   - money in **integer paise**, dates as `YYYY-MM-DD` strings
+   - money in **integer rupees**, dates as `YYYY-MM-DD` strings
    - component pattern (presentational kit, plus screens composing it)
    - testID convention
    - test naming
@@ -138,6 +139,7 @@ model: <haiku|sonnet|opus>
 | `feature-analyze` | `/feature <PRD §>` | requirements-analyst ∥ domain-checker ∥ design-checker (UI only) → merged **analysis brief** (criteria, risks, kit components, open questions). **Returns to the main session**, which writes the plan with superpowers `writing-plans`, optionally gets a `planner` second opinion, and **stops for owner approval** |
 | `feature-build` | `/build <plan path>` (after approval) | for each task in order: `implementer` → `gate-checker` → retry or escalate → `code-reviewer` ∥ `consistency-reviewer` (+ ts/react reviewers by file type) → findings → `finding-verifier` → one fix pass by `implementer` → `gate-checker`. After all tasks: `workflow('qa')` inline |
 | `qa` | `/qa <scope>`, or called by `feature-build` | pick testers by the changed paths (table below) → run them in parallel → dedupe findings → `finding-verifier` per finding → return confirmed findings plus test counts |
+| `pr-review` | `/pr-review <PR#>`, or automatically when a ticket PR is opened or updated | spec, correctness, security, consistency, test-adequacy, silent-failure and UI lenses in parallel → dedupe → `finding-verifier` → post the review and verdict (G8) |
 | `retro` | `/retro` | read recent run ledgers → per agent: false-positive rate, retries, tokens, escalations → propose prompt edits as a diff for owner approval |
 
 **Tester selection by changed path:**
@@ -273,9 +275,64 @@ Any failure means the attempt **failed**, with the specific reason recorded, wha
 - `ui-tester` screenshot diffing → manual review
 - Board custom fields → plain columns
 
-## 13. Owner decisions pending
-1. **Merge model:** for each ticket PR, does the owner review and merge, or does it auto-merge once CI, Sonar and the Opus review are green?
-2. **Money unit:** integer **paise** or integer **rupees**, everywhere in the engine and API. This fixes `formatINR`'s signature (Plan 4a Task 2), `utilization.ts` docs and `docs/standards.md`.
+## 13. Owner decisions (21 Oct)
+1. **Merge model: agent-reviewed, gate-enforced.** Every PR passes the merge gates in §8.9, including an **in-depth PR review agent**. A PR merges only when every gate is green.
+2. **Money unit: integer rupees** everywhere (engine, API, DB, UI). Inputs with paise are **rounded half-up to whole rupees at the boundary** (bureau import, manual entry), and the rounding is shown to the user only if it changes a displayed number. `formatINR(rupees)` stays as Plan 4a Task 2 defines it. `docs/standards.md` and the `credit-domain` skill say "integer rupees".
+3. **Security is a first-class gate (§8.10).** A security leak in the product would be judged harshly.
+4. **Reuse the maximum from affaan-m/ECC.** A second reuse map against this design drives which ECC agents, commands, skills and hooks are adopted (§14).
+
+## 8.9 Merge gates (required status checks on `main`)
+A PR to `main` can't merge until **all** of these pass:
+
+| # | Gate | Kind | Blocks on |
+|---|---|---|---|
+| G1 | `verify`: lint, typecheck, unit and property tests, engine coverage ≥ 90% | CI | any failure |
+| G2 | `admin-e2e` (Playwright) when `apps/admin/**` or `packages/engine/**` changed | CI | any failure |
+| G3 | `api`: Supabase contract and RLS tests against local Supabase, when `supabase/**` changed | CI | any failure |
+| G4 | `secrets`: gitleaks over the PR's commits | CI | any finding |
+| G5 | `deps`: `pnpm audit --audit-level=high` plus OSV scan | CI | high or critical advisories (with a documented, dated allow-list) |
+| G6 | `codeql`: GitHub CodeQL for JS/TS (free on public repos) | CI | new high or critical alerts |
+| G7 | **SonarQube Cloud** quality gate (Sonar way) | CI | gate failed |
+| G8 | **`pr-reviewer` verdict.** The in-depth PR review agent posts a GitHub review: **approve** or **request changes**. Request-changes blocks | Agent | any confirmed critical or important finding |
+| G9 | **Maestro evidence** when `apps/mobile/**` changed: the PR must include an updated `docs/test-reports/maestro-*.xml` showing all flows passed on a release APK. CI checks the file exists and is newer than the last mobile change | CI (file check) | missing or failed |
+
+- **`pr-reviewer` (new agent, Opus, high effort)** reviews the PR in depth. It fans out *through the `pr-review` workflow*:
+  - Spec conformance: PRD or design section vs diff.
+  - Correctness and edge cases.
+  - Security: runs `security-reviewer`.
+  - Consistency: runs `consistency-reviewer` against standards and golden examples.
+  - Test adequacy: does every acceptance criterion have a test that would fail without the change?
+  - Silent failures.
+  - UI and accessibility (if mobile changed).
+  
+  Every finding then goes through `finding-verifier`. The **confirmed** findings become inline PR comments plus a summary review. The verdict is posted with the ShubhamU55 token as a PR review, and a `pr-review` commit status records it so branch protection can require it.
+- **Merge:**
+  - With G1–G9 green and an approving `pr-reviewer` review, the PR **auto-merges** (squash, via `gh pr merge --auto --squash`).
+  - Any request-changes review returns the PR to the ticket's session for a fix pass. After the fix, the `pr-review` workflow re-runs, scoped to the new commits plus the previous findings.
+  - **Two request-changes rounds on the same PR escalate to the owner.**
+- **The owner can always override:** a `hold` label blocks auto-merge.
+- **Branch protection on `main`:** required checks G1–G9, linear history, no force-push, no direct pushes after the bootstrap commit.
+
+## 8.10 Security as a first-class gate
+- **Threat model:** `docs/security/threat-model.md`, a one-page STRIDE pass over the app, admin, Supabase, the LLM Edge Function and the demo path. The `security-reviewer` checklist is derived from it.
+- **Product rules:**
+  - No secrets in the app bundle. Only the Supabase **anon** key ships; the **service role** key never leaves server-side.
+  - RLS on **every** table, deny-by-default. A test asserts that every table in the schema has RLS enabled.
+  - PAN is never stored in full (hash + last 4) and never logged. A test greps log statements for PAN patterns.
+  - Consent is recorded with a timestamp.
+  - The LLM function treats all input as untrusted and returns only template-bounded text. It has a timeout and rate limiting.
+  - The admin requires an admin-role claim, enforced server-side.
+  - Mobile: no sensitive data in plain AsyncStorage (session tokens use `expo-secure-store`). No HTTP. No debug logs in release builds.
+  - Checked against the **OWASP MASVS** and the OWASP Mobile Top 10 checklist in `docs/security/checklist.md`.
+- **Pipeline:** G4 (secrets), G5 (dependencies), G6 (CodeQL), G7 (Sonar security hotspots), plus `security-reviewer` inside `pr-reviewer` on every PR. `api-tester` runs RLS isolation tests on every Supabase change.
+- **Agent-config security:** agents must not be steerable into leaking secrets or disabling hooks.
+  - The `protect-env` hook (exists) blocks agent writes to `.env*` files.
+  - A **config audit** (ECC AgentShield or equivalent, per §14) scans `.claude/` on every PR that touches it.
+  - Agents never run `--no-verify` or disable hooks.
+- **Before submission:** a full security pass by `security-reviewer` on Opus over the whole repo. Findings and their fixes are recorded in `docs/security/review-YYYY-MM-DD.md`.
+
+## 14. ECC reuse (to be filled from the second reuse map)
+_A table of ECC agents, commands, skills and hooks adopted for each role in this design, with adapt notes. Pending the reuse-map report._
 
 ## 12. Left to the builder
 - Exact JSON schemas per agent (extending the §6 envelope).
