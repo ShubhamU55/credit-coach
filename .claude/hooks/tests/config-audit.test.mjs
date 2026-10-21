@@ -49,6 +49,11 @@ const CURL_PIPE_ALLOWLIST = [
     lineIncludes: '"Bash(wget * | sh*)"',
     reason: 'permission deny-list entry blocking wget piped to sh, not an executable instruction',
   },
+  {
+    path: '.claude/settings.json',
+    lineIncludes: '"Bash(wget * | bash*)"',
+    reason: 'permission deny-list entry blocking wget piped to bash, not an executable instruction',
+  },
 ];
 
 const here = path.dirname(fileURLToPath(import.meta.url));

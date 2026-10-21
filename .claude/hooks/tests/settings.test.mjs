@@ -16,11 +16,15 @@ const REQUIRED_DENY_RULES = [
   'Read(**/.env.local)',
   'Read(**/.env.*.local)',
   'Read(**/.env.production)',
+  'Read(**/.env.development)',
+  'Read(**/.env.staging)',
+  'Read(**/.env.test)',
   'Read(~/.ssh/**)',
   'Read(~/.aws/**)',
   'Bash(curl * | sh*)',
   'Bash(curl * | bash*)',
   'Bash(wget * | sh*)',
+  'Bash(wget * | bash*)',
   'Bash(* --no-verify*)',
   'Bash(git push --force*)',
   'Bash(git push -f*)',
@@ -45,6 +49,11 @@ describe('.claude/settings.json baseline', () => {
     const settings = readSettings();
     expect(settings.attribution?.commit).toBe('');
     expect(settings.attribution?.pr).toBe('');
+  });
+
+  it('omits the session link from commits and PRs', () => {
+    const settings = readSettings();
+    expect(settings.attribution?.sessionUrl).toBe(false);
   });
 
   it('keeps the existing protect-env and format-on-edit hooks unchanged', () => {

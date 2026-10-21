@@ -2,7 +2,8 @@
   "includeCoAuthoredBy": false,
   "attribution": {
     "commit": "",
-    "pr": ""
+    "pr": "",
+    "sessionUrl": false
   },
   "permissions": {
     "deny": [
@@ -10,11 +11,15 @@
       "Read(**/.env.local)",
       "Read(**/.env.*.local)",
       "Read(**/.env.production)",
+      "Read(**/.env.development)",
+      "Read(**/.env.staging)",
+      "Read(**/.env.test)",
       "Read(~/.ssh/**)",
       "Read(~/.aws/**)",
       "Bash(curl * | sh*)",
       "Bash(curl * | bash*)",
       "Bash(wget * | sh*)",
+      "Bash(wget * | bash*)",
       "Bash(* --no-verify*)",
       "Bash(git push --force*)",
       "Bash(git push -f*)"
