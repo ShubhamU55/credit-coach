@@ -2,9 +2,7 @@
 
 # Code Review Standards
 
-## Purpose
-
-Code review ensures quality, security, and maintainability before code is merged. This rule defines when and how to conduct code reviews.
+Code review ensures quality, security, and maintainability before code is merged. This rule defines when and how to conduct code reviews. The quality bar it checks against lives in [coding-style.md](./coding-style.md).
 
 ## When to Review
 
@@ -15,26 +13,12 @@ Code review ensures quality, security, and maintainability before code is merged
 - When security-sensitive code is changed (auth, payments, user data)
 - When architectural changes are made
 - Before merging pull requests
-
-**Pre-Review Requirements:**
-
-Before requesting review, ensure:
-
-- All automated checks (CI/CD) are passing
-- Merge conflicts are resolved
-- Branch is up to date with target branch
+- Pre-review: CI passing, merge conflicts resolved, branch up to date with target
 
 ## Review Checklist
 
-Before marking code complete:
-
-- [ ] Code is readable and well-named
-- [ ] Functions are focused (<50 lines)
-- [ ] Source files are cohesive (under the 800-line soft maintainability ceiling, or include a reason for a deliberate exception)
-- [ ] No deep nesting (>4 levels)
-- [ ] Errors are handled explicitly
-- [ ] No hardcoded secrets or credentials
-- [ ] No console.log or debug statements
+- [ ] Meets [coding-style.md](./coding-style.md): readable names, small functions/files, shallow nesting, immutable updates, no hardcoded secrets
+- [ ] No `console.log` or debug statements
 - [ ] Tests exist for new functionality
 - [ ] Engine coverage ≥ 90% lines; app changes covered by an E2E flow
 
@@ -52,75 +36,44 @@ Before marking code complete:
 
 ## Review Severity Levels
 
-| Level | Meaning | Action |
-|-------|---------|--------|
-| CRITICAL | Security vulnerability or data loss risk | **BLOCK** - Must fix before merge |
-| HIGH | Bug or significant quality issue | **WARN** - Should fix before merge |
-| MEDIUM | Maintainability concern, including an unexplained source file over the soft 800-line ceiling | **INFO** - Consider fixing |
-| LOW | Style or minor suggestion | **NOTE** - Optional |
+| Level    | Meaning                                                                                      | Action                             |
+| -------- | -------------------------------------------------------------------------------------------- | ---------------------------------- |
+| CRITICAL | Security vulnerability or data loss risk                                                     | **BLOCK** - Must fix before merge  |
+| HIGH     | Bug or significant quality issue                                                             | **WARN** - Should fix before merge |
+| MEDIUM   | Maintainability concern, including an unexplained source file over the soft 800-line ceiling | **INFO** - Consider fixing         |
+| LOW      | Style or minor suggestion                                                                    | **NOTE** - Optional                |
 
 ## Agent Usage
 
-Use these agents for code review:
-
-| Agent | Purpose |
-|-------|---------|
-| **code-reviewer** | General code quality, patterns, best practices |
-| **security-reviewer** | Security vulnerabilities, OWASP Top 10 |
-| **typescript-reviewer** | TypeScript/JavaScript specific issues |
-| **python-reviewer** | Python specific issues |
-| **go-reviewer** | Go specific issues |
-| **rust-reviewer** | Rust specific issues |
+| Agent                     | Purpose                                                    |
+| ------------------------- | ---------------------------------------------------------- |
+| **code-reviewer**         | General code quality, patterns, best practices             |
+| **security-reviewer**     | Security vulnerabilities, OWASP Top 10                     |
+| **typescript-reviewer**   | TypeScript/JavaScript specific issues                      |
+| **react-reviewer**        | React/JSX issues (`.tsx`)                                  |
+| **silent-failure-hunter** | Swallowed errors, bad fallbacks, missing error propagation |
 
 ## Review Workflow
 
-```
-1. Run git diff to understand changes
-2. Check security checklist first
-3. Review code quality checklist
-4. Run relevant tests
-5. Verify engine coverage ≥ 90% lines
-6. Use appropriate agent for detailed review
-```
+1. Run `git diff` to understand changes
+2. Check the security triggers above first
+3. Run the relevant tests; verify engine coverage ≥ 90% lines
+4. Use the appropriate specialist agent for detailed review
 
 ## Common Issues to Catch
 
-### Security
-
-- Hardcoded credentials (API keys, passwords, tokens)
-- SQL injection (string concatenation in queries)
-- XSS vulnerabilities (unescaped user input)
-- Path traversal (unsanitized file paths)
-- CSRF protection missing
-- Authentication bypasses
-
-### Code Quality
-
-- Large functions (>50 lines) - split into smaller
-- Large files (>800 lines) - extract modules
-- Deep nesting (>4 levels) - use early returns
-- Missing error handling - handle explicitly
-- Mutation patterns - prefer immutable operations
-- Missing tests - add test coverage
-
-### Performance
-
-- N+1 queries - use JOINs or batching
-- Missing pagination - add LIMIT to queries
-- Unbounded queries - add constraints
-- Missing caching - cache expensive operations
+- **Security:** hardcoded credentials, SQL injection, XSS, path traversal, missing CSRF protection, auth bypasses
+- **Performance:** N+1 queries, missing pagination/constraints, missing caching on expensive operations
 
 ## Approval Criteria
 
-- **Approve**: No CRITICAL or HIGH issues
-- **Warning**: Only HIGH issues (merge with caution)
-- **Block**: CRITICAL issues found
+- **Approve:** no CRITICAL or HIGH issues
+- **Warning:** only HIGH issues (merge with caution)
+- **Block:** CRITICAL issues found
 
 ## Integration with Other Rules
 
-This rule works with:
-
-- [testing.md](testing.md) - Test coverage requirements
-- [security.md](security.md) - Security checklist
-- [git-workflow.md](git-workflow.md) - Commit standards
-- [agents.md](agents.md) - Agent delegation
+- [testing.md](./testing.md) - Test coverage requirements
+- [security.md](./security.md) - Security checklist
+- [git-workflow.md](./git-workflow.md) - Commit standards
+- [agents.md](./agents.md) - Agent roster and delegation
