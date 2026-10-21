@@ -22,6 +22,10 @@ const engineRestrictedImports = {
         'http',
         'https',
         'child_process',
+        'net',
+        'path',
+        'os',
+        'crypto',
       ],
       message:
         'packages/engine is pure: no framework, filesystem or network imports (CLAUDE.md non-negotiable #1).',
@@ -41,6 +45,33 @@ const noArglessDate = [
     message: "Do not call `Date.now()`; pass 'today' in explicitly.",
   },
 ];
+
+/** Engine-only `no-restricted-syntax` entries, alongside noArglessDate in the same config
+ * object (flat config replaces a rule's options, it doesn't merge them): a bare `Date()`
+ * call reads the clock too, and `Math.random` breaks "same inputs, same outputs". */
+const engineNondeterminism = [
+  {
+    selector: "CallExpression[callee.name='Date']",
+    message: "Do not call `Date()`; it returns the current time. Pass 'today' in explicitly.",
+  },
+  {
+    selector: "MemberExpression[object.name='Math'][property.name='random']",
+    message: 'Do not use `Math.random`; the engine is deterministic (CLAUDE.md non-negotiable #1).',
+  },
+];
+
+/** `no-restricted-globals` entries for the engine: no network, no process, and no
+ * `globalThis` escape hatch around the other bans. */
+const engineRestrictedGlobals = [
+  'fetch',
+  'XMLHttpRequest',
+  'WebSocket',
+  'process',
+  'globalThis',
+].map((name) => ({
+  name,
+  message: `packages/engine is pure: \`${name}\` is not allowed (CLAUDE.md non-negotiable #1).`,
+}));
 
 /** `no-restricted-syntax` entries: ban raw hex color literals outside the
  * theme so screens stay on design tokens (docs/design.md). */
@@ -69,6 +100,8 @@ const sizeLimits = { 'max-lines': ['warn', 400], complexity: ['warn', 10] };
 
 module.exports = {
   engineRestrictedImports,
+  engineRestrictedGlobals,
+  engineNondeterminism,
   noArglessDate,
   noRawHex,
   crossAppImport,

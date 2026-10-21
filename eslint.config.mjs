@@ -19,7 +19,8 @@ export default tseslint.config(
     files: ['packages/engine/src/**/*.ts'],
     rules: {
       'no-restricted-imports': ['error', shared.engineRestrictedImports],
-      'no-restricted-syntax': ['error', ...shared.noArglessDate],
+      'no-restricted-globals': ['error', ...shared.engineRestrictedGlobals],
+      'no-restricted-syntax': ['error', ...shared.noArglessDate, ...shared.engineNondeterminism],
       ...shared.sizeLimits,
     },
   },

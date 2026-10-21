@@ -40,6 +40,48 @@ describe('engine purity rules (packages/engine)', () => {
     expect(restricted).toHaveLength(2);
   });
 
+  it.each([
+    ['fetch', "export const r = fetch('https://example.com');\n", 'no-restricted-globals'],
+    ['process.env', 'export const home = process.env.HOME;\n', 'no-restricted-globals'],
+    ['XMLHttpRequest', 'export const x = new XMLHttpRequest();\n', 'no-restricted-globals'],
+    ['WebSocket', "export const w = new WebSocket('wss://x');\n", 'no-restricted-globals'],
+    ['globalThis.Date.now()', 'export const t = globalThis.Date.now();\n', 'no-restricted-globals'],
+    ['Math.random()', 'export const r = Math.random();\n', 'no-restricted-syntax'],
+    ['bare Date()', 'export const s = Date();\n', 'no-restricted-syntax'],
+    [
+      "import net from 'net'",
+      "import net from 'net';\nexport const n = net;\n",
+      'no-restricted-imports',
+    ],
+    [
+      "import path from 'path'",
+      "import path from 'path';\nexport const p = path;\n",
+      'no-restricted-imports',
+    ],
+    [
+      "import os from 'os'",
+      "import os from 'os';\nexport const o = os;\n",
+      'no-restricted-imports',
+    ],
+    [
+      "import crypto from 'crypto'",
+      "import c from 'crypto';\nexport const k = c;\n",
+      'no-restricted-imports',
+    ],
+  ])('rejects %s', async (_, code, ruleId) => {
+    const [result] = await lint(code, 'src/x.ts');
+    const hits = result.messages.filter((m) => m.ruleId === ruleId && m.severity === 2);
+    expect(hits.length, JSON.stringify(result.messages)).toBeGreaterThanOrEqual(1);
+  });
+
+  it('still allows Date.UTC and new Date(value) alongside the new bans', async () => {
+    const [result] = await lint(
+      'export const t = new Date(Date.UTC(2026, 9, 21)).getTime() + Math.max(1, 2);\n',
+      'src/x.ts',
+    );
+    expect(result.messages).toHaveLength(0);
+  });
+
   it('warns max-lines (not errors) for a 401-line file', async () => {
     const code = Array.from({ length: 401 }, (_, i) => `// line ${i}`).join('\n') + '\n';
     const [result] = await lint(code, 'src/long.ts');
