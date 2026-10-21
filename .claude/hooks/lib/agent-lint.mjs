@@ -5,31 +5,19 @@
  * unit-tested on in-memory fixtures, not just the real agent roster.
  *
  * Heading detection and section-body/first-line extraction all ignore
- * fenced code blocks (``` or ~~~, any info string): an agent file that
- * only has a required heading, or the required wording, inside a fenced
+ * fenced code blocks, via the shared CommonMark-respecting
+ * `linesOutsideFences` (./markdown-fences.mjs): an agent file that only
+ * has a required heading, or the required wording, inside a fenced
  * example must not satisfy the real structural checks.
  */
 import { parse } from 'yaml';
-
-/** Lines of `text` with any ``` or ~~~ fenced region (fence markers included) removed. */
-function linesOutsideFences(text) {
-  const lines = text.split(/\r?\n/);
-  let inFence = false;
-  const result = [];
-  for (const line of lines) {
-    if (/^(```|~~~)/.test(line.trim())) {
-      inFence = !inFence;
-      continue;
-    }
-    if (inFence) continue;
-    result.push(line);
-  }
-  return result;
-}
+import { linesOutsideFences } from './markdown-fences.mjs';
 
 /** `text` with every fenced code block stripped out, lines rejoined with `\n`. */
 function visibleText(text) {
-  return linesOutsideFences(text).join('\n');
+  return linesOutsideFences(text)
+    .map((line) => line.text)
+    .join('\n');
 }
 
 /** Parses `---`-delimited YAML frontmatter from the top of a Markdown file. */

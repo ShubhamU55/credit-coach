@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { linesOutsideFences } from '../lib/markdown-fences.mjs';
 
 // Ruling 1 (config-audit scope):
 // - the hidden-character check applies to EVERY file under `.claude/**`
@@ -70,23 +71,6 @@ function listFilesRecursive(dir) {
 
 function relPath(filePath) {
   return path.relative(repoRoot, filePath).split(path.sep).join('/');
-}
-
-/** Lines outside ``` fenced code blocks, with 1-based line numbers. */
-function linesOutsideFences(text) {
-  const lines = text.split(/\r?\n/);
-  let inFence = false;
-  const result = [];
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (line.trim().startsWith('```')) {
-      inFence = !inFence;
-      continue;
-    }
-    if (inFence) continue;
-    result.push({ lineNumber: i + 1, text: line });
-  }
-  return result;
 }
 
 const allConfigFiles = [...listFilesRecursive(claudeDir), path.join(repoRoot, 'CLAUDE.md')].sort();

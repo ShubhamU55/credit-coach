@@ -39,6 +39,32 @@ describe('headingsOf (fenced code blocks must not count as real headings)', () =
     const text = ['## Mission', '~~~', '## Inputs', '~~~', '## Allowed paths'].join('\n');
     expect(headingsOf(text)).toEqual(['Mission', 'Allowed paths']);
   });
+
+  it('reproduces: a mismatched ~~~ line inside a ```markdown fence must not close it early', () => {
+    // A ``` fence containing a stray ~~~ line, followed by real-looking
+    // §6 headings and the required Anti-drift wording, all before the
+    // actual closing ```. If the fence matcher toggled on ANY of ```/~~~
+    // without checking the character matches the opener, the stray ~~~
+    // would be read as closing the fence, re-exposing everything after
+    // it to headingsOf/bodyUnderHeading as if it were real content.
+    const text = [
+      '## Mission',
+      'Real section.',
+      '',
+      '```markdown',
+      '~~~',
+      '## Output contract',
+      'fake',
+      '## Stop rules',
+      'fake',
+      '## Anti-drift',
+      'Never edit .env. Never pass --no-verify.',
+      '```',
+    ].join('\n');
+
+    expect(headingsOf(text)).toEqual(['Mission']);
+    expect(bodyUnderHeading(text, 'Anti-drift')).toBeNull();
+  });
 });
 
 describe('bodyUnderHeading / firstLineUnderHeading (fenced + bounded)', () => {
@@ -67,7 +93,7 @@ describe('bodyUnderHeading / firstLineUnderHeading (fenced + bounded)', () => {
     expect(bodyUnderHeading(text, 'Anti-drift')).toBeNull();
   });
 
-  it('bounds the body to the section: stops at the next real heading, not a heading inside a later fence', () => {
+  it('bounds the body to the section: stops at the next real heading, not a heading-looking line inside a later fence', () => {
     const text = [
       '## Anti-drift',
       'Never edit .env.',
@@ -75,12 +101,18 @@ describe('bodyUnderHeading / firstLineUnderHeading (fenced + bounded)', () => {
       '',
       '## Stop rules',
       'Unrelated section.',
+      '',
+      '```markdown',
+      '## Anti-drift',
+      'A decoy heading inside a fence, well after the real section already ended.',
+      '```',
     ].join('\n');
 
     const body = bodyUnderHeading(text, 'Anti-drift');
     expect(body).toContain('.env');
     expect(body).toContain('--no-verify');
     expect(body).not.toContain('Unrelated section');
+    expect(body).not.toContain('decoy');
   });
 
   it('reproduces: a decorative fence before the real first line must not be read as the first line', () => {
