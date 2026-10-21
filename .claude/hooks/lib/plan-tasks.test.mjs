@@ -1,0 +1,154 @@
+import { describe, it, expect } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { parsePlanTasks } from './plan-tasks.mjs';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(here, '../../..');
+const PLAN_4A = 'docs/superpowers/plans/2026-10-21-plan-4a-mobile-ui-kit.md';
+const PLAN_1C = 'docs/superpowers/plans/2026-10-21-plan-1c-agentic-system.md';
+
+function readPlan(relPath) {
+  return fs.readFileSync(path.join(repoRoot, relPath), 'utf8');
+}
+
+function byId(tasks, id) {
+  return tasks.find((task) => task.id === id);
+}
+
+describe('parsePlanTasks on Plan 4a', () => {
+  const tasks = parsePlanTasks(readPlan(PLAN_4A));
+
+  it('parses Task 2 files, test files and test command', () => {
+    const task = byId(tasks, '2');
+    expect(task.title).toBe('Formatters in the engine (pure, shared with admin)');
+    expect(task.files).toEqual(['packages/engine/src/format.ts', 'packages/engine/src/index.ts']);
+    expect(task.createFiles).toEqual(['packages/engine/src/format.ts']);
+    expect(task.testFiles).toEqual(['packages/engine/src/format.test.ts']);
+    expect(task.testCommand).toBe('pnpm --filter @credit-coach/engine test');
+    expect(task.dependsOn).toEqual([]);
+    expect(task.text.startsWith('### Task 2: Formatters')).toBe(true);
+    expect(task.text).not.toContain('### Task 3');
+  });
+
+  it('reads dependsOn from Consumes lines, expanding ranges', () => {
+    expect(byId(tasks, '3').dependsOn).toEqual(['1']);
+    const last = tasks.find((task) => task.text.includes('everything from Tasks 1–10'));
+    expect(last.dependsOn).toEqual(['1', '2', '3', '4', '5', '6', '7', '8', '9', '10']);
+  });
+});
+
+describe('parsePlanTasks on Plan 1c', () => {
+  const tasks = parsePlanTasks(readPlan(PLAN_1C));
+  const ids = tasks.map((task) => task.id);
+
+  it('finds every wave task id', () => {
+    expect(ids).toContain('W0-1');
+    expect(ids).toContain('W5-2');
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('drops nested notes that are not paths (W0-1)', () => {
+    expect(byId(tasks, 'W0-1').files).toEqual([
+      'packages/engine/package.json',
+      'packages/engine/vitest.config.ts',
+      '.claude/hooks/package.json',
+      'pnpm-lock.yaml',
+    ]);
+  });
+
+  it('lets nested bullets inherit their label (W0-6, W2-1)', () => {
+    const w06 = byId(tasks, 'W0-6');
+    expect(w06.createFiles).toEqual([
+      '.claude/hooks/lib/contracts.mjs',
+      '.claude/hooks/lib/pure-block.mjs',
+      '.claude/hooks/lib/plan-tasks.mjs',
+      '.claude/hooks/bin/plan-tasks.mjs',
+    ]);
+    expect(w06.files).toEqual(w06.createFiles);
+    expect(w06.testFiles).toEqual([
+      '.claude/hooks/lib/contracts.test.mjs',
+      '.claude/hooks/lib/pure-block.test.mjs',
+      '.claude/hooks/lib/plan-tasks.test.mjs',
+      '.claude/hooks/tests/workflows-sync.test.mjs',
+    ]);
+    expect(w06.testCommand).toBe('pnpm --filter @credit-coach/hooks test');
+
+    const w21 = byId(tasks, 'W2-1');
+    expect(w21.createFiles).toEqual([
+      '.claude/workflows/feature-build.workflow.js',
+      '.claude/workflows/qa.workflow.js',
+      '.claude/commands/build.md',
+      '.claude/commands/qa.md',
+    ]);
+    expect(w21.testFiles).toEqual([
+      '.claude/hooks/tests/workflows/feature-build.test.mjs',
+      '.claude/hooks/tests/workflows/qa.test.mjs',
+    ]);
+    expect(w21.dependsOn).toEqual(['W0-6']);
+  });
+
+  it('keeps Delete: paths in files but not createFiles (W1-1)', () => {
+    const task = byId(tasks, 'W1-1');
+    expect(task.files).toContain('.claude/agents/tdd-guide.md');
+    expect(task.files).toContain('CLAUDE.md');
+    expect(task.createFiles).not.toContain('.claude/agents/tdd-guide.md');
+  });
+
+  it('ignores backticked text inside a label parenthetical (W1-4)', () => {
+    const task = byId(tasks, 'W1-4');
+    expect(task.files).not.toContain('scripts/hooks/');
+    expect(task.createFiles).toContain('.claude/hooks/block-no-verify.cjs');
+  });
+
+  it('reads W-style ids and ranges from Consumes lines', () => {
+    expect(byId(tasks, 'W0-7').dependsOn).toEqual(['W0-5']);
+    expect(byId(tasks, 'W1-2').dependsOn).toEqual(['W0-6', 'W0-3']);
+    expect(byId(tasks, 'W4-5').dependsOn).toEqual(['W2-1', 'W4-1', 'W4-2', 'W4-3', 'W4-4']);
+  });
+});
+
+describe('parsePlanTasks on inline markdown', () => {
+  it('returns [] for a plan with no tasks', () => {
+    expect(parsePlanTasks('# Nothing here\n')).toEqual([]);
+  });
+
+  it('gives a task without Files or a PASS step empty lists and a null command', () => {
+    const [task] = parsePlanTasks('### Task 9: Lone\n\n- [ ] **Step 1:** Think.\n');
+    expect(task).toMatchObject({
+      id: '9',
+      title: 'Lone',
+      files: [],
+      createFiles: [],
+      testFiles: [],
+      testCommand: null,
+      dependsOn: [],
+    });
+  });
+});
+
+describe('bin/plan-tasks.mjs', () => {
+  const bin = path.join(repoRoot, '.claude/hooks/bin/plan-tasks.mjs');
+
+  it('prints the selected tasks as JSON', () => {
+    const out = execFileSync(process.execPath, [bin, PLAN_4A, '2'], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+    });
+    const tasks = JSON.parse(out);
+    expect(tasks.map((task) => task.id)).toEqual(['2']);
+    expect(tasks[0].testFiles).toEqual(['packages/engine/src/format.test.ts']);
+  });
+
+  it('exits non-zero on an unknown id', () => {
+    expect(() =>
+      execFileSync(process.execPath, [bin, PLAN_4A, 'nope'], {
+        cwd: repoRoot,
+        encoding: 'utf8',
+        stdio: 'pipe',
+      }),
+    ).toThrow(/nope/);
+  });
+});
