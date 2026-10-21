@@ -2,11 +2,44 @@
 
 > Read this first when starting a new session. Update it at the end of every session (newest entry on top).
 
+## 2026-10-22 (Wave 0 done)
+
+### What landed
+
+- **Plan 1c is committed (`d12f36c`) and approved by the owner.** Wave 0 ran on `main` with the owner's approval.
+- **Wave 0 (W0-1 to W0-7) is complete**, plus a final-review fix wave on top of it:
+  - Contracts (`.claude/hooks/lib/contracts.mjs`):
+    - dedupe keys on `file|line|title` and never merges a security finding with a non-security one
+    - `checkDrift(facts, task, expectedAttemptStart?)` adds `head-not-in-commits` and `attempt-start-mismatch`; a task with no test command and no test files expects the gate to run nothing
+    - `wrapUntrusted` neutralizes forged BEGIN/END marker lines
+    - the shared schemas and constants are deep-frozen
+  - Agent lint: catches `- Nothing` and `**Nothing**`, enforces the `READ_ONLY_AGENTS` roster names, and detects the baseline heading outside fences only.
+  - Plan parser: maps `dir/` to `dir/**` in `files` only, and uses the shared CommonMark fence detection.
+  - Engine purity: ESLint bans `fetch`, `XMLHttpRequest`, `WebSocket`, `process`, `globalThis`, bare `Date()`, `Math.random` and `net`/`path`/`os`/`crypto` imports, and `vitest.config.ts` is out of the engine `tsc` program, so `@types/node` no longer leaks in.
+  - Workflows: a script under `.claude/workflows/` that doesn't match `*.workflow.js` fails the sync test.
+  - Settings: more `.env*` read denies, `wget | bash` denied, `attribution.sessionUrl: false`.
+  - Sonar: CPD skips the pasted contracts copies, and `scratch/**` is excluded.
+  - Docs: the commit format in `docs/standards.md`, roster purposes in `.claude/rules/agents.md`, and the Maestro report path.
+- **Plan 1c carry-forwards** (W1-1 `gate-checker` facts, W2-1 inferred test command and schema spike, W5-1 CI hardening) are written into the plan.
+
+### Next step
+
+- **Wave 1** (W1-1 to W1-4, parallel tickets; see Plan 1c).
+- `.design/` is untracked on `main`, so a `/build` run on `main` stops at `dirty-start`. Run `/build` from worktrees, or the owner commits or ignores `.design/`.
+
+### Owner actions still open
+
+1. `gh auth refresh -h github.com -u ShubhamU55 -s workflow,project`. The token has only `repo`, so nothing is pushed yet.
+2. SonarQube Cloud: create the org `shubhamu55` and import `credit-coach`, turn off Automatic Analysis, and add the `SONAR_TOKEN` repo secret. Then set the repo variable `SONAR_REQUIRED=true` (W5-1).
+3. `npx supabase login`, then create the free project `credit-coach` (Mumbai) and share its project ref.
+4. Start Docker Desktop (needed by `api-tester` in Plan 3).
+5. `npx eas-cli login` (optional).
+
 ## 2026-10-21 (end of session 2)
 
 ### What changed
 
-- **Plan 1c written:** `docs/superpowers/plans/2026-10-21-plan-1c-agentic-system.md`. It isn't committed yet and is **awaiting owner review**.
+- **Plan 1c written:** `docs/superpowers/plans/2026-10-21-plan-1c-agentic-system.md`. It is committed (`d12f36c`) and approved by the owner (see the 2026-10-22 entry).
   - It has 6 dependency waves and 24 tickets, and file ownership is disjoint within a wave.
   - Shared workflow logic lives in `.claude/hooks/lib/contracts.mjs`. Each workflow carries a byte-identical copy, and a test checks it.
   - The dry run on Plan 4a Task 2 moves up to Wave 2, before the second batch of agents.
@@ -17,7 +50,7 @@
 
 ### Next step
 
-- **Owner:** review Plan 1c and choose how to execute it.
+- **Owner:** review Plan 1c and choose how to execute it. _(Done: approved; see the 2026-10-22 entry.)_
 - **Then:** Wave 1 (see Plan 1c for the ticket list; Wave 0's W0-1 through W0-7 are complete).
 - **New owner action:** create the SonarQube Cloud org, turn off Automatic Analysis, and add the `SONAR_TOKEN` secret. See Plan 1c, "Owner actions".
 

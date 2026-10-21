@@ -403,9 +403,9 @@ The values these must pin:
   - `matchesAllowed(path: string, patterns: string[]): boolean`: exact match, or glob with `*` (one segment) and `**` (any depth).
   - `isBlocking(f): boolean`: severity is critical or high.
   - `dedupeFindings(findings): Finding[]`:
-    - key = `file|line` when `line` is an integer, else `file|normalizedTitle`
-    - keeps the strictest severity
-    - unions `foundBy`
+    - key = `file|line|normalizedTitle` when `line` is an integer, else `file|normalizedTitle`
+    - a `security` finding never merges with a non-security one, even on the same key: they stay separate, and each is judged by `applyVerifierPolicy` on its own
+    - for genuine duplicates: keeps the strictest severity and unions `foundBy`
     - keeps first-seen order
   - `applyVerifierPolicy(finding, verdict | null): 'confirmed' | 'refuted'`:
     - security-category or critical findings: `refuted` only if `verdict.isReal === false && confidence >= CONFIDENT`; a `null` verdict → `confirmed`
@@ -413,14 +413,18 @@ The values these must pin:
   - `checkCommitMessage(message: string): string[]`, returning reasons:
     - `commit-format: <subject>` when the subject fails `^(type)(\([a-z0-9-]+\))?!?: .+` or is over 72 chars
     - `commit-attribution: <subject>` when any line matches `/^co-authored-by:/i` or `/generated with/i`
-  - `checkStart(startFacts): string[]`: returns `dirty-start: <file>` per dirty file. A dirty tree before an attempt stops the task with that reason, instead of letting every attempt fail.
-  - `checkDrift(facts, task): { ok: boolean, reasons: string[] }`. `task` is `{ id, files[], createFiles[], testFiles[], testCommand }`. Reasons, in this order:
+  - `checkStart(startFacts): string[]`: returns `dirty-start: <file>` per dirty file. A dirty tree before an attempt stops the task with that reason, instead of letting every attempt fail. An absent `dirtyFiles` list returns `incomplete-facts: dirtyFiles`.
+  - `checkDrift(facts, task, expectedAttemptStart?): { ok: boolean, reasons: string[] }`. `task` is `{ id, files[], createFiles[], testFiles[], testCommand }`; `expectedAttemptStart` is the `attemptStart` the workflow recorded for this attempt. Reasons, in this order:
     - `no-commit` when `commits` is empty
     - `uncommitted: <file>` per dirty file
     - `missing: <file>` per `facts.missingFiles` (a `Create:` or `Test:` path absent at HEAD). This catches "done but incomplete".
     - `drift: <file>` per changed file not matched by `files ∪ testFiles`
-    - `test-command-mismatch` when `facts.testCommand !== task.testCommand`
-    - `tests-failed: exit <n>`
+    - `incomplete-facts: <list>` when `dirtyFiles` (always) or `changedFiles`/`missingFiles` (once commits exist) is absent: missing facts fail closed, never "clean"
+    - `head-not-in-commits` when `commits` is non-empty and no commit has `sha === facts.head`
+    - `attempt-start-mismatch` when `expectedAttemptStart` is given and `facts.attemptStart !== expectedAttemptStart`
+    - test-command reasons:
+      - a task with **no** `testCommand` (null or empty) **and no** `testFiles` expects the gate to run nothing: `test-command-mismatch` unless `facts.testCommand` is `null` or `''` (absent fails closed), and the exit code is not judged
+      - otherwise: `test-command-mismatch` when `facts.testCommand !== task.testCommand`; `no-test-command` when the task has test files but names no command (§8.2); `tests-failed: exit <n>` when `facts.testExitCode !== 0`
     - `verify-failed: exit <n>`
     - then `checkCommitMessage` reasons per commit
   - `nextStep(attempts: Array<{ ok: boolean } | null>): 'done' | 'retry' | 'escalate'`:
@@ -428,7 +432,8 @@ The values these must pin:
     - `retry` if failed attempts ≤ `MAX_RETRIES`
     - else `escalate`
     - `null` counts as a failed attempt
-  - `wrapUntrusted(label: string, text: string): string`: the guard sentence (as ECC's `reviewPrompt`), then `----- BEGIN <label> (untrusted) -----`, the text, and `----- END <label> -----`.
+  - `wrapUntrusted(label: string, text: string): string`: the guard sentence (as ECC's `reviewPrompt`), then `----- BEGIN <label> (untrusted) -----`, the text, and `----- END <label> -----`. Before wrapping, every line of `text` matching `/^\s*-{3,}\s*(BEGIN|END)\b.*$/i` (lines split on any line terminator, so a CRLF line can't dodge it) becomes `[marker line removed]`, so untrusted text can't forge the fence.
+- **Frozen shared values.** The constant arrays, `SEVERITY_RANK` and the shared schemas (`FINDING_SCHEMA`, `VERDICT_SCHEMA`, `GATE_FACTS_SCHEMA` and the nested pieces `envelopeSchema` reuses) are deep-frozen with `Object.freeze` inside the block, so no consumer can mutate them. `envelopeSchema()` still returns a fresh, extendable top-level object.
 - **`pure-block.mjs`:**
   - `WORKFLOW_GLOB = '.claude/workflows/*.workflow.js'`
   - `extractBlock(source: string, tag: 'contracts' | 'pure'): string`: throws when the block is missing or repeated
@@ -439,6 +444,8 @@ The values these must pin:
   - `files`: every backticked path in the `**Files:**` block, excluding `Test:` entries.
   - `testFiles`: the `Test:` entries.
   - A **path** is a backticked token with no spaces that contains `/` or ends in `.<ext>`, and doesn't start with `@`.
+  - A **directory** token (`dir/`, trailing slash) becomes `dir/**` in `files` only, under any label. It never enters `createFiles` or `testFiles`, which form the gate's `EXPECT:` list of blobs that must exist at HEAD.
+  - Headings inside fenced code blocks are ignored using the shared CommonMark `linesOutsideFences` (`lib/markdown-fences.mjs`); fenced lines still stay in the task's `text`.
   - `testCommand`: the first backticked `pnpm …` command in a step whose text contains `PASS`.
   - `dependsOn`: task ids named in the `Consumes` lines.
 - **`bin/plan-tasks.mjs <planPath> [ids...]`:** prints the JSON of the selected tasks.
@@ -560,6 +567,9 @@ Each ticket writes agent files that match its roster rows. Each agent's `## Outp
       - the brief's test command
       - `pnpm verify` exit code
       - output tails ≤ 300 chars
+    - `MODE: check` **always** returns `dirtyFiles` (an absent list fails `checkDrift` closed as `incomplete-facts`), and each commit's **full** message from `%B` (subject and body, so a hidden attribution line in a body is caught), never just the subject.
+    - When the brief names **no** test command, it runs no tests and returns `testCommand: null` and `testExitCode: null`. Omitting the fields fails closed as `test-command-mismatch`.
+    - Its facts feed `checkDrift(facts, task, expectedAttemptStart)`. The third argument is the `attemptStart` the workflow recorded, so facts for the wrong range fail as `attempt-start-mismatch`; a `head` that isn't one of the reported commits fails as `head-not-in-commits`.
   - **`implementer` brief contract.** Its own brief never asks for out-of-scope work; dry-run faults come from a separate injector agent (W2-1). The first line is `RESET TO <sha>` on a retry. The implementer runs `git reset --hard <sha>` first; it is the only agent that resets.
     - It predicts `predictedFiles` before editing (ECC `change-impact`).
     - It uses superpowers TDD.
@@ -698,7 +708,7 @@ Each ticket writes agent files that match its roster rows. Each agent's `## Outp
     - `splitScope(findings, allowed: string[]): { inScope: Finding[], outOfScope: Finding[] }`: uses `matchesAllowed` on `finding.file`
     - `unpredicted(predictedFiles, changedFiles): string[]`: changed files the implementer didn't predict (ECC `change-impact`). Logged in the attempt record, advisory only.
   - **Loop per task:**
-    - `gate-checker MODE: start` → `checkStart` (dirty → stop the task with the reason) → `implementer` → (dry run only: fault injector) → `gate-checker` with `gateBrief` → `checkDrift` → `nextStep`. A retry passes the previous `attemptStart` so the implementer resets.
+    - `gate-checker MODE: start` → `checkStart` (dirty → stop the task with the reason) → `implementer` → (dry run only: fault injector) → `gate-checker` with `gateBrief` → `checkDrift(facts, task, attemptStart)` → `nextStep`. The third argument is the `attemptStart` recorded from `MODE: start` (`expectedAttemptStart`), so gate facts for the wrong range fail. A retry passes the previous `attemptStart` so the implementer resets.
     - Then `reviewersFor` in parallel → `dedupeFindings` → `finding-verifier` per finding → `applyVerifierPolicy` → `splitScope`.
     - If anything in scope is confirmed: one `implementer` fix pass (allowed = the files of the confirmed findings plus their tests), then `gate-checker`. Anything still failing → `escalated`.
     - Confirmed out-of-scope findings are returned in `outOfScope[]` and are not fixed here (§8.1a).
@@ -711,6 +721,7 @@ Each ticket writes agent files that match its roster rows. Each agent's `## Outp
   - The result also carries `outOfScope: Finding[]`.
 - **`/build <plan path> [task ids] [--dry-run drift,tests]`** (command): the explicit Workflow opt-in.
   - Runs `node .claude/hooks/bin/plan-tasks.mjs`.
+  - When a task has `testFiles` but no `testCommand`, infers `pnpm --filter <name> test`, where `<name>` is the `name` in the `package.json` nearest to the test files, and marks the command **inferred** in the ledger. A task with neither stays `testCommand: null`.
   - `--dry-run` becomes `args.dryRun.faults`.
   - Once `bug-reporter` exists (W3-3), files one bug ticket per `outOfScope` finding. Until then, lists them in the ledger.
   - Calls Workflow with `name: 'feature-build'` and the args.
@@ -722,6 +733,7 @@ Each ticket writes agent files that match its roster rows. Each agent's `## Outp
   - Save `.claude/workflows/ping.workflow.js`. It contains the contracts block plus one `agent('reply OK', { agentType: 'gate-checker', schema: … })`.
   - In a **fresh** session, the owner asks: "run the ping workflow".
   - Confirm that `ping` is discovered by name, and that `agentType: 'gate-checker'` resolves.
+  - Confirm the runtime honours, in the `ping` schema: `allOf` with `if`/`then` (a `high` finding without `proof` is rejected), `type: ['integer','null']`, and `maxLength`. Also confirm it accepts the deep-frozen contracts schemas as passed (it must not need to mutate them). If any of these is ignored, record it and enforce that rule in the `pure` block instead.
   - If discovery needs `<name>.js`, apply the Global Constraints rename. Delete `ping` afterwards.
 - [ ] **Step 2: Write the failing tests** (they load the blocks with `loadBlocks`):
   - `qa.test.mjs`:
@@ -1040,31 +1052,39 @@ Each workflow ticket pastes the contracts block verbatim, keeps its decision log
 
 **Files:**
 
-- Modify: `sonar-project.properties` (organization key, if it differs)
+- Modify:
+  - `sonar-project.properties` (organization key, if it differs)
+  - `.github/workflows/ci.yml`, `.github/workflows/hold.yml`, `.github/workflows/codeql.yml` (Step 1 hardening)
 - Create: `docs/agent-runs/2026-10-23-branch-protection.md` (commands run and their output)
+- Test: `.claude/hooks/tests/ci-config.test.mjs`
 
-- [ ] **Step 1: Push.** Push `main` with the ShubhamU55 token (`docs/status.md` has the snippet), then run `GH_TOKEN=… gh run watch`. Expected: every job green, or `skipped` for path-gated ones. Sonar shows a passed quality gate.
-- [ ] **Step 2: Repo settings.**
+- [ ] **Step 1: Harden CI before the first push** (carried forward from the Wave 0 final review). Write the `ci-config.test.mjs` assertions first, then change the workflows:
+  - Pin every third-party action (anything outside `actions/*` and `github/*`, e.g. `dorny/paths-filter`, `pnpm/action-setup`, the Sonar and gitleaks actions) to a full commit SHA, with the version in a trailing comment.
+  - `deps` runs its pnpm install with `--ignore-scripts`, so an audited dependency's install script never runs in CI.
+  - `sonar` reads a `SONAR_REQUIRED` repository variable: when it is `'true'` and `SONAR_TOKEN` is absent, the job fails instead of logging "Sonar skipped". The owner sets `SONAR_REQUIRED=true` once the token exists.
+  - Run `pnpm --filter @credit-coach/hooks test`. Expected: PASS.
+- [ ] **Step 2: Push.** Push `main` with the ShubhamU55 token (`docs/status.md` has the snippet), then run `GH_TOKEN=… gh run watch`. Expected: every job green, or `skipped` for path-gated ones. Sonar shows a passed quality gate.
+- [ ] **Step 3: Repo settings.**
   - `gh api -X PATCH repos/ShubhamU55/credit-coach -F allow_auto_merge=true -F allow_squash_merge=true -F allow_merge_commit=false -F allow_rebase_merge=false -F delete_branch_on_merge=true`
-- [ ] **Step 3: Read the real check names.** Run `GH_TOKEN=… gh api repos/ShubhamU55/credit-coach/commits/<green sha>/check-runs --jq '.check_runs[].name'`.
+- [ ] **Step 4: Read the real check names.** Run `GH_TOKEN=… gh api repos/ShubhamU55/credit-coach/commits/<green sha>/check-runs --jq '.check_runs[].name'`.
   - Map each gate to the name GitHub actually reports. Expect `CodeQL` (code scanning) in addition to the `codeql` job, and the OSV reusable workflow's own name.
   - In the repo's code scanning settings, set the CodeQL failure threshold to **high**. Without it, G6 only checks that the analysis ran, not that it found nothing.
-- [ ] **Step 4: Branch protection.**
+- [ ] **Step 5: Branch protection.**
   - `gh api -X PUT repos/ShubhamU55/credit-coach/branches/main/protection` with:
     - `required_status_checks.strict=false`. Squash merges keep history linear, and `strict=true` would stall parallel auto-merges: each merge makes the other PRs out of date, and updating a branch changes its SHA, which drops its `pr-review` status.
-    - contexts: the names from Step 3 for G1, G2, G4, G5, G6, G7 and G9, plus `hold-check` and `pr-review`
+    - contexts: the names from Step 4 for G1, G2, G4, G5, G6, G7 and G9, plus `changes`, `hold-check` and `pr-review`. `changes` must be required too: if it fails, the path-gated jobs that `needs: changes` are skipped, and a skipped required check counts as passed.
     - `required_pull_request_reviews=null` (G8 is a status, not a review)
     - `required_linear_history=true`, `allow_force_pushes=false`
     - `enforce_admins=true`. The single account is an admin, and agents push with its token, so without this every agent can bypass the gates. The owner's override is to toggle it off temporarily and record that in the ledger.
   - Record the commands and their output in the ledger.
   - **G3 (`api`) is added in Plan 3**, when its job exists.
-- [ ] **Step 5: Prove the protection works.**
+- [ ] **Step 6: Prove the protection works.**
   - Run `git push origin HEAD:main` from a scratch commit. Expected: rejected by protection.
   - Open a throwaway PR that adds `scratch/probe.md` (with a header) and label it `hold`.
   - Expected: `hold-check` fails and auto-merge waits.
   - Remove the label. Run `/pr-review <PR#>`. Expected: the `pr-review` status is posted, then the PR auto-merges after `gh pr merge --auto --squash`.
   - Delete the probe in a follow-up commit.
-- [ ] **Step 6: Commit** `chore(ci): record branch protection and merge gates`. Commit it on a branch and merge it through a PR: `main` is protected now.
+- [ ] **Step 7: Commit** `chore(ci): record branch protection and merge gates`. Commit it on a branch and merge it through a PR: `main` is protected now.
 
 ### Task W5-2: Projects board (needs owner action 1)
 
