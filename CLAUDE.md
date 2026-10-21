@@ -2,6 +2,9 @@
 
 **What we're building:** an Android app (plus a web admin control center) that tells people in India **what to pay, where, and when** each month to protect their CIBIL score. Solo hackathon build. Submission is due **30 Oct 2026 EOD**. Judges weigh *how AI was used to build it* as much as the product.
 
+## Start here
+- **`docs/status.md`** is the session handoff log: current state, blockers, next step. Read it first, and update it at the end of every session.
+
 ## Source of truth
 - **`docs/PRD.md`** (frozen v1) holds the requirements. Read the relevant section before any feature work. If code and PRD disagree, the PRD wins. Raise the conflict; don't silently pick one.
 - **PRD §4** lists the domain facts F1–F7. The **`credit-domain` skill** expands them. Never contradict them.

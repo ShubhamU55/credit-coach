@@ -1,6 +1,6 @@
 # Agentic Dev System: Design
 
-**Status:** Ready for owner approval, 21 Oct 2026 (owner decisions in §13; ECC reuse in §14)
+**Status:** **Approved by owner, 21 Oct 2026** (owner decisions in §13; ECC reuse in §14). Next: Plan 1c.
 **Owner:** Shubham Upadhyay
 **Implements as:** Plan 1c, timeboxed to about one day (done by 23 Oct)
 **Related:** `CLAUDE.md`, `.claude/`, ADR 0002, `docs/PRD.md` (product), `docs/design.md` (UI)
