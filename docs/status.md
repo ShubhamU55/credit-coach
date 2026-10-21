@@ -27,6 +27,17 @@
 - **Wave 1** (W1-1 to W1-4, parallel tickets; see Plan 1c).
 - `.design/` is untracked on `main`, so a `/build` run on `main` stops at `dirty-start`. Run `/build` from worktrees, or the owner commits or ignores `.design/`.
 
+### Residuals for W2-1, before it pastes the contracts block (from the Wave 0 fix-wave re-review)
+
+- **Plan parser: glob tokens with `/` can widen `files` to the whole repo** (`**/*`), and globs can land in `createFiles`. No current plan does this. Reject root-anchored globs, and keep globs out of `createFiles` and `testFiles`, the same rule `isDirectory` already applies.
+- **Plan 4a Tasks 6 and 8–10 list bare component filenames in `createFiles`,** so the gate would report them `missing:`. Fix the plan text, or teach the parser the `Create:` prefix directory, before W2-2.
+- **`checkDrift`: a missing `head` plus a commit without `sha` passes `head-not-in-commits`** (`undefined === undefined`). Add `head` to the fail-closed facts.
+- **The W1-1 gate-checker must echo `attemptStart` in its `MODE: check` facts,** or every attempt fails with `attempt-start-mismatch`.
+- **Optional hardening:**
+  - `wrapUntrusted` doesn't neutralize markers with a zero-width prefix or Unicode dashes
+  - the engine lint misses `Math['random']` and `const { random } = Math`
+  - `hasWriteOrEdit` ignores `MultiEdit` and `NotebookEdit`
+
 ### Owner actions still open
 
 1. `gh auth refresh -h github.com -u ShubhamU55 -s workflow,project`. The token has only `repo`, so nothing is pushed yet.
