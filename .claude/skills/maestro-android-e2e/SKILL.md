@@ -13,6 +13,8 @@ Judges' phones have no Metro dev server. Flows must pass against a **release-var
    ```bash
    "$ANDROID_HOME/emulator/emulator.exe" -avd Pixel_7 -no-snapshot -no-boot-anim -no-audio
    ```
+   - **Second display:** the owner's Pixel_7 AVD defines `hw.display1`. Android may launch the app on that virtual display, and Maestro then sees a blank screen. Remove it for the session with `adb emu multidisplay del 1`.
+   - **A System UI "not responding" dialog** can cover the app after a slow boot. If `maestro hierarchy` shows `android:id/aerr_wait`, tap Wait before running flows.
 2. Build and install: `pnpm --filter @credit-coach/mobile android:release` (this runs `expo run:android --variant release`).
 3. **Stop Metro or any dev server.**
 4. Run: `pnpm --filter @credit-coach/mobile e2e`, which runs `maestro test .maestro`.

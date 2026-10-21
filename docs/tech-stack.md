@@ -40,3 +40,17 @@
 - Exact versions (Expo SDK, Next.js, Supabase CLI).
 - Folder layout, schema and RLS policies.
 - The UI component library.
+
+## Pinned versions (installed 21 Oct 2026)
+| Tool | Version | Note |
+|---|---|---|
+| Node | 24.16 | |
+| pnpm | 12.14 | `nodeLinker: hoisted` set in `pnpm-workspace.yaml` (pnpm 12 ignores `.npmrc`). The isolated layout broke Android CMake builds through Windows path length |
+| TypeScript | 6.0.3 | 7.0 is out, but typescript-eslint supports < 6.1 |
+| ESLint | 9.39 | eslint-plugin-react (via eslint-config-expo) crashes on ESLint 10 |
+| Vitest | 5.0 | |
+| Expo SDK | 58 (expo 58.0.16) | React Native 0.88, React 19.3. Monorepo Metro config is automatic |
+| Next.js | 16.4.2 | `transpilePackages: ['@credit-coach/engine']` |
+| Playwright | 1.64 | Chromium only |
+| Maestro | 2.11.0 | Installed in `%USERPROFILE%\.maestro\bin` |
+| Gradle / AGP | 9.4.1 / 9.x | First release build ~13 min, incremental ~40 s |

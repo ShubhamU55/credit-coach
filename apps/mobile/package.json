@@ -1,0 +1,26 @@
+{
+  "name": "@credit-coach/mobile",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "dependencies": {
+    "@credit-coach/engine": "workspace:*",
+    "expo": "~58.0.16",
+    "expo-status-bar": "~58.0.3",
+    "react": "19.3.0",
+    "react-native": "0.88.0"
+  },
+  "devDependencies": {
+    "@types/react": "~19.3.0",
+    "eslint-config-expo": "~58.0.4",
+    "typescript": "~6.0.3"
+  },
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "android:release": "expo run:android --variant release",
+    "e2e": "maestro test .maestro",
+    "lint": "expo lint",
+    "typecheck": "tsc --noEmit"
+  },
+  "private": true
+}

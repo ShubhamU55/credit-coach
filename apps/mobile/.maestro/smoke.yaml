@@ -1,0 +1,8 @@
+appId: com.creditcoach.app
+---
+- launchApp:
+    clearState: true
+- assertVisible: "Credit Coach"
+- assertVisible:
+    id: "engine-check"
+    text: "Engine OK: 30%"
