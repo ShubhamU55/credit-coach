@@ -74,6 +74,8 @@ All agents live in `.claude/agents/<name>.md` and use one **agent template** (§
 | | `consistency-reviewer` **(new)** | Compares the diff to `docs/standards.md` **and** to the golden example of the same kind (§7). Flags pattern drift | nothing | S |
 | | `typescript-reviewer`, `react-reviewer`, `silent-failure-hunter` (have) | Specialist review | nothing | S |
 | Verify | `finding-verifier` **(new)** | Adversarial: tries to **refute** one finding with evidence, defaulting to refuted when unsure. Only confirmed findings are fixed | nothing | S, high effort |
+| Bugs | `bug-analyst` **(new)** | Takes a bug (from a tester, CI, the owner or the PR reviewer). **Reproduces it**, then runs a **root-cause analysis** with superpowers `systematic-debugging` (evidence first, no guess-fixes). Writes the **failing reproduction test** as a proposal. Fills the bug ticket's RCA, affected files, fix approach and regression test. **Never fixes product code** | the bug ticket (GitHub) and `docs/test-reports/bugs/<issue#>/` | S, high effort |
+| | `bug-reporter` **(new)** | Turns each **confirmed** tester finding into a bug ticket using the bug template: severity, build/commit, steps, expected vs actual, **evidence** (screenshots, logs, failing test output, Maestro/Playwright artifacts) and the suspected area. Deduplicates against open bugs | `docs/test-reports/bugs/<issue#>/` (evidence files) and GitHub | H |
 | Automate | `test-automator` **(new)** | Owns the **test automation infrastructure**. Turns acceptance criteria and tester proposals into durable automated tests in the right layer (Vitest, fast-check, Maestro, Playwright, API contract). Wires them into `pnpm verify` and CI. Triages flaky tests (quarantine with an issue, never silently skip). Keeps the test-layer README current | test files and dirs of every layer, `.github/workflows/**`, `vitest.config.*`, `playwright.config.*` | S |
 | Ops | `pm-sync` **(new)** | Creates and updates GitHub issues and Project items from workflow results | GitHub only | H |
 | | `journal-writer` **(new)** | Writes the run ledger and journal entry from the workflow result | `docs/journal/**`, `docs/agent-runs/**` | H |
@@ -140,6 +142,7 @@ model: <haiku|sonnet|opus>
 | `feature-build` | `/build <plan path>` (after approval) | for each task in order: `implementer` → `gate-checker` → retry or escalate → `code-reviewer` ∥ `consistency-reviewer` (+ ts/react reviewers by file type) → findings → `finding-verifier` → one fix pass by `implementer` → `gate-checker`. After all tasks: `workflow('qa')` inline |
 | `qa` | `/qa <scope>`, or called by `feature-build` | pick testers by the changed paths (table below) → run them in parallel → dedupe findings → `finding-verifier` per finding → return confirmed findings plus test counts |
 | `pr-review` | `/pr-review <PR#>`, or automatically when a ticket PR is opened or updated | spec, correctness, security, consistency, test-adequacy, silent-failure and UI lenses in parallel → dedupe → `finding-verifier` → post the review and verdict (G8) |
+| `bugfix` | `/bugfix <issue#>`, `/bug "<desc>"`, or auto on `bug`+`triaged` | bug-reporter (if new) → bug-analyst (repro + RCA + regression test proposal) → test-automator lands the RED test → implementer → gate-checker (retry ≤ 2 → escalate) → PR → `workflow('pr-review')` (§8.1a) |
 | `retro` | `/retro` | read recent run ledgers → per agent: false-positive rate, retries, tokens, escalations → propose prompt edits as a diff for owner approval |
 
 **Tester selection by changed path:**
@@ -161,6 +164,41 @@ model: <haiku|sonnet|opus>
 - **The emulator is shared.** Device-bound runs (Maestro by `ui-tester` and `integration-tester`) run **one after another**, never in parallel.
 
 **End-of-plan review (resolves Q5)** [Call]: a real phase. When a plan's branch is ready, `code-reviewer` runs on **Opus**. It sees the whole plan diff plus the plan and the spec, and it checks the plan's Review Focus list deliberately. Its findings go through the same verify → fix flow.
+
+### 8.1a Bug lifecycle (owner requirement, 21 Oct)
+**Sources:**
+- confirmed tester findings (from `qa`)
+- CI failures on `main`
+- `pr-reviewer` findings outside the PR's scope
+- the owner (`/bug "<description>"`)
+
+**Flow** (`bugfix` workflow; trigger `/bugfix <issue#>`, or automatic for a new `bug` + `triaged` issue):
+1. **Report:** `bug-reporter` files the ticket from `.github/ISSUE_TEMPLATE/bug.yml`.
+   - Evidence files (screenshots, logs, junit XML, traces) are **committed** under `docs/test-reports/bugs/<issue#>/` and linked from the ticket by their GitHub URLs. The repo is public, so the images render in the issue.
+   - Labels: `bug`, `severity:*`, `area:*`, `found-by:<agent>`.
+2. **Root cause:** `bug-analyst` reproduces the bug, finds the root cause, and updates the ticket. It records:
+   - **Reproduction:** exact steps, the command and its output.
+   - **Root cause:** file and line, *why* it happens, and which assumption or requirement was violated.
+   - **Blast radius:** what else uses that code.
+   - **Fix approach:** the smallest change, plus the allowed `Files:` list.
+   - **Regression test:** a failing test proposal that `test-automator` lands first, so the bug is pinned RED.
+   - If it **can't reproduce**, it labels the ticket `cannot-reproduce`, writes down what was tried, and stops. No speculative fixes.
+3. **Fix:** `implementer` makes the regression test pass with the fix, bounded by the RCA's `Files:` list. Then `gate-checker` runs and the drift guard applies (§8.2).
+4. **Review and merge:** PR (`Fixes #N`) → `pr-review` → merge gates (§8.9).
+5. **Close:** `pm-sync` moves the ticket to Done and links the PR. `bug-reporter` re-runs the original failing flow or test on `main`, attaches the passing evidence, and only then closes the ticket.
+
+**In-feature findings vs bug tickets:**
+- A confirmed finding **inside the current ticket's scope** is fixed in that ticket's fix pass (§8.1). It still gets a one-line entry in the run ledger.
+- A finding **outside scope**, or still failing after the fix pass, becomes a **bug ticket**, and the feature PR links it.
+- Critical bugs block the wave's merge until fixed.
+
+**Bug ticket template** (`.github/ISSUE_TEMPLATE/bug.yml`):
+- summary · severity (critical / high / medium / low) · found by · build/commit · environment (emulator / device, OS, app version)
+- steps to reproduce · expected · actual
+- evidence (links to committed screenshots, logs and test output)
+- suspected area
+- RCA *(filled by bug-analyst)* · fix approach and allowed files *(filled by bug-analyst)* · regression test *(name and status)*
+- verification on `main` *(filled at close)*
 
 ### 8.2 The drift guard
 After every `implementer` run, `gate-checker` reports facts, and the **script** compares them:
