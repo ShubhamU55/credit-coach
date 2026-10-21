@@ -1,0 +1,20 @@
+name: Hold
+
+on:
+  pull_request:
+    types: [labeled, unlabeled, opened, synchronize, reopened]
+
+concurrency:
+  group: hold-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  hold-check:
+    name: hold-check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Block merge while the hold label is present
+        if: contains(github.event.pull_request.labels.*.name, 'hold')
+        run: |
+          echo "::error::This PR is on hold (the 'hold' label is present). Remove the label to let it merge."
+          exit 1

@@ -9,3 +9,15 @@ allowBuilds:
 
 # Expo/React Native native builds on Windows hit CMake path limits under the isolated .pnpm layout.
 nodeLinker: hoisted
+
+# Dated allow-list for `pnpm audit --audit-level=high` (G5). Only add an entry
+# when a finding forces it and no patched version exists; re-review on the
+# date noted below and drop the entry once a fix ships.
+auditConfig:
+  ignoreGhsas:
+    # node-forge RSA PKCS#1 v1.5 signature check; no patch available;
+    # transitive via apps/mobile expo/@expo/cli. Added 2026-10-21, re-review by 2026-11-21.
+    - GHSA-86w9-cpqp-85rv
+    # braces ReDoS via deeply nested patterns; no patch available;
+    # transitive via metro/eslint-config-next. Added 2026-10-21, re-review by 2026-11-21.
+    - GHSA-vfj7-8cjw-p6xm

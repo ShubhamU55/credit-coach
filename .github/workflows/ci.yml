@@ -11,8 +11,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    outputs:
+      admin: ${{ steps.filter.outputs.admin }}
+      mobile: ${{ steps.filter.outputs.mobile }}
+      supabase: ${{ steps.filter.outputs.supabase }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            admin:
+              - 'apps/admin/**'
+              - 'packages/engine/**'
+            mobile:
+              - 'apps/mobile/**'
+            supabase:
+              - 'supabase/**'
+
   verify:
-    name: Lint, typecheck, unit tests
+    name: verify
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,9 +44,12 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm verify
+      - run: node .claude/hooks/bin/scratch-expiry.mjs
 
   admin-e2e:
-    name: Admin E2E (Playwright)
+    name: admin-e2e
+    needs: changes
+    if: needs.changes.outputs.admin == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -45,7 +69,7 @@ jobs:
           retention-days: 7
 
   secrets:
-    name: Secret scan (gitleaks)
+    name: secrets
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -54,3 +78,68 @@ jobs:
       - uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  deps:
+    name: deps
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --audit-level=high
+      - name: OSV-Scanner (lockfile)
+        uses: google/osv-scanner-action/osv-scanner-action@v2.7.0
+        with:
+          scan-args: |-
+            --lockfile=./pnpm-lock.yaml
+            --config=./osv-scanner.toml
+
+  sonar:
+    name: sonar
+    runs-on: ubuntu-latest
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    steps:
+      - if: env.SONAR_TOKEN != ''
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - if: env.SONAR_TOKEN != ''
+        uses: pnpm/action-setup@v4
+      - if: env.SONAR_TOKEN != ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: pnpm
+      - if: env.SONAR_TOKEN != ''
+        run: pnpm install --frozen-lockfile
+      - if: env.SONAR_TOKEN != ''
+        run: pnpm --filter @credit-coach/engine test
+      - if: env.SONAR_TOKEN != ''
+        name: SonarQube Cloud Scan
+        uses: SonarSource/sonarqube-scan-action@v8
+      - if: env.SONAR_TOKEN == ''
+        run: |
+          echo "::warning::Sonar skipped: SONAR_TOKEN not set"
+
+  maestro-evidence:
+    name: maestro-evidence
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.mobile == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # The PR head, not the ephemeral merge commit: otherwise a PR that
+          # touches apps/mobile makes the merge commit itself "the last
+          # mobile change" and the ancestry check can never be satisfied.
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+      - run: node .claude/hooks/bin/maestro-evidence.mjs

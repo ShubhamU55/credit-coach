@@ -1,0 +1,18 @@
+# Dated, reviewed allow-list for advisories with no patched version available.
+# Mirrors the pnpm `auditConfig.ignoreGhsas` entries in pnpm-workspace.yaml.
+# Re-review (and drop expired entries) by the ignoreUntil date.
+
+[[IgnoredVulns]]
+id = "GHSA-86w9-cpqp-85rv"
+ignoreUntil = 2026-11-21
+reason = "node-forge RSA PKCS#1 v1.5 signature check; no patch available; transitive via apps/mobile expo/@expo/cli. Added 2026-10-21."
+
+[[IgnoredVulns]]
+id = "GHSA-vfj7-8cjw-p6xm"
+ignoreUntil = 2026-11-21
+reason = "braces ReDoS via deeply nested patterns; no patch available; transitive via metro/eslint-config-next. Added 2026-10-21."
+
+[[IgnoredVulns]]
+id = "GHSA-w5hq-g745-h8pq"
+ignoreUntil = 2026-11-21
+reason = "uuid missing buffer bounds check in v3/v5/v6 when buf is provided; moderate, below pnpm's --audit-level=high gate but osv-scanner has no severity threshold, so it is listed here too. Added 2026-10-21."
