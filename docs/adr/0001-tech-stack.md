@@ -1,0 +1,24 @@
+# ADR 0001: TypeScript end to end (Expo, Next.js, Supabase)
+
+- **Status:** Accepted, 21 Oct 2026
+- **Context:**
+  - Solo build, about 9 days.
+  - Android APK for judges; a web admin sharing live data with the app.
+  - The deterministic rules engine is the core IP and the TDD target (PRD §5.3–5.6, §9).
+- **Decision:**
+  - Mobile: React Native + Expo (SDK 58).
+  - Admin: Next.js (16) on Vercel.
+  - Backend: Supabase (Postgres, Auth with anonymous sign-in for "Try sample profile", RLS, Edge Functions).
+  - Shared engine: `packages/engine`, pure TypeScript.
+  - Claude Haiku 4.5 (via an Edge Function) for explanations only.
+  - Tests: Vitest, Maestro, Playwright.
+  - Tooling: pnpm workspaces, GitHub Actions.
+- **Alternatives rejected:**
+  - Flutter: Dart would split the engine from the TS admin.
+  - Native Kotlin: too slow to build solo.
+  - Node on Render's free tier: cold starts of about a minute that judges would hit.
+- **Consequences:**
+  - One language everywhere; the engine is shared by the app and admin.
+  - Supabase's free tier pauses after about 7 days idle, so a keep-alive cron is needed through 6 Nov.
+  - TypeScript pinned to 6.0 because typescript-eslint doesn't support TS 7 yet.
+  - Details: `docs/tech-stack.md`.
