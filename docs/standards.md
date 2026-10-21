@@ -9,16 +9,20 @@ exact rule text. This file holds only what a linter or test runner can't check.
 
 - `packages/engine/src/<domain>.ts` + `<domain>.test.ts` side by side, one module per domain
   concern (utilization, planner, reporting dates, predictor, guard).
-- `apps/mobile/src/ui/{theme,primitives,components}/` for the presentational kit;
-  `apps/mobile/src/screens/` for screens that compose it; `apps/mobile/.maestro/` for E2E flows.
-- `apps/admin/e2e/` for Playwright specs; app code otherwise follows Next.js routing conventions.
-- `supabase/migrations/`, `supabase/seed/`, `supabase/functions/<name>/` (one Edge Function per
-  folder).
+- `apps/mobile/src/ui/{theme,primitives,components}/` for the presentational kit (doesn't exist
+  yet; Plan 4a creates it, and composes its first screen, a kit gallery, into the existing
+  `apps/mobile/App.tsx`). A dedicated `screens/` folder isn't defined; it should follow whichever
+  later plan adds routing, not be invented here.
+- `apps/mobile/.maestro/` for Maestro flows.
+- `apps/admin/src/app/` for Next.js App Router pages; `apps/admin/e2e/` for Playwright specs.
+- `supabase/migrations/` for SQL migrations, `supabase/seed.sql` for seed data (Supabase CLI
+  defaults), `supabase/functions/<name>/` (one Edge Function per folder).
 
 ## Errors
 
-- The engine returns typed results (e.g. a discriminated union or `{ ok, value } | { ok, error }`
-  shape), never throws for expected domain outcomes, and never swallows an error silently.
+- Engine functions return a typed value and never throw for an expected domain outcome. The
+  shape is whatever the function needs — e.g. `utilization()` returns `number | null`, using
+  `null` for the excluded/flagged case in PRD §5.2 — not a one-size-fits-all wrapper type.
 - Boundaries (API routes, Edge Functions, form submission) validate with Zod before the engine
   ever sees the data; untrusted input is never passed through unchecked.
 
@@ -45,11 +49,9 @@ exact rule text. This file holds only what a linter or test runner can't check.
 
 ## Test naming
 
-- Describe the observable behaviour, not the implementation: `returns empty array when no
-markets match query`, `throws error when API key is missing`. Arrange-Act-Assert inside the
-  test body (see `.claude/rules/testing.md`).
-- Engine tests target ≥ 90% line coverage; app changes are covered by an E2E flow (Maestro for
-  mobile, Playwright for admin) instead of a percentage.
+- Describe the observable behaviour, not the implementation: `returns null for zero, negative or
+non-finite limit`, `sums across valid cards and excludes invalid limits` (both from
+  `utilization.test.ts`). Arrange-Act-Assert inside the test body (see `.claude/rules/testing.md`).
 
 ## Commits and PRs
 

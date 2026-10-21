@@ -1,4 +1,4 @@
-/** Card balance and limit in rupees. The ratio is unit-agnostic, so inputs are integer rupees. */
+/** Card balance and limit in rupees. The ratio is unit-agnostic; inputs are integer rupees. */
 export interface BalanceAndLimit {
   outstanding: number;
   limit: number;
