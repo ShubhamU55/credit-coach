@@ -1,6 +1,6 @@
 # Agentic Dev System: Design
 
-**Status:** Draft for owner review, 21 Oct 2026
+**Status:** Ready for owner approval, 21 Oct 2026 (owner decisions in §13; ECC reuse in §14)
 **Owner:** Shubham Upadhyay
 **Implements as:** Plan 1c, timeboxed to about one day (done by 23 Oct)
 **Related:** `CLAUDE.md`, `.claude/`, ADR 0002, `docs/PRD.md` (product), `docs/design.md` (UI)
@@ -331,8 +331,53 @@ A PR to `main` can't merge until **all** of these pass:
   - Agents never run `--no-verify` or disable hooks.
 - **Before submission:** a full security pass by `security-reviewer` on Opus over the whole repo. Findings and their fixes are recorded in `docs/security/review-YYYY-MM-DD.md`.
 
-## 14. ECC reuse (to be filled from the second reuse map)
-_A table of ECC agents, commands, skills and hooks adopted for each role in this design, with adapt notes. Pending the reuse-map report._
+## 14. ECC reuse (second reuse map, 21 Oct; ECC @ 90606c8, MIT, attribution line on every adapted file)
+
+### 14.1 Adopt
+| ECC source | Becomes | Effort |
+|---|---|---|
+| `workflows/orch-review.workflow.js` (+ README, `commands/orch-review.md`) | **Base of our `qa` and `pr-review` workflows**: parallel lenses with schemas, dedupe on file+evidence keeping the strictest severity, mandatory `proof` for HIGH/CRITICAL, `null` result = dimension failed (fails closed), untrusted-diff prompt guard, blocking/advisory split, stats for the ledger | light: `agentType` → our local agents |
+| `commands/review-pr.md` + agents `pr-test-analyzer`, `comment-analyzer`, `type-design-analyzer`, `code-simplifier` | `pr-reviewer` lens set. `pr-test-analyzer` powers the **test-adequacy** lens | light |
+| `skills/santa-method` + `commands/santa-loop.md` | **End-of-plan dual review**: two independent Claude reviewers, both must PASS against a rubric | heavy: Claude-only reviewers; drop the external-model path; **remove its `git push` shortcut** (PR + gates only); cap at 2 rounds |
+| `commands/learn-eval.md` | `/retro` verdict model: Save / Improve / Absorb / Drop, owner confirms | copy |
+| `scripts/hooks/config-protection.js` | Hook: agents can't weaken lint or format configs to pass checks | copy as `.cjs`; enabled **after** Plan 1c's own ESLint edits |
+| `scripts/hooks/block-no-verify.js` + `hooks/lib/shell-scan.js`, `pre-bash-commit-quality.js` | Hooks: block `--no-verify`; pre-commit lint and commit-format check (drift-guard rule 4) | light, `.cjs` |
+| `agents/build-error-resolver.md` | Retry-pass fixer when `gate-checker` reports tsc or eslint failures | light (npx → pnpm) |
+| `agents/database-reviewer.md` | RLS checklist used by `api-tester` and `security-reviewer` | light |
+| `the-security-guide.md` §Restrict tools, §Sanitization, §Least agency, §Minimum bar | **Agent-config security** instead of AgentShield: a `permissions.deny` baseline in `.claude/settings.json` (`.env*`, ssh keys, `curl\|bash`); a Vitest scan of `.claude/**` for zero-width or bidi characters, hidden `<!--` instructions and `curl\|wget\|ANTHROPIC_BASE_URL` | light |
+| `skills/orch-pipeline` | Size classifier (trivial / small / standard / large → which phases run) and the security-trigger list | light |
+| `agents/a11y-architect.md`, `skills/accessibility`, `rules/react-native/accessibility.md` | Inputs for `design-checker` and `ui-tester` | light |
+| `scripts/worktree-lifecycle.js` + lib | `/worktrees` report: stale worktrees, and **predicted merge conflicts** via `git merge-tree --write-tree` before two parallel tickets collide (§8.5) | light (Git ≥ 2.38) |
+| `skills/team-agent-orchestration` | Card schema (owner / scope / merge_gate / handoff) for `pm-sync` and the board fields | light (skip tmux parts) |
+| `skills/change-impact`, `skills/module-regression` | `implementer` predicts impact up front; `gate-checker` compares it with the actual diff | light |
+| `commands/checkpoint.md`, `save-session.md` | **Handoff template only** ("worked / didn't / exact next step") for journal entries and escalations | template only |
+| `the-longform-guide.md` §Token optimization, §Best practices for agents, §Parallelization | Cited in `docs/ai-system.md`; model-tier table; "one input, one output per agent" | reference |
+| `rules/common/agents.md`, `development-workflow.md` | Fixes dangling links in our rules | copy |
+
+### 14.2 Rejected, with reason
+- **AgentShield** (unpinned `npx`, which is a supply-chain risk, and its Opus mode needs a local API key). Replaced by the §14.1 security-guide checks.
+- **`hooks/hooks.json`, `continuous-learning-v2`, `epic-*`, `story-lifecycle`**: tied to ECC's plugin runtime, `python3`, bash or tmux.
+- **`gateguard-fact-force`**: blocks the first edit and would fight Workflow agents.
+- **`cost-tracker` / `cost-report`**: per-session only, and writes outside the repo. Per-run cost comes from the workflow's `budget.spent()` and agent counts.
+- **`docs-governance`**: needs python. `/tidy` gets a small Node link and stale-path checker instead.
+- **`spec-miner`**: works in the wrong direction (code → spec). Only its WHEN/THEN + Invariant format is borrowed by `requirements-analyst`.
+
+### 14.3 Written from scratch (no ECC source)
+`edge-case-hunter` (fast-check for TS), `api-tester` (Supabase contracts with Zod and RLS), `requirements-analyst`, flaky-test quarantine in `test-automator`, `gate-checker`, `pm-sync`, and the scratch/expiry checks.
+
+### 14.4 Verifier policy (resolves the ECC vs our-draft conflict) [Call]
+- ECC keeps *uncertain* findings blocking. Our first draft refuted them by default.
+- **Decision:**
+  - Security findings and anything **critical** use ECC's rule: they **stay blocking unless refuted with confidence ≥ 0.8**.
+  - **Important/minor non-security** findings are refuted when the verifier is unsure, to save tokens and fix-pass churn.
+- Security-first, as the owner asked.
+
+### 14.5 Housekeeping found by the map (do in Plan 1c)
+- `rules/code-review.md` lists python, go and rust reviewers we don't have. Trim it.
+- `rules/testing.md` points at `tdd-guide` (retired). Point it at `implementer` and `test-automator`.
+- Make `.claude/settings.json` set `"includeCoAuthoredBy": false` to match the no-attribution rule.
+- ECC agents carry a "Prompt Defense Baseline" ("do not output executable code…"). **Keep it for reviewers; strip it from `implementer`, `test-automator` and `build-error-resolver`.**
+- Our hooks package is ESM, so ECC CommonJS hooks are saved as `.cjs`.
 
 ## 12. Left to the builder
 - Exact JSON schemas per agent (extending the §6 envelope).
