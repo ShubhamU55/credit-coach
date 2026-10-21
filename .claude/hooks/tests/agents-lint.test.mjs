@@ -53,9 +53,18 @@ function headingsOf(text) {
   return [...text.matchAll(/^##\s+(.+?)\s*$/gm)].map((m) => m[1].trim());
 }
 
-/** Splits a frontmatter `tools` scalar ("Read, Grep, Glob") into a list. */
+/**
+ * Splits a frontmatter `tools` field into a list. Accepts either a scalar
+ * ("Read, Grep, Glob") or a YAML list (`[Read, Grep]` / block form) — a
+ * list must not fail open into an empty array, or a Write-capable agent
+ * would silently clear the "Allowed paths: Nothing" and "Prompt Defense
+ * Baseline" checks below.
+ */
 function toolsListOf(frontmatter) {
   const raw = frontmatter?.tools;
+  if (Array.isArray(raw)) {
+    return raw.map((tool) => String(tool).trim()).filter(Boolean);
+  }
   if (typeof raw !== 'string') return [];
   return raw
     .split(',')
@@ -73,11 +82,22 @@ function firstLineUnderHeading(text, heading) {
   return line ?? null;
 }
 
-/** The body text of a `## Heading` section, up to the next `## ` heading or EOF. */
+/**
+ * The body text of a `## Heading` section, up to the next `## ` heading or
+ * EOF. Finds the heading line by index first, then slices the remainder,
+ * rather than capturing the body inside one regex: with the `m` flag, `$`
+ * matches at the end of *every* line, so a single combined regex with a
+ * lazy body group stops after the section's first line instead of its last.
+ */
 function bodyUnderHeading(text, heading) {
-  const re = new RegExp(`^##\\s+${heading}\\s*$\\r?\\n([\\s\\S]*?)(?=\\n##\\s|$)`, 'm');
-  const match = text.match(re);
-  return match ? match[1] : null;
+  const headingRe = new RegExp(`^##\\s+${heading}\\s*$\\r?\\n`, 'm');
+  const headingMatch = text.match(headingRe);
+  if (!headingMatch) return null;
+
+  const rest = text.slice(headingMatch.index + headingMatch[0].length);
+  const nextHeadingMatch = rest.match(/\r?\n##\s/);
+  const bodyEnd = nextHeadingMatch ? nextHeadingMatch.index : rest.length;
+  return rest.slice(0, bodyEnd);
 }
 
 describe('agent lint (.claude/agents/*.md)', () => {

@@ -1,6 +1,6 @@
 ---
 purpose: Document the scratch/** temporary-file header format (spec §8.6); this header is the worked example
-owner: shubham.upadhyay@fiftyfivetech.io
+owner: ShubhamU55
 created: 2026-10-22
 expires: 2027-10-22
 keep-if: This file keeps documenting the header format; never auto-delete
