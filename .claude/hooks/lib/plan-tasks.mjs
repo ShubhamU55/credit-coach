@@ -45,9 +45,15 @@ function isPath(token) {
   return token.includes('/') || FILE_EXTENSION.test(token);
 }
 
-/** A directory token (`dir/`): it can't exist as a blob at HEAD, so it only widens `files`. */
+/**
+ * A directory token (`dir/`): it can't exist as a blob at HEAD, so it only widens `files`.
+ * Fails closed on tokens whose `dir/**` would match far more than one directory: a glob, the
+ * repo root (`./`), an absolute path or one that climbs out of the repo (`../`).
+ */
 function isDirectory(token) {
-  return isCandidate(token) && token.length > 1 && token.endsWith('/');
+  if (!isCandidate(token) || !token.endsWith('/') || token.includes('*')) return false;
+  const bare = token.replace(/^(\.\/)+/, '');
+  return bare.length > 1 && !bare.startsWith('/') && !bare.startsWith('../');
 }
 
 function unique(values) {

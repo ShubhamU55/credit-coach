@@ -151,6 +151,20 @@ describe('parsePlanTasks on inline markdown', () => {
     expect(task.testFiles).toEqual(['src/a.test.ts']);
   });
 
+  it('reproduces: a directory token that would widen files to everything is ignored', () => {
+    const [task] = parsePlanTasks(
+      [
+        '### Task 1: Wide dirs',
+        '',
+        '**Files:**',
+        '- Modify: `src/a.ts`, `./`, `**/`, `src/*/`, `../outside/`, `/abs/`, `./docs/`',
+        '',
+        '- [ ] **Step 1:** Do it.',
+      ].join('\n'),
+    );
+    expect(task.files).toEqual(['src/a.ts', './docs/**']);
+  });
+
   it('reproduces: a stray ~~~ inside a ``` fence does not expose a fenced task heading', () => {
     const tasks = parsePlanTasks(
       [
