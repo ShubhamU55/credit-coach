@@ -444,7 +444,7 @@ The values these must pin:
   - `files`: every backticked path in the `**Files:**` block, excluding `Test:` entries.
   - `testFiles`: the `Test:` entries.
   - A **path** is a backticked token with no spaces that contains `/` or ends in `.<ext>`, and doesn't start with `@`.
-  - A **directory** token (`dir/`, trailing slash) becomes `dir/**` in `files` only, under any label. It never enters `createFiles` or `testFiles`, which form the gate's `EXPECT:` list of blobs that must exist at HEAD.
+  - A **directory** token (`dir/`, trailing slash) becomes `dir/**` in `files` only, under any label. It never enters `createFiles` or `testFiles`, which form the gate's `EXPECT:` list of blobs that must exist at HEAD. Tokens that would widen `files` to the whole repo (`./`, a glob such as `**/`, an absolute path or `../`) are ignored.
   - Headings inside fenced code blocks are ignored using the shared CommonMark `linesOutsideFences` (`lib/markdown-fences.mjs`); fenced lines still stay in the task's `text`.
   - `testCommand`: the first backticked `pnpm …` command in a step whose text contains `PASS`.
   - `dependsOn`: task ids named in the `Consumes` lines.
@@ -454,7 +454,7 @@ The values these must pin:
   - **`contracts.test.mjs`:**
     - `normalizePath('packages\\engine\\src\\format.ts') === 'packages/engine/src/format.ts'`
     - `matchesAllowed('apps/mobile/src/a.edge.test.ts', ['**/*.edge.test.ts'])` → `true`
-    - dedupe: two findings on `a.ts|12` (`medium` and `high`) → one `high` with both `foundBy`
+    - dedupe: two non-security findings on `a.ts|12` with the same title (`medium` and `high`) → one `high` with both `foundBy`; a security and a non-security finding on the same key stay separate
     - `applyVerifierPolicy`:
       - security + null → `confirmed`
       - security + `{isReal:false, confidence:0.7}` → `confirmed`
