@@ -1,5 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { toolsListOf, headingsOf, firstLineUnderHeading, bodyUnderHeading } from './agent-lint.mjs';
+import {
+  parseFrontmatter,
+  toolsListOf,
+  headingsOf,
+  firstLineUnderHeading,
+  bodyUnderHeading,
+  startsWithNothing,
+  hasPromptDefenseBaseline,
+  readOnlyViolations,
+  READ_ONLY_AGENTS,
+  WRITE_TOOLS,
+} from './agent-lint.mjs';
 
 describe('toolsListOf', () => {
   it('splits a comma-separated scalar', () => {
@@ -140,5 +151,115 @@ describe('bodyUnderHeading / firstLineUnderHeading (fenced + bounded)', () => {
     ].join('\n');
 
     expect(firstLineUnderHeading(text, 'Allowed paths')).toBeNull();
+  });
+});
+
+/** A minimal agent file: frontmatter tools plus an "Allowed paths" first line and extra body. */
+function agentFixture({ tools, allowedPaths = 'src/** only', extra = [] }) {
+  return [
+    '---',
+    'name: fixture',
+    `tools: ${tools}`,
+    '---',
+    '',
+    '## Allowed paths',
+    '',
+    allowedPaths,
+    '',
+    ...extra,
+  ].join('\n');
+}
+
+describe('startsWithNothing (Allowed paths first line)', () => {
+  it.each([
+    'Nothing',
+    'Nothing.',
+    '- Nothing',
+    '* Nothing',
+    '+ Nothing',
+    '> Nothing',
+    '**Nothing**',
+    '_Nothing_',
+    '- **Nothing**',
+    '> - _Nothing_',
+  ])('treats %j as read-only', (line) => {
+    expect(startsWithNothing(line)).toBe(true);
+  });
+
+  it.each(['src/** only', '- `docs/**`', '- The task files', 'Anything but Nothing'])(
+    'does not treat %j as read-only',
+    (line) => {
+      expect(startsWithNothing(line)).toBe(false);
+    },
+  );
+});
+
+describe('readOnlyViolations', () => {
+  it.each(['- Nothing', '**Nothing**'])(
+    'reproduces: an Allowed paths line %j with a Write tool is a violation',
+    (allowedPaths) => {
+      const text = agentFixture({ tools: 'Read, Write, Grep', allowedPaths });
+      const violations = readOnlyViolations('fixture', text, parseFrontmatter(text));
+      expect(violations).toHaveLength(1);
+      expect(violations[0]).toContain('"Write"');
+    },
+  );
+
+  it('reproduces: a READ_ONLY_AGENTS name that declares Write is a violation, whatever its Allowed paths says', () => {
+    const text = agentFixture({ tools: 'Read, Grep, Write, NotebookEdit' });
+    const violations = readOnlyViolations('gate-checker', text, parseFrontmatter(text));
+    expect(violations.map((v) => v.match(/"(\w+)"$/)[1])).toEqual(['Write', 'NotebookEdit']);
+  });
+
+  it('accepts a read-only agent with only read tools, and a writer whose paths are not Nothing', () => {
+    const reader = agentFixture({ tools: 'Read, Grep, Glob', allowedPaths: '- Nothing' });
+    expect(readOnlyViolations('pr-reviewer', reader, parseFrontmatter(reader))).toEqual([]);
+    const writer = agentFixture({ tools: 'Read, Write, Edit' });
+    expect(readOnlyViolations('implementer', writer, parseFrontmatter(writer))).toEqual([]);
+  });
+
+  it('lists exactly the roster agents that must never write', () => {
+    expect(READ_ONLY_AGENTS).toEqual([
+      'gate-checker',
+      'finding-verifier',
+      'consistency-reviewer',
+      'functional-tester',
+      'edge-case-hunter',
+      'requirements-analyst',
+      'domain-checker',
+      'design-checker',
+      'api-tester',
+      'integration-tester',
+      'pr-reviewer',
+      'pr-test-analyzer',
+      'pm-sync',
+    ]);
+    expect(WRITE_TOOLS).toEqual(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
+  });
+});
+
+describe('hasPromptDefenseBaseline', () => {
+  it('finds a real baseline heading', () => {
+    expect(hasPromptDefenseBaseline('## Mission\nx\n\n## Prompt Defense Baseline\n- rule')).toBe(
+      true,
+    );
+  });
+
+  it('reproduces: a baseline heading that only exists inside a fence does not count', () => {
+    const text = [
+      '## Mission',
+      'x',
+      '',
+      '```markdown',
+      '## Prompt Defense Baseline',
+      '- rule',
+      '```',
+    ].join('\n');
+    expect(hasPromptDefenseBaseline(text)).toBe(false);
+  });
+
+  it('does not count the phrase in prose or a deeper heading', () => {
+    expect(hasPromptDefenseBaseline('See the ## Prompt Defense Baseline section.')).toBe(false);
+    expect(hasPromptDefenseBaseline('### Prompt Defense Baseline\n- rule')).toBe(false);
   });
 });

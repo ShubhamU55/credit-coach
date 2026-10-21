@@ -6,8 +6,9 @@ import {
   parseFrontmatter,
   toolsListOf,
   headingsOf,
-  firstLineUnderHeading,
   bodyUnderHeading,
+  hasPromptDefenseBaseline,
+  readOnlyViolations,
 } from '../lib/agent-lint.mjs';
 
 // Agent roster (spec §6 preamble). Every later agent file must pass these
@@ -33,7 +34,6 @@ const SECTION_ORDER = [
   'Anti-drift',
 ];
 const ATTRIBUTION_LINE = '<!-- Adapted from affaan-m/ECC (MIT) @ 90606c8 -->';
-const WRITE_TOOLS = ['Write', 'Edit', 'MultiEdit', 'NotebookEdit'];
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '../../..');
@@ -80,17 +80,8 @@ describe('agent lint (.claude/agents/*.md)', () => {
       });
     }
 
-    it(`${file}: "Allowed paths" starting with "Nothing" implies no Write/Edit/MultiEdit/NotebookEdit tool`, () => {
-      const firstLine = firstLineUnderHeading(text, 'Allowed paths');
-      if (firstLine === null || !firstLine.trim().startsWith('Nothing')) return;
-
-      const tools = toolsListOf(frontmatter);
-      for (const forbidden of WRITE_TOOLS) {
-        expect(
-          tools,
-          `${file}: "## Allowed paths" starts with "Nothing" but "tools" still lists "${forbidden}"`,
-        ).not.toContain(forbidden);
-      }
+    it(`${file}: a read-only agent (Allowed paths "Nothing", or READ_ONLY_AGENTS) has no Write/Edit/MultiEdit/NotebookEdit tool`, () => {
+      expect(readOnlyViolations(base, text, frontmatter), file).toEqual([]);
     });
 
     it(`${file}: mentioning affaan-m/ECC carries the exact attribution line`, () => {
@@ -104,7 +95,7 @@ describe('agent lint (.claude/agents/*.md)', () => {
     it(`${file}: "## Prompt Defense Baseline" is required without Write/Edit, forbidden for BUILDERS`, () => {
       const tools = toolsListOf(frontmatter);
       const hasWriteOrEdit = tools.includes('Write') || tools.includes('Edit');
-      const hasBaseline = text.includes('## Prompt Defense Baseline');
+      const hasBaseline = hasPromptDefenseBaseline(text);
 
       if (isBuilder) {
         expect(

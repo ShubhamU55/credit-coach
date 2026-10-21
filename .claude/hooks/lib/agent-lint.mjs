@@ -82,3 +82,58 @@ export function firstLineUnderHeading(text, heading) {
   const line = body.split('\n').find((l) => l.trim().length > 0);
   return line ?? null;
 }
+
+/** Tools that can change files; a read-only agent must declare none of them. */
+export const WRITE_TOOLS = ['Write', 'Edit', 'MultiEdit', 'NotebookEdit'];
+
+/** Roster agents (spec §5) that must never declare a write tool when their file exists. */
+export const READ_ONLY_AGENTS = [
+  'gate-checker',
+  'finding-verifier',
+  'consistency-reviewer',
+  'functional-tester',
+  'edge-case-hunter',
+  'requirements-analyst',
+  'domain-checker',
+  'design-checker',
+  'api-tester',
+  'integration-tester',
+  'pr-reviewer',
+  'pr-test-analyzer',
+  'pm-sync',
+];
+
+// List markers, blockquotes and emphasis that may wrap the "Nothing" of a read-only agent.
+const LEADING_DECORATION = /^[-*+>\s]*[*_]*/;
+
+/**
+ * True when an "Allowed paths" first line declares that the agent writes nothing, ignoring
+ * leading list markers, blockquotes and emphasis (`- Nothing`, `**Nothing**`).
+ */
+export function startsWithNothing(line) {
+  return String(line).replace(LEADING_DECORATION, '').startsWith('Nothing');
+}
+
+/** True when the agent carries a real `## Prompt Defense Baseline` heading outside any fence. */
+export function hasPromptDefenseBaseline(text) {
+  return headingsOf(text).includes('Prompt Defense Baseline');
+}
+
+/**
+ * Write-capable tools that a read-only agent still declares, each with the reason the agent
+ * counts as read-only. Empty when the agent may write or declares no write tool.
+ */
+export function readOnlyViolations(name, text, frontmatter) {
+  const firstLine = firstLineUnderHeading(text, 'Allowed paths');
+  const reasons = [
+    ...(READ_ONLY_AGENTS.includes(name) ? ['it is in READ_ONLY_AGENTS'] : []),
+    ...(firstLine !== null && startsWithNothing(firstLine)
+      ? ['"## Allowed paths" starts with "Nothing"']
+      : []),
+  ];
+  if (reasons.length === 0) return [];
+  const tools = toolsListOf(frontmatter);
+  return WRITE_TOOLS.filter((tool) => tools.includes(tool)).map(
+    (tool) => `${name}: ${reasons.join(' and ')} but "tools" lists "${tool}"`,
+  );
+}
