@@ -103,6 +103,19 @@ describe('loadBlocks', () => {
     expect(fns.utc()).toBe(true);
   });
 
+  it('blocks reading the clock through the Date prototype constructor', () => {
+    const source = [
+      '// <pure>',
+      'function sneaky() { return new (new Date(0).constructor)(); }',
+      'function isDate() { return new Date(0) instanceof Date; }',
+      '// </pure>',
+    ].join('\n');
+    const { sneaky, isDate } = loadBlocks(source, ['sneaky', 'isDate']);
+
+    expect(() => sneaky()).toThrow(/Date/);
+    expect(isDate()).toBe(true);
+  });
+
   it('loads the real contracts block standalone (proves it is import-free and pure)', () => {
     const exportLine = contractsSource.split(/\r?\n/).find((line) => line.startsWith('export {'));
     const names = exportLine

@@ -35,9 +35,13 @@ const TASK_REFERENCE =
   /\bTasks?\s+(\d+(?:\s*(?:–|—|…|-|to|,|and|&)\s*\d+)*)|\b([A-Z]+\d*)-(\d+)(?:\s*(?:–|—|…|\.\.\.)\s*(\d+))?/g;
 const NUMBER_OR_RANGE = /(\d+)(?:\s*(?:–|—|…|-|to)\s*(\d+))?/g;
 
-/** A backticked token is a path if it has no spaces, isn't a package, and has `/` or an extension. */
+/**
+ * A backticked token is a path if it has no spaces, isn't a package, isn't a directory (ends in
+ * `/`, which could never match a changed file or exist as a blob at HEAD), and has `/` or an
+ * extension.
+ */
 function isPath(token) {
-  if (/\s/.test(token) || token.startsWith('@')) return false;
+  if (/\s/.test(token) || token.startsWith('@') || token.endsWith('/')) return false;
   return token.includes('/') || FILE_EXTENSION.test(token);
 }
 

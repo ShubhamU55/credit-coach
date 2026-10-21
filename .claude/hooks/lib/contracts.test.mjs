@@ -144,6 +144,28 @@ describe('isBlocking', () => {
 });
 
 describe('dedupeFindings', () => {
+  it('keeps the security category on a severity tie, so the verifier still fails closed', () => {
+    const merged = dedupeFindings([
+      finding({ id: 'c', category: 'correctness', severity: 'medium' }),
+      finding({ id: 's', category: 'security', severity: 'medium' }),
+    ]);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0].category).toBe('security');
+    expect(applyVerifierPolicy(merged[0], null)).toBe('confirmed');
+  });
+
+  it('keeps the security category when a stricter non-security finding wins', () => {
+    const merged = dedupeFindings([
+      finding({ id: 's', category: 'security', severity: 'medium' }),
+      finding({ id: 'c', category: 'correctness', severity: 'high', proof: 'p' }),
+    ]);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toMatchObject({ category: 'security', severity: 'high', proof: 'p' });
+    expect(applyVerifierPolicy(merged[0], null)).toBe('confirmed');
+  });
+
   it('merges two findings on the same file|line into the strictest one with both foundBy', () => {
     const medium = finding({ id: 'f1', severity: 'medium', foundBy: ['code-reviewer'] });
     const high = finding({
@@ -238,6 +260,11 @@ describe('checkStart', () => {
   it('is empty for a clean tree', () => {
     expect(checkStart({ head: 'a1', dirtyFiles: [] })).toEqual([]);
   });
+
+  it('fails closed when dirtyFiles is absent', () => {
+    expect(checkStart({ head: 'a1' })).toEqual(['incomplete-facts: dirtyFiles']);
+    expect(checkStart(null)).toEqual(['incomplete-facts: dirtyFiles']);
+  });
 });
 
 describe('checkDrift', () => {
@@ -315,11 +342,12 @@ describe('checkDrift', () => {
       verifyExitCode: 1,
       commits: [{ sha: 'c', message: 'oops' }],
     };
-    expect(checkDrift(facts, TASK).reasons).toEqual([
+    expect(checkDrift(facts, { ...TASK, testCommand: null }).reasons).toEqual([
       'uncommitted: d.ts',
       'missing: m.ts',
       'drift: z.ts',
       'test-command-mismatch',
+      'no-test-command',
       'tests-failed: exit 1',
       'verify-failed: exit 1',
       'commit-format: oops',
@@ -337,6 +365,44 @@ describe('checkDrift', () => {
       });
     },
   );
+
+  it('fails closed when dirtyFiles is absent, even with no commits', () => {
+    const facts = { ...CLEAN_FACTS };
+    delete facts.dirtyFiles;
+    expect(checkDrift(facts, TASK)).toEqual({
+      ok: false,
+      reasons: ['incomplete-facts: dirtyFiles'],
+    });
+    expect(checkDrift({ head: 'a1' }, TASK).reasons).toEqual([
+      'no-commit',
+      'incomplete-facts: dirtyFiles',
+      'test-command-mismatch',
+      'tests-failed: exit undefined',
+      'verify-failed: exit undefined',
+    ]);
+  });
+
+  it('fails when a task with test files names no test command (§8.2)', () => {
+    const facts = { ...CLEAN_FACTS, testCommand: null };
+    expect(checkDrift(facts, { ...TASK, testCommand: null })).toEqual({
+      ok: false,
+      reasons: ['no-test-command'],
+    });
+    expect(checkDrift({ ...CLEAN_FACTS, testCommand: '' }, { ...TASK, testCommand: '' })).toEqual({
+      ok: false,
+      reasons: ['no-test-command'],
+    });
+  });
+
+  it('allows a null test command when the task has no test files', () => {
+    const task = { ...TASK, testCommand: null, testFiles: [] };
+    const facts = {
+      ...CLEAN_FACTS,
+      testCommand: null,
+      changedFiles: ['packages/engine/src/format.ts'],
+    };
+    expect(checkDrift(facts, task)).toEqual({ ok: true, reasons: [] });
+  });
 
   it('fails closed when gate facts are missing (start-mode shape)', () => {
     const result = checkDrift({ head: 'a1', dirtyFiles: [] }, TASK);

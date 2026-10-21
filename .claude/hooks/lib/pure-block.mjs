@@ -23,6 +23,12 @@ const NONDETERMINISM_GUARD = `(() => {
   }
   Object.setPrototypeOf(GuardedDate, RealDate);
   GuardedDate.prototype = RealDate.prototype;
+  // Otherwise \`new (new Date(0).constructor)()\` would reach the real, unguarded Date.
+  Object.defineProperty(RealDate.prototype, 'constructor', {
+    value: GuardedDate,
+    writable: true,
+    configurable: true,
+  });
   GuardedDate.now = () => fail('Date.now()');
   globalThis.Date = GuardedDate;
   Math.random = () => fail('Math.random()');

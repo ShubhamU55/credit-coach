@@ -1,4 +1,3 @@
-// Adapted from affaan-m/ECC (MIT) @ 90606c8
 // Agent-system contracts: the shared decision logic of every workflow (schemas, severity,
 // dedupe, verifier policy, drift guard, retry policy, untrusted-input fencing).
 //
@@ -6,8 +5,10 @@
 // between the `contracts` markers below byte for byte; `tests/workflows-sync.test.mjs` fails
 // on any difference. Inside the block: plain JS only, top-level `const`/`function`, no
 // import/export, no Node globals, no clock and no randomness. Edit here, then re-paste.
+// The ECC attribution line sits inside the block so it travels with every pasted copy.
 
 // <contracts>
+// Adapted from affaan-m/ECC (MIT) @ 90606c8
 const SEVERITIES = ['critical', 'high', 'medium', 'low'];
 const BLOCKING_SEVERITIES = ['critical', 'high'];
 const SEVERITY_RANK = { critical: 3, high: 2, medium: 1, low: 0 };
@@ -210,7 +211,10 @@ function toList(value) {
   return value == null ? [] : [value];
 }
 
-/** One finding per file|line (or file|title), strictest severity wins, `foundBy` unioned. */
+/**
+ * One finding per file|line (or file|title): the strictest severity wins, `foundBy` is unioned,
+ * and `security` from any contributor is kept so the §14.4 policy still fails closed.
+ */
 function dedupeFindings(findings) {
   const byKey = new Map();
   for (const f of findings || []) {
@@ -222,7 +226,9 @@ function dedupeFindings(findings) {
     }
     const strictest = severityRank(f.severity) > severityRank(seen.severity) ? f : seen;
     const foundBy = [...new Set([...seen.foundBy, ...toList(f.foundBy)])];
-    byKey.set(key, { ...strictest, foundBy });
+    const category =
+      seen.category === 'security' || f.category === 'security' ? 'security' : strictest.category;
+    byKey.set(key, { ...strictest, category, foundBy });
   }
   return [...byKey.values()];
 }
@@ -261,20 +267,29 @@ function checkCommitMessage(message) {
   ];
 }
 
-/** A dirty tree before an attempt stops the task, instead of failing every attempt. */
+/**
+ * A dirty tree before an attempt stops the task, instead of failing every attempt. An absent
+ * dirtyFiles list fails closed rather than reading as a clean tree.
+ */
 function checkStart(startFacts) {
-  return toList((startFacts || {}).dirtyFiles).map((file) => `dirty-start: ${normalizePath(file)}`);
+  const dirtyFiles = (startFacts || {}).dirtyFiles;
+  if (!Array.isArray(dirtyFiles)) return ['incomplete-facts: dirtyFiles'];
+  return dirtyFiles.map((file) => `dirty-start: ${normalizePath(file)}`);
 }
 
 /**
- * §8.2 drift guard over gate-checker's git facts. Missing facts fail closed: with commits
- * present, an absent changedFiles/missingFiles list is `incomplete-facts`, never "no drift".
+ * §8.2 drift guard over gate-checker's git facts. Missing facts fail closed: an absent
+ * dirtyFiles list (always), or changedFiles/missingFiles list (once commits exist), is
+ * `incomplete-facts`, never "clean". A task with test files must name its test command.
  */
 function checkDrift(facts, task) {
   const f = facts || {};
   const commits = toList(f.commits);
   const allowed = [...toList(task.files), ...toList(task.testFiles)];
-  const absentLists = ['changedFiles', 'missingFiles'].filter((name) => !Array.isArray(f[name]));
+  const listsToCheck =
+    commits.length > 0 ? ['dirtyFiles', 'changedFiles', 'missingFiles'] : ['dirtyFiles'];
+  const absentLists = listsToCheck.filter((name) => !Array.isArray(f[name]));
+  const noTestCommand = !task.testCommand && toList(task.testFiles).length > 0;
   const reasons = [
     ...(commits.length === 0 ? ['no-commit'] : []),
     ...toList(f.dirtyFiles).map((file) => `uncommitted: ${normalizePath(file)}`),
@@ -282,8 +297,9 @@ function checkDrift(facts, task) {
     ...toList(f.changedFiles)
       .filter((file) => !matchesAllowed(file, allowed))
       .map((file) => `drift: ${normalizePath(file)}`),
-    ...(commits.length > 0 ? absentLists.map((name) => `incomplete-facts: ${name}`) : []),
+    ...absentLists.map((name) => `incomplete-facts: ${name}`),
     ...(f.testCommand !== task.testCommand ? ['test-command-mismatch'] : []),
+    ...(noTestCommand ? ['no-test-command'] : []),
     ...(f.testExitCode !== 0 ? [`tests-failed: exit ${f.testExitCode}`] : []),
     ...(f.verifyExitCode !== 0 ? [`verify-failed: exit ${f.verifyExitCode}`] : []),
     ...commits.flatMap((commit) => checkCommitMessage((commit || {}).message)),

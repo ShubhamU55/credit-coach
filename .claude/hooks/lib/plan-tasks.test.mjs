@@ -103,6 +103,13 @@ describe('parsePlanTasks on Plan 1c', () => {
     expect(task.createFiles).toContain('.claude/hooks/block-no-verify.cjs');
   });
 
+  it('drops directory tokens ending in / (W0-4)', () => {
+    const task = byId(tasks, 'W0-4');
+    expect(task.createFiles.filter((p) => p.endsWith('/'))).toEqual([]);
+    expect(task.files.filter((p) => p.endsWith('/'))).toEqual([]);
+    expect(task.createFiles).toContain('.claude/rules/agents.md');
+  });
+
   it('reads W-style ids and ranges from Consumes lines', () => {
     expect(byId(tasks, 'W0-7').dependsOn).toEqual(['W0-5']);
     expect(byId(tasks, 'W1-2').dependsOn).toEqual(['W0-6', 'W0-3']);
