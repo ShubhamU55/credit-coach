@@ -55,8 +55,10 @@ non-finite limit`, `sums across valid cards and excludes invalid limits` (both f
 
 ## Commits and PRs
 
-- Conventional commits: `<type>: <description>`, types `feat|fix|refactor|docs|test|chore|perf|ci`,
-  subject ≤ 72 chars.
+- Conventional commits: `<type>(<scope>)?: <description>`, types
+  `feat|fix|refactor|docs|test|chore|perf|ci`, an optional lowercase scope (`[a-z0-9-]+`, e.g.
+  `fix(ai): …`), an optional `!` before the colon for a breaking change, subject ≤ 72 chars. This
+  is exactly what `checkCommitMessage` in `.claude/hooks/lib/contracts.mjs` enforces.
 - No `Co-Authored-By` or "Generated with" lines on commits or PRs (CLAUDE.md rule 7).
 - PR descriptions cover the full branch history (not just the latest commit) and include a test
   plan.

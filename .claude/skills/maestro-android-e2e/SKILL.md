@@ -37,6 +37,6 @@ Maestro is installed at `%USERPROFILE%\.maestro\bin`. It needs Java 17 and `adb`
 5. `predictor-range.yaml`: shows a range plus reasons, never a single score.
 
 ## Evidence for judges
-- Store runs with `maestro test .maestro --format junit --output docs/test-reports/maestro-<date>.xml`.
+- Store runs with `maestro test .maestro --format junit --output ../../docs/test-reports/maestro-<YYYY-MM-DD>.xml`, run from `apps/mobile` (where `.maestro/` lives), so the report lands in the repo-root `docs/test-reports/` that the CI evidence check (`.claude/hooks/bin/maestro-evidence.mjs`) reads. `<YYYY-MM-DD>` is the ISO date of the run, e.g. `maestro-2026-10-22.xml`.
 - Keep a screen recording of the demo flow (`maestro record`) in `docs/test-reports/`.
 - Mention both in the `/journal` entry.
