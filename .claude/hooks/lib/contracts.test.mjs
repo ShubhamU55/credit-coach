@@ -326,6 +326,18 @@ describe('checkDrift', () => {
     ]);
   });
 
+  it.each(['changedFiles', 'missingFiles'])(
+    'fails closed when a check-mode result with commits omits %s',
+    (field) => {
+      const facts = { ...CLEAN_FACTS };
+      delete facts[field];
+      expect(checkDrift(facts, TASK)).toEqual({
+        ok: false,
+        reasons: [`incomplete-facts: ${field}`],
+      });
+    },
+  );
+
   it('fails closed when gate facts are missing (start-mode shape)', () => {
     const result = checkDrift({ head: 'a1', dirtyFiles: [] }, TASK);
     expect(result.ok).toBe(false);

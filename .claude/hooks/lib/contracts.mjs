@@ -266,11 +266,15 @@ function checkStart(startFacts) {
   return toList((startFacts || {}).dirtyFiles).map((file) => `dirty-start: ${normalizePath(file)}`);
 }
 
-/** §8.2 drift guard over gate-checker's git facts. Missing facts fail closed. */
+/**
+ * §8.2 drift guard over gate-checker's git facts. Missing facts fail closed: with commits
+ * present, an absent changedFiles/missingFiles list is `incomplete-facts`, never "no drift".
+ */
 function checkDrift(facts, task) {
   const f = facts || {};
   const commits = toList(f.commits);
   const allowed = [...toList(task.files), ...toList(task.testFiles)];
+  const absentLists = ['changedFiles', 'missingFiles'].filter((name) => !Array.isArray(f[name]));
   const reasons = [
     ...(commits.length === 0 ? ['no-commit'] : []),
     ...toList(f.dirtyFiles).map((file) => `uncommitted: ${normalizePath(file)}`),
@@ -278,6 +282,7 @@ function checkDrift(facts, task) {
     ...toList(f.changedFiles)
       .filter((file) => !matchesAllowed(file, allowed))
       .map((file) => `drift: ${normalizePath(file)}`),
+    ...(commits.length > 0 ? absentLists.map((name) => `incomplete-facts: ${name}`) : []),
     ...(f.testCommand !== task.testCommand ? ['test-command-mismatch'] : []),
     ...(f.testExitCode !== 0 ? [`tests-failed: exit ${f.testExitCode}`] : []),
     ...(f.verifyExitCode !== 0 ? [`verify-failed: exit ${f.verifyExitCode}`] : []),
