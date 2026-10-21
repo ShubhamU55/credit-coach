@@ -13,10 +13,12 @@
   - G8 (`pr-review`) is a **commit status**, not a review: GitHub rejects approving your own PR.
 - No owner blocker has been cleared yet. The ShubhamU55 token still has only `repo` scope, Docker isn't running, and Supabase isn't linked.
 
+**Wave 0 progress (W0-7, last ticket):** agent lint, config audit, and scratch-header checks landed in `.claude/hooks/tests/` (`agents-lint.test.mjs`, `config-audit.test.mjs`, `scratch-headers.test.mjs`); `scratch/README.md` documents the §8.6 header format. All three checks were proven to bite (probe files added and removed) and `pnpm verify` is green on a clean tree. **Wave 0 is done; Wave 1 is next.**
+
 ### Next step
 
 - **Owner:** review Plan 1c and choose how to execute it.
-- **Then:** Wave 0 (W0-1 first; W0-2 to W0-6 may run in parallel worktrees; W0-7 last).
+- **Then:** Wave 1 (see Plan 1c for the ticket list; Wave 0's W0-1 through W0-7 are complete).
 - **New owner action:** create the SonarQube Cloud org, turn off Automatic Analysis, and add the `SONAR_TOKEN` secret. See Plan 1c, "Owner actions".
 
 ## 2026-10-21 (end of session 1)
