@@ -37,7 +37,7 @@ Input: cash available in the **next 30 days**, plus the card data. Output: order
 3. **Full statement balance** (avoids interest), highest interest rate first if known, then earliest due date.
 4. **Utilization pre-payment** before the next reporting point. Greedy, by per-card utilization **in percentage points**:
    - (a) Pay the card with the highest utilization % down to the threshold, then the next-highest, and so on.
-   - (b) Once every card is at or below the threshold, lower cards toward **10%**, highest first.
+   - (b) **Only if the "Aim for 10% utilization" switch is on** (off by default; PRD v1.1): once every card is at or below the threshold, lower cards toward **10%**, highest first. With the switch off, stop at the threshold and report the rest as left over.
    - Overall utilization follows from this; it is not a separate target.
 5. Leftover cash: "Nothing more needed this cycle."
 - **Never** pay more than a card's outstanding.

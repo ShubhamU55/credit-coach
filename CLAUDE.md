@@ -5,6 +5,7 @@
 ## Source of truth
 - **`docs/PRD.md`** (frozen v1) holds the requirements. Read the relevant section before any feature work. If code and PRD disagree, the PRD wins. Raise the conflict; don't silently pick one.
 - **PRD §4** lists the domain facts F1–F7. The **`credit-domain` skill** expands them. Never contradict them.
+- **`docs/design.md`** (v3 "Midnight") is the **UI design guide for the mobile app**: tokens, components, screens, copy, accessibility and the demo fixture. Read it before building any screen. For mobile visuals it supersedes `.design/`; for requirements, the PRD wins.
 - `docs/tech-stack.md` is the stack and its risks. `docs/adr/` holds the decisions. `docs/superpowers/plans/` holds the implementation plans.
 
 ## Workflow (Think → Build → Test → Review → Learn)
@@ -53,7 +54,7 @@ For every feature, use `/feature <PRD section>`:
 6. **No secrets in the repo.** Only `.env.example` is committed. Agents cannot write `.env*` files (a hook blocks it); ask the owner to fill them in. The Anthropic key lives only in Supabase Edge Function secrets.
 7. **Commits and PRs carry no AI co-author or "Generated with" lines.** Use conventional commits.
 8. **The demo path must work unaided:** "Try sample profile" with no sign-up, an on-screen demo OTP, and no SMS.
-9. `.design/` is owned by a separate design workflow. Read it for UI work, but don't modify it unless asked.
+9. `docs/design.md` and `.design/` are owned by the design workflow. Read them for UI work, but don't modify them unless asked.
 
 ## Framework notes
 - `apps/admin/AGENTS.md` (Next 16) and `apps/mobile/AGENTS.md` (Expo SDK 58) warn that these versions differ from training data. Read the bundled or versioned docs before using a framework API.

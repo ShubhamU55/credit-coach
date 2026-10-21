@@ -3,7 +3,7 @@
 **Working name:** Credit Coach (rename freely)
 **Owner:** Shubham Upadhyay (solo)
 **Event:** Hack@FiftyFive "Build With AI" Hackathon 2026. Submit by **30 Oct 2026 EOD**. Evaluation 2–5 Nov. Results 6 Nov.
-**Status:** **Frozen v1 (approved 21 Oct 2026).** Tech stack is decided separately in `docs/tech-stack.md`.
+**Status:** **Frozen v1.1 (v1 approved 21 Oct 2026; v1.1 amends §5.3 step 4(b) per the owner's 21 Oct design decision).** Tech stack: `docs/tech-stack.md`. UI design guide: `docs/design.md`.
 
 > Items tagged **[Call]** are decisions Claude made during brainstorming that the owner has not explicitly confirmed. Review those first.
 
@@ -122,7 +122,7 @@ Android only. English only. Amounts in ₹ with Indian digit grouping (₹1,23,4
 3. **Full statement balance** on each card to avoid interest, in order of highest interest rate (if known), then earliest due date.
 4. **Utilization pre-payment:** spend the remaining cash on current outstanding, **before the next reporting point** (§5.4). The approach is greedy, by **per-card utilization in percentage points** [Call]:
    - (a) Repeatedly pay the card with the **highest utilization %** until it reaches the threshold, then the next-highest. When cash runs short, this lowers the **highest single card** first, because max per-card utilization is a predictor factor.
-   - (b) Once every card is at or below the threshold, keep lowering cards toward the **10% "excellent" line**, highest % first, until the cash runs out.
+   - (b) **Only when the user turns on "Aim for 10% utilization"** (a switch on the Plan screen, **off by default**; owner decision 21 Oct, v1.1): once every card is at or below the threshold, keep lowering cards toward the **10% line**, highest % first, until the cash runs out. With the switch off, step 4 stops at the threshold and the rest is shown as left-over cash.
    - Overall utilization follows from this; it is not a separate target.
 5. Any leftover cash is shown as "Nothing more needed this cycle."
 
