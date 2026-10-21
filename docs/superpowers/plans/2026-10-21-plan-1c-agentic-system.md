@@ -369,7 +369,7 @@ The values these must pin:
     - `sonar.coverage.exclusions=apps/**,.claude/**,supabase/**,scripts/**,**/*.config.*,eslint.shared.cjs`
     - `sonar.javascript.lcov.reportPaths=packages/engine/coverage/lcov.info`
 - [ ] **Step 4:** Run `pnpm --filter @credit-coach/hooks test` (expected: PASS), then `pnpm verify` (expected: exit 0).
-- [ ] **Step 5: Commit** `ci: add path-gated gates, deps audit, CodeQL, Sonar and Maestro evidence check`.
+- [ ] **Step 5: Commit** `ci: add path-gated gates, deps audit, CodeQL, Sonar and Maestro check`.
 
 ### Task W0-6: Agent-system contracts (shared decision logic, tested once)
 
@@ -568,7 +568,7 @@ Each ticket writes agent files that match its roster rows. Each agent's `## Outp
 - [ ] **Step 1: Write the three agents** to the template. `build-error-resolver` is adapted from ECC: replace `npx` with `pnpm`, and give it **no** baseline.
 - [ ] **Step 2: Edit the rules and `CLAUDE.md`** as listed. Also add the parallel-wave exception to `CLAUDE.md`'s "Start here" rule: a session that doesn't own `docs/status.md` in its wave writes its handoff in its run ledger. Then run `rg -n tdd-guide .claude CLAUDE.md`. Expected: no matches.
 - [ ] **Step 3: Shared verification** (above).
-- [ ] **Step 4: Commit** `feat(ai): add implementer, gate-checker and build-error-resolver; retire tdd-guide`.
+- [ ] **Step 4: Commit** `feat(ai): add implementer, gate-checker, build-error-resolver`.
 
 ### Task W1-2: `finding-verifier` and `consistency-reviewer`
 
@@ -944,7 +944,7 @@ Each workflow ticket pastes the contracts block verbatim, keeps its decision log
   - `lensesFor(['packages/engine/a.ts'], 'pr')` has no `ui` lens
 - [ ] **Step 2: Implement.**
 - [ ] **Step 3: Pass.**
-- [ ] **Step 4: Commit** `feat(ai): add pr-review workflow with G8 status and end-of-plan dual review`.
+- [ ] **Step 4: Commit** `feat(ai): add pr-review workflow with G8 status and dual review`.
 
 ### Task W4-3: `bugfix` workflow, `/bugfix` and `/bug`
 
