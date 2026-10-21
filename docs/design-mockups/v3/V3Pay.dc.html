@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Credit Coach · Mark as paid (v3 Midnight)</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT@0,9..144,400..600,0..100;1,9..144,400..600,0..100&amp;family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap">
+<style>
+body{margin:0;background:#0B0B0D}
+a{color:#B6A3FF}a:hover{color:#D3C8FF}
+button{font:inherit;cursor:pointer}
+.pop{transition:transform 80ms ease-out, box-shadow 80ms ease-out}
+.pop:active{transform:translate(4px,4px);box-shadow:none !important}
+:focus-visible{outline:2px solid #B6A3FF;outline-offset:2px}
+@media (prefers-reduced-motion: reduce){.pop{transition:none}}
+</style>
+</helmet>
+<div style="position: relative; width: 390px; height: 844px; overflow: hidden; background: #0B0B0D; color: #D4D4D8; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; font-feature-settings: 'tnum' 1;">
+
+  <div aria-hidden="true" style="padding: 76px 20px 0;">
+    <div style="font-family: 'Fraunces', Georgia, serif; font-size: 34px; line-height: 38px; color: #F5F5F2;">Aarav, one payment keeps you on track.</div>
+    <div style="margin-top: 24px; height: 220px; background: #2A1730; border: 1px solid #8A5F96;"></div>
+  </div>
+  <div aria-hidden="true" style="position: absolute; inset: 0; background: rgba(0,0,0,0.72);"></div>
+
+  <div role="dialog" aria-modal="true" aria-labelledby="pay-title" style="position: absolute; left: 0; right: 0; bottom: 0; background: #141417; border-top: 1px solid #6A6A77; padding: 12px 20px 28px; display: flex; flex-direction: column; gap: 18px;">
+    <div aria-hidden="true" style="width: 40px; height: 4px; background: #6A6A77; align-self: center;"></div>
+    <p role="status" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); margin: 0;">{{liveMsg}}</p>
+
+    <div style="display: flex; align-items: center; justify-content: space-between;">
+      <div style="display: flex; flex-direction: column; gap: 4px;">
+        <h2 id="pay-title" style="margin: 0; font-size: 11px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; color: #9A9AA5;">Mark as paid</h2>
+        <span style="font-size: 16px; font-weight: 700; color: #F5F5F2;">Axis Neo · due Thu, 22 Oct</span>
+      </div>
+      <a href="V3Home.dc.html" aria-label="Close" style="width: 44px; height: 44px; box-sizing: border-box; border: 1px solid #26262D; display: flex; align-items: center; justify-content: center; color: #F5F5F2;"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"></path></svg></a>
+    </div>
+
+    <sc-if value="{{editing}}" hint-placeholder-val="{{true}}">
+      <div style="display: flex; align-items: flex-start; color: #F5F5F2; white-space: nowrap;">
+        <span style="font-size: 24px; line-height: 38px; font-weight: 600; color: #9A9AA5; margin-right: 2px;">₹</span>
+        <span style="font-size: 56px; line-height: 60px; font-weight: 800; letter-spacing: -0.04em;">{{shownAmount}}</span>
+      </div>
+
+      <div role="radiogroup" aria-label="How much did you pay?" style="display: flex; flex-direction: column; gap: 8px;">
+        <sc-for list="{{options}}" as="o" hint-placeholder-count="3">
+          <button type="button" role="radio" aria-checked="{{o.checkedStr}}" onClick="{{o.pick}}" style="min-height: 52px; padding: 8px 14px; border: 1px solid {{o.border}}; background: {{o.bg}}; color: {{o.fg}}; display: flex; align-items: center; justify-content: space-between; gap: 12px; text-align: left;">
+            <span style="display: flex; flex-direction: column; gap: 2px;"><span style="font-size: 14px; font-weight: 800;">{{o.label}}</span><span style="font-size: 12px; color: {{o.subFg}};">{{o.sub}}</span></span>
+            <span style="display: flex; align-items: center; gap: 10px;"><span style="font-size: 15px; font-weight: 800;">{{o.amount}}</span><span aria-hidden="true" style="width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; border: 1.5px solid {{o.fg}}; box-sizing: border-box;">{{o.tick}}</span></span>
+          </button>
+        </sc-for>
+      </div>
+
+      <sc-if value="{{isOther}}" hint-placeholder-val="{{false}}">
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <label for="amt" style="font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: #9A9AA5;">Amount paid</label>
+          <div style="display: flex; align-items: center; border: {{amountBorder}}; background: #0B0B0D; height: 50px; box-sizing: border-box; padding: 0 14px; gap: 6px;">
+            <span aria-hidden="true" style="font-size: 18px; font-weight: 700; color: #9A9AA5;">₹</span>
+            <input id="amt" inputmode="numeric" placeholder="0" value="{{amountText}}" onChange="{{onAmount}}" aria-describedby="amt-msg" style="flex: 1; min-width: 0; height: 46px; border: 0; background: transparent; padding: 0; font: inherit; font-size: 18px; font-weight: 800; color: #F5F5F2;">
+          </div>
+          <span id="amt-msg" style="font-size: 12px; line-height: 17px; font-weight: {{msgWeight}}; color: {{msgColor}};">{{amountMsg}}</span>
+        </div>
+      </sc-if>
+
+      <p style="margin: 0; font-size: 12px; line-height: 17px; color: #9A9AA5;">Paid on today, 21 Oct · This only records it here. Pay in your bank or UPI app.</p>
+
+      <sc-if value="{{canConfirm}}" hint-placeholder-val="{{true}}">
+        <button type="button" class="pop" onClick="{{confirm}}" style="margin-right: 4px; height: 56px; border: 0; background: #9F86FF; color: #0B0B0D; font-size: 14px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; box-shadow: 4px 4px 0 #5A3FD6, inset 0 1px 0 rgba(255,255,255,0.3);">{{confirmLabel}}</button>
+      </sc-if>
+      <sc-if value="{{cannotConfirm}}" hint-placeholder-val="{{false}}">
+        <button type="button" aria-disabled="true" style="height: 56px; border: 0; background: #26262D; color: #9A9AA5; font-size: 14px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; cursor: not-allowed;">Confirm payment</button>
+      </sc-if>
+    </sc-if>
+
+    <sc-if value="{{done}}" hint-placeholder-val="{{false}}">
+      <div style="display: flex; flex-direction: column; gap: 14px; padding: 8px 0 4px;">
+        <span aria-hidden="true" style="width: 52px; height: 52px; background: #4ADE80; color: #0B0B0D; display: flex; align-items: center; justify-content: center; box-shadow: 4px 4px 0 #16261D;"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"></path></svg></span>
+        <div style="font-family: 'Fraunces', Georgia, serif; font-size: 30px; line-height: 34px; color: #F5F5F2;">Recorded ₹{{shownAmount}}.</div>
+        <p style="margin: 0; font-size: 14px; line-height: 21px; color: #D4D4D8;">{{doneLine}}</p>
+        <div style="display: flex; gap: 12px; align-items: center; margin-top: 6px;">
+          <a href="V3Plan.dc.html" class="pop" style="flex: 1; margin-right: 4px; height: 56px; background: #9F86FF; color: #0B0B0D; font-size: 14px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; display: flex; align-items: center; justify-content: center; text-decoration: none; box-shadow: 4px 4px 0 #5A3FD6, inset 0 1px 0 rgba(255,255,255,0.3);">Back to plan</a>
+          <button type="button" onClick="{{undo}}" style="height: 56px; padding: 0 18px; border: 1px solid #6A6A77; background: transparent; color: #F5F5F2; font-size: 13px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase;">Undo</button>
+        </div>
+      </div>
+    </sc-if>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { mode: 'statement', amount: '', done: false };
+  }
+
+  renderVals() {
+    var self = this;
+    var mode = this.state.mode;
+    var digits = String(this.state.amount || '').replace(/[^0-9]/g, '');
+    var n = digits ? parseInt(digits, 10) : 0;
+    var err = '';
+    var warn = '';
+    if (mode === 'other') {
+      if (!n) err = 'Enter the amount you paid.';
+      else if (n > 15600) err = 'That’s more than the ₹15,600 outstanding.';
+      else if (n < 620) warn = '⚠ ₹' + (620 - n).toLocaleString('en-IN') + ' short of the ₹620 minimum. This counts as a missed payment — pay the rest by 22 Oct.';
+    }
+    var amounts = { statement: 12400, minimum: 620, other: n };
+    var shown = (amounts[mode] || 0).toLocaleString('en-IN');
+
+    var defs = [
+      { id: 'statement', label: 'Full statement', sub: 'Steps 01 + 03 · zero interest', amount: '₹12,400' },
+      { id: 'minimum', label: 'Minimum only', sub: 'Step 01 · interest applies on the rest', amount: '₹620' },
+      { id: 'other', label: 'Other amount', sub: 'Partial payment', amount: '' }
+    ];
+    var options = defs.map(function (d) {
+      var on = d.id === mode;
+      return {
+        label: d.label, sub: d.sub, amount: d.amount,
+        checkedStr: on ? 'true' : 'false', tick: on ? '✓' : '',
+        border: on ? '#9F86FF' : '#6A6A77',
+        bg: on ? '#9F86FF' : 'transparent',
+        fg: on ? '#0B0B0D' : '#F5F5F2',
+        subFg: on ? '#2A1A66' : '#9A9AA5',
+        pick: function () { self.setState({ mode: d.id }); }
+      };
+    });
+
+    var doneLine = mode === 'statement'
+      ? 'Steps 01 and 03 are done. Axis Neo’s statement is cleared — no interest this cycle.'
+      : (mode === 'minimum'
+        ? 'Step 01 is done. ₹11,780 of the statement is still open — pay it by 22 Oct to avoid interest.'
+        : (n < 620 ? 'Recorded. You’re still ₹' + (620 - n).toLocaleString('en-IN') + ' short of the minimum — we’ll remind you before 22 Oct.'
+                   : 'Recorded against step 01, then step 03. The plan has been updated.'));
+
+    return {
+      editing: !this.state.done,
+      done: !!this.state.done,
+      shownAmount: shown,
+      options: options,
+      isOther: mode === 'other',
+      amountText: this.state.amount,
+      onAmount: function (e) { self.setState({ amount: e.target.value }); },
+      amountBorder: err ? '2px solid #FF6B6B' : (warn ? '2px solid #FFB547' : '1px solid #6A6A77'),
+      amountMsg: err || warn || 'Up to ₹15,600 outstanding on Axis Neo.',
+      msgColor: err ? '#FF6B6B' : (warn ? '#FFB547' : '#9A9AA5'),
+      msgWeight: (err || warn) ? '700' : '400',
+      canConfirm: !err,
+      cannotConfirm: !!err,
+      confirmLabel: warn ? 'Record anyway' : 'Confirm payment',
+      confirm: function () { self.setState({ done: true }); },
+      undo: function () { self.setState({ done: false }); },
+      doneLine: doneLine,
+      liveMsg: this.state.done ? ("Recorded ₹" + shown + ". " + doneLine) : ""
+    };
+  }
+}
+</script>
+</body>
+</html>
