@@ -51,6 +51,26 @@ describe('checkMaestroEvidence', () => {
     expect(result.ok).toBe(true);
   });
 
+  it('sums child <testsuite> counts instead of trusting the <testsuites> root', () => {
+    // The root reports 3 passing tests; the only child suite reports a failure.
+    // The root's own counts must never be trusted over its children's.
+    const xml = '<testsuites tests="3"><testsuite tests="3" failures="1"></testsuite></testsuites>';
+    const result = checkMaestroEvidence({ reports: [report({ xml })] });
+    expect(result.ok).toBe(false);
+  });
+
+  it('fails on a literal <failure> element even without a failures attribute', () => {
+    const xml = '<testsuite tests="2"><testcase name="x"><failure/></testcase></testsuite>';
+    const result = checkMaestroEvidence({ reports: [report({ xml })] });
+    expect(result.ok).toBe(false);
+  });
+
+  it('fails on a literal <error> element even without an errors attribute', () => {
+    const xml = '<testsuite tests="2"><testcase name="x"><error/></testcase></testsuite>';
+    const result = checkMaestroEvidence({ reports: [report({ xml })] });
+    expect(result.ok).toBe(false);
+  });
+
   it('skips a trailing non-qualifying report and uses the newest qualifying one', () => {
     const qualifyingPass = report({
       path: 'qualifying.xml',

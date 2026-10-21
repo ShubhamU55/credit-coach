@@ -52,6 +52,27 @@ describe('parseScratchHeader', () => {
   it('returns null when there is no header at all', () => {
     expect(parseScratchHeader("console.log('no header');\n")).toBeNull();
   });
+
+  it('parses quoted created/expires dates, stripping the surrounding quotes', () => {
+    const quoted =
+      '// purpose: throwaway debug script\n// owner: W0-5\n// created: "2026-10-21"\n// expires: \'2026-10-28\'\n';
+    const header = parseScratchHeader(quoted);
+    expect(header).not.toBeNull();
+    expect(header.created).toBe('2026-10-21');
+    expect(header.expires).toBe('2026-10-28');
+  });
+
+  it('returns null when expires is not a valid YYYY-MM-DD date', () => {
+    const invalid =
+      '// purpose: throwaway debug script\n// owner: W0-5\n// created: 2026-10-21\n// expires: next week\n';
+    expect(parseScratchHeader(invalid)).toBeNull();
+  });
+
+  it('returns null when created is not a valid YYYY-MM-DD date', () => {
+    const invalid =
+      '// purpose: throwaway debug script\n// owner: W0-5\n// created: last Tuesday\n// expires: 2026-10-28\n';
+    expect(parseScratchHeader(invalid)).toBeNull();
+  });
 });
 
 describe('isExpired', () => {

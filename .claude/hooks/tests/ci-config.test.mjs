@@ -56,6 +56,30 @@ describe('.github/workflows/ci.yml', () => {
     }
   });
 
+  it('declares minimal top-level permissions', () => {
+    expect(ci.permissions).toEqual({ contents: 'read', 'pull-requests': 'read' });
+  });
+
+  it('deps runs pnpm audit at the high severity level', () => {
+    const auditStep = ci.jobs.deps.steps.find((step) => /pnpm audit/.test(step.run ?? ''));
+    expect(auditStep).toBeDefined();
+    expect(auditStep.run).toContain('--audit-level=high');
+  });
+
+  it('SONAR_TOKEN is only ever exposed in the scan step env, never at job scope', () => {
+    const sonarJob = ci.jobs.sonar;
+    expect(Object.keys(sonarJob.env ?? {})).toEqual(['HAS_SONAR']);
+
+    // A step's `run:` text is allowed to mention the string "SONAR_TOKEN" in
+    // a log message (e.g. "Sonar skipped: SONAR_TOKEN not set"); only a
+    // `secrets.SONAR_TOKEN` reference exposes the real value to a step.
+    const stepsReferencingSecret = sonarJob.steps.filter((step) =>
+      JSON.stringify(step).includes('secrets.SONAR_TOKEN'),
+    );
+    expect(stepsReferencingSecret).toHaveLength(1);
+    expect(stepsReferencingSecret[0].uses).toContain('sonarqube-scan-action');
+  });
+
   it('every job name equals its job id', () => {
     for (const [id, job] of Object.entries(ci.jobs)) {
       expect(job.name).toBe(id);
@@ -88,6 +112,10 @@ describe('.github/workflows/hold.yml', () => {
 
   it('has its own concurrency group', () => {
     expect(hold.concurrency?.group).toBeTruthy();
+  });
+
+  it('declares empty top-level permissions (no token is needed)', () => {
+    expect(hold.permissions).toEqual({});
   });
 
   it('declares the hold-check job named after its id', () => {

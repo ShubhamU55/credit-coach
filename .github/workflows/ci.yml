@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [main]
 
+# Least privilege by default; a job that needs more must declare its own
+# job-level `permissions:` override.
+permissions:
+  contents: read
+  pull-requests: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -102,27 +108,32 @@ jobs:
     name: sonar
     runs-on: ubuntu-latest
     env:
-      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      # A boolean gate, not the token itself: job-scoped env is visible to
+      # every step, including `pnpm install` lifecycle scripts and the engine
+      # test run, neither of which has any business seeing SONAR_TOKEN.
+      HAS_SONAR: ${{ secrets.SONAR_TOKEN != '' }}
     steps:
-      - if: env.SONAR_TOKEN != ''
+      - if: env.HAS_SONAR == 'true'
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - if: env.SONAR_TOKEN != ''
+      - if: env.HAS_SONAR == 'true'
         uses: pnpm/action-setup@v4
-      - if: env.SONAR_TOKEN != ''
+      - if: env.HAS_SONAR == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: lts/*
           cache: pnpm
-      - if: env.SONAR_TOKEN != ''
+      - if: env.HAS_SONAR == 'true'
         run: pnpm install --frozen-lockfile
-      - if: env.SONAR_TOKEN != ''
+      - if: env.HAS_SONAR == 'true'
         run: pnpm --filter @credit-coach/engine test
-      - if: env.SONAR_TOKEN != ''
+      - if: env.HAS_SONAR == 'true'
         name: SonarQube Cloud Scan
         uses: SonarSource/sonarqube-scan-action@v8
-      - if: env.SONAR_TOKEN == ''
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      - if: env.HAS_SONAR != 'true'
         run: |
           echo "::warning::Sonar skipped: SONAR_TOKEN not set"
 

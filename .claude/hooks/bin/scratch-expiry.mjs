@@ -1,55 +1,85 @@
 #!/usr/bin/env node
-// Warns about missing/expired scratch/ headers without ever failing the build (§8.6).
+// Warns about missing/expired scratch/** headers without ever failing the
+// build (spec §8.6: "CI warns on expired items, never fails").
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseScratchHeader, isExpired } from '../lib/scratch.mjs';
 
 const SCRATCH_DIR = path.resolve(process.cwd(), 'scratch');
+const README_PATH = path.join(SCRATCH_DIR, 'README.md');
 
-function listScratchFiles() {
-  if (!fs.existsSync(SCRATCH_DIR)) return [];
-  return (
-    fs
-      .readdirSync(SCRATCH_DIR, { withFileTypes: true })
-      // Dotfiles (.gitkeep, .gitignore, …) aren't scratch items and never carry a header.
-      .filter((entry) => entry.isFile() && !entry.name.startsWith('.'))
-      .map((entry) => path.join(SCRATCH_DIR, entry.name))
-  );
+/** Recursively lists scratch/** files, skipping dotfiles/dotdirs and the W0-7 README. */
+function listScratchFiles(dir) {
+  if (!fs.existsSync(dir)) return [];
+
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  const results = [];
+
+  for (const entry of entries) {
+    if (entry.name.startsWith('.')) continue;
+
+    const fullPath = path.join(dir, entry.name);
+
+    if (entry.isDirectory()) {
+      results.push(...listScratchFiles(fullPath));
+      continue;
+    }
+
+    if (!entry.isFile()) continue;
+    if (fullPath === README_PATH) continue;
+
+    results.push(fullPath);
+  }
+
+  return results;
 }
 
 function warn(message) {
   console.log(`::warning::${message}`);
 }
 
-/** Returns true when the file is expired, or has no valid §8.6 header at all. */
+/** Returns true when the file is expired, unparseable, or unreadable. */
 function checkFile(filePath, todayIso) {
-  const header = parseScratchHeader(fs.readFileSync(filePath, 'utf8'));
+  try {
+    const header = parseScratchHeader(fs.readFileSync(filePath, 'utf8'));
 
-  if (!header) {
-    warn(`${filePath} has no valid scratch header (purpose/owner/created/expires required)`);
+    if (!header) {
+      warn(
+        `${filePath} has no valid scratch header (purpose/owner/created/expires required, dates as YYYY-MM-DD)`,
+      );
+      return true;
+    }
+
+    if (!isExpired(header, todayIso)) return false;
+
+    warn(
+      `${filePath} expired on ${header.expires} (owner: ${header.owner}, keep-if: ${header.keepIf ?? 'n/a'}) — delete it or make it permanent`,
+    );
+    return true;
+  } catch (error) {
+    warn(
+      `${filePath} could not be checked: ${error instanceof Error ? error.message : String(error)}`,
+    );
     return true;
   }
-
-  if (!isExpired(header, todayIso)) return false;
-
-  warn(
-    `${filePath} expired on ${header.expires} (owner: ${header.owner}, keep-if: ${header.keepIf ?? 'n/a'}) — delete it or make it permanent`,
-  );
-  return true;
 }
 
-function main() {
+function run() {
   const todayIso = new Date().toISOString().slice(0, 10);
-  const flaggedCount = listScratchFiles().filter((filePath) =>
+  const flaggedCount = listScratchFiles(SCRATCH_DIR).filter((filePath) =>
     checkFile(filePath, todayIso),
   ).length;
 
   if (flaggedCount > 0) {
     warn(`${flaggedCount} scratch/ item(s) need attention; review and delete or promote them`);
   }
-
-  // Always succeeds: this is an advisory check, never a merge blocker.
-  process.exitCode = 0;
 }
 
-main();
+try {
+  run();
+} catch (error) {
+  // Advisory check: never let an unexpected failure here fail the build.
+  warn(
+    `scratch-expiry check failed unexpectedly: ${error instanceof Error ? error.message : String(error)}`,
+  );
+}

@@ -15,22 +15,36 @@ function extractCounts(attrs) {
 }
 
 /**
+ * Counts occurrences of an XML element's opening tag (self-closed, with
+ * attributes, or not), e.g. `<failure/>` or `<failure message="...">`.
+ * Requires a non-word character right after the name so `<error>` doesn't
+ * false-match inside `<testsuite errors="1">`.
+ *
+ * @param {string} xml
+ * @param {string} tagName
+ * @returns {number}
+ */
+function countElement(xml, tagName) {
+  const matches = xml.match(new RegExp(`<${tagName}(?=[\\s/>])`, 'g'));
+  return matches ? matches.length : 0;
+}
+
+/**
  * Parses a JUnit-style Maestro report, accepting either a `<testsuites>` root
- * (summed across its `<testsuite>` children) or a bare `<testsuite>` root.
+ * or a bare `<testsuite>` root. Always sums the `<testsuite>` children's own
+ * counts rather than trusting a `<testsuites>` root's aggregate attributes,
+ * which can go stale or be absent entirely. A literal `<failure>`/`<error>`
+ * element (e.g. inside a `<testcase>`) counts as a failure/error even when no
+ * suite-level attribute reports it.
  *
  * @param {string} xml
  * @returns {TestCounts | null}
  */
 function parseCounts(xml) {
-  const suitesTag = xml.match(/<testsuites\b([^>]*)>/);
-  if (suitesTag && /\btests="/.test(suitesTag[1])) {
-    return extractCounts(suitesTag[1]);
-  }
-
   const suiteTags = [...xml.matchAll(/<testsuite\b([^>]*)>/g)];
   if (suiteTags.length === 0) return null;
 
-  return suiteTags.reduce(
+  const attrTotals = suiteTags.reduce(
     (totals, [, attrs]) => {
       const counts = extractCounts(attrs);
       return {
@@ -41,6 +55,12 @@ function parseCounts(xml) {
     },
     { tests: 0, failures: 0, errors: 0 },
   );
+
+  return {
+    tests: attrTotals.tests,
+    failures: Math.max(attrTotals.failures, countElement(xml, 'failure')),
+    errors: Math.max(attrTotals.errors, countElement(xml, 'error')),
+  };
 }
 
 /**
