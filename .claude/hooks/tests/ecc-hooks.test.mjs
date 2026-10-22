@@ -1,6 +1,7 @@
 // Adapted from affaan-m/ECC (MIT) @ 90606c8
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -195,23 +196,39 @@ describe('config-protection.cjs: spawned stdin fallback', () => {
   });
 
   it('blocks a relative, `./`-prefixed settings.json path (exit 2)', () => {
-    const originalCwd = process.cwd();
-    try {
-      process.chdir(repoRoot);
-      const result = runProtection('./.claude/./settings.json');
-      expect(result.status).toBe(2);
-    } finally {
-      process.chdir(originalCwd);
-    }
+    // spawnSync's own `cwd` option, not a global process.chdir(), so this
+    // never mutates this test worker's actual working directory.
+    const result = runProtection('./.claude/./settings.json', { cwd: repoRoot });
+    expect(result.status).toBe(2);
   });
 
   // Fix round 1, item 10: settings.local.json is blocked unconditionally,
-  // including first-time creation (no existing file required).
+  // including first-time creation. Spawned against a freshly-created,
+  // isolated temp directory (its own `.claude/hooks/config-protection.cjs`
+  // copy, so PROJECT_ROOT resolves there) rather than this repo's real
+  // `.claude/settings.local.json` — Claude Code itself sometimes creates
+  // that file for local overrides, so asserting it doesn't exist yet in the
+  // real repo would be a flaky precondition unrelated to what this test
+  // actually checks.
   it('blocks creating a brand-new .claude/settings.local.json (exit 2)', () => {
-    const localSettingsPath = path.join(repoRoot, '.claude', 'settings.local.json');
-    expect(fs.existsSync(localSettingsPath)).toBe(false);
-    const result = runProtection(localSettingsPath);
-    expect(result.status).toBe(2);
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'config-protection-test-'));
+    try {
+      const tempHooksDir = path.join(tempRoot, '.claude', 'hooks');
+      fs.mkdirSync(tempHooksDir, { recursive: true });
+      const tempScriptPath = path.join(tempHooksDir, 'config-protection.cjs');
+      fs.copyFileSync(configProtectionScriptPath, tempScriptPath);
+
+      const localSettingsPath = path.join(tempRoot, '.claude', 'settings.local.json');
+      expect(fs.existsSync(localSettingsPath)).toBe(false);
+
+      const result = spawnSync(process.execPath, [tempScriptPath], {
+        input: JSON.stringify({ tool_input: { file_path: localSettingsPath } }),
+        encoding: 'utf8',
+      });
+      expect(result.status).toBe(2);
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
   });
 
   // Fix round 1, item 11: the guard scripts themselves are protected, but

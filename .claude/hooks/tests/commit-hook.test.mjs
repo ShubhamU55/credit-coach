@@ -5,8 +5,11 @@
 // listed, each case named after the review's own wording so it is easy to
 // cross-reference against the fix-round report.
 import { describe, it, expect } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { execFileSync, spawnSync } from 'node:child_process';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const hooksDir = path.resolve(here, '..');
@@ -54,6 +57,15 @@ describe('commit-hook: commits detected by parsing, not substrings', () => {
       tool_input: { command: 'grep -m 1 "git commit" CLAUDE.md' },
     });
     const result = await evaluate(rawInput);
+    expect(result.exitCode).toBe(0);
+  });
+
+  // `JSON.parse('null')` succeeds (returns null) rather than throwing, so a
+  // bare `input.tool_input` (no `?.`) would throw OUTSIDE the JSON.parse
+  // try/catch and crash the hook process on a malformed/null payload.
+  it('does not throw and exits 0 for a JSON `null` payload', async () => {
+    const { evaluate } = await hook();
+    const result = await evaluate('null');
     expect(result.exitCode).toBe(0);
   });
 
@@ -310,20 +322,52 @@ describe('commit-hook: the canonical quoted heredoc with a good message', () => 
     const result = await validateCommitMessage(command);
     expect(result.issues).toEqual([]);
   });
+});
 
-  it("evaluate() exits 0 for GIT_AUTHOR_NAME=x git commit -m 'feat: ok' when nothing else is staged-dirty", async () => {
-    // This specific check depends only on message handling (deterministic),
-    // not on whatever happens to be staged in the real repo at test time —
-    // see the dedicated validateCommitMessage test above for that guarantee.
-    // This evaluate()-level test documents the same case the review listed,
-    // tolerating a non-zero exit only if it's for unrelated staged-file
-    // reasons (never for the message itself).
-    const { evaluate, validateCommitMessage } = await hook();
-    const command = "GIT_AUTHOR_NAME=x git commit -m 'feat: ok'";
-    const messageResult = await validateCommitMessage(command);
-    expect(messageResult.issues).toEqual([]);
-    const result = await evaluate(JSON.stringify({ tool_input: { command } }));
-    expect(typeof result.exitCode).toBe('number');
+// Advisor review round: the previous version of this test only asserted
+// `typeof result.exitCode === 'number'`, which passes for either 0 or 2 — it
+// never actually proved the exit-0 cases the coordinator listed exit 0.
+// Spawning the real hook against a freshly `git init`'d, empty temp
+// directory makes `getStagedFiles()` deterministically return nothing, so
+// these can assert the real exit code without depending on (or disturbing)
+// this worktree's actual staged state.
+describe('commit-hook: evaluate() really exits 0 for the required cases (isolated empty git repo)', () => {
+  const preBashCommitQualityScriptPath = path.join(hooksDir, 'pre-bash-commit-quality.cjs');
+
+  function runInEmptyGitRepo(command) {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'commit-hook-test-'));
+    try {
+      execFileSync('git', ['init', '--quiet'], { cwd: tempRoot });
+      return spawnSync(process.execPath, [preBashCommitQualityScriptPath], {
+        cwd: tempRoot,
+        input: JSON.stringify({ tool_input: { command } }),
+        encoding: 'utf8',
+      });
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  }
+
+  it("exits 0 for GIT_AUTHOR_NAME=x git commit -m 'feat: ok'", () => {
+    const result = runInEmptyGitRepo("GIT_AUTHOR_NAME=x git commit -m 'feat: ok'");
+    expect(result.status).toBe(0);
+  });
+
+  it('exits 0 for the canonical quoted heredoc with LF line endings', () => {
+    const command = `git commit -m "$(cat <<'EOF'\nfeat: add the thing\nEOF\n)"`;
+    const result = runInEmptyGitRepo(command);
+    expect(result.status).toBe(0);
+  });
+
+  it('exits 0 for the canonical quoted heredoc with CRLF line endings', () => {
+    const command = `git commit -m "$(cat <<'EOF'\r\nfeat: add the thing\r\nEOF\r\n)"`;
+    const result = runInEmptyGitRepo(command);
+    expect(result.status).toBe(0);
+  });
+
+  it('exits 0 for a non-git command that merely quotes "git commit"', () => {
+    const result = runInEmptyGitRepo('grep -m 1 "git commit" CLAUDE.md');
+    expect(result.status).toBe(0);
   });
 });
 

@@ -891,7 +891,7 @@ async function evaluate(rawInput) {
     return { output: rawInput, exitCode: 0 };
   }
 
-  const command = input.tool_input?.command || '';
+  const command = input?.tool_input?.command || '';
 
   // Detect every `git ... commit ...` invocation by real parsing (see
   // findCommitSegments), not a substring check — `grep -m 1 "git commit"
