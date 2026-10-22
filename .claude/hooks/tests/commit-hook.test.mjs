@@ -1049,6 +1049,8 @@ const MUST_NOT_BLOCK = [
     "time env GIT_AUTHOR_NAME=x command git commit -m 'feat: x'",
   ],
   ['-c then -C then commit', "git -c user.name=x -C . commit -m 'feat: x'"],
+  // Data-only commands are exempt from Tier 3 as well as Tier 2.
+  ['echo of separate git and commit words', 'echo git commit -m x'],
   // F4: a quoted, space-containing env operand is still a literal assignment
   ['env with a whole-word-quoted assignment operand', 'env "A=b c" git commit -m \'feat: ok\''],
 ];
