@@ -856,3 +856,397 @@ describe('commit-hook: fix round 3, pre-merge smoke test (false-positive guard)'
     expect(result.issues).toEqual([]);
   });
 });
+
+// Fix round 4: the command-word layer (is this segment a commit candidate at
+// all?) is now a closed 3-tier model instead of an open list of wrapper
+// spellings. See task-W1-4-fix4-findings.md. Tier 1 parses the recognized
+// shapes (git, and bash/sh/dash/zsh/ksh with a literal -c script); Tier 2
+// blocks an opaque string that mentions `git … commit` (anything except a
+// small closed list of data-only commands); Tier 3 blocks any remaining
+// segment where a `git` word (or a non-literal word) is followed by a
+// literal `commit` word.
+const HEREDOC = (message) => `git commit -m "$(cat <<'EOF'\n${message}\nEOF\n)"`;
+
+function isClean(result) {
+  return result === null || result.issues.length === 0;
+}
+
+function hasIssue(result, prefix) {
+  return result !== null && result.issues.some((issue) => issue.startsWith(prefix));
+}
+
+// Every legitimate command from the round-3 re-review's false-positive probes
+// (r3/fp-probe.cjs, r3/rv-probe.cjs, r3/rv-probe2.cjs). Excluded on purpose:
+// the parked cases (`<<-` tab stripping, an indented `)"` heredoc closer, an
+// unquoted `[id]` pathspec, which really is a shell glob), `git -C ~/repo`
+// (a leading `~` is an expansion; see the D1 block below), and an unquoted
+// heredoc delimiter inside `bash -c` (which really does expand).
+const MUST_NOT_BLOCK = [
+  // r3/fp-probe.cjs: real commands from this project's own sessions
+  [
+    "0d913bb's real message ($' and '\"'\"' quoting tricks)",
+    "git commit -m 'fix(security): close remaining commit-hook message-source bypasses\n\n" +
+      'Allowlist the flag walk instead of denylisting. ANSI-C\n' +
+      "$'\"'\"'...'\"'\"' quoting now blocks as commit-unknown-option.'",
+  ],
+  [
+    'ledger append heredoc whose body mentions git commit',
+    `cat >> "progress.md" <<'LEDGER_EOF'\nRuling: something about git commit detection and bypasses.\nLEDGER_EOF`,
+  ],
+  [
+    "this project's ledger append with a git commit -m line in the body",
+    "cat >> .superpowers/sdd/progress.md <<'LEDGER_EOF'\n## W1-4\n- ran: git commit -m 'fix: x'\n" +
+      '- sudo eval bash -c commit, GIT_CONFIG_COUNT=1\nLEDGER_EOF',
+  ],
+  [
+    '8d9f8ae-style add && multi-line single-quoted commit',
+    'git add apps/admin/package.json .claude/hooks/tests/eslint-rules.test.mjs && ' +
+      "git commit -m 'fix(ci): generate Next route types before admin typecheck\n\n" +
+      '.next/types is gitignored, so a fresh checkout fails tsc --noEmit\n' +
+      "until next typegen has run.'",
+  ],
+  [
+    'add && status && commit chain',
+    'git add .claude/hooks/pre-bash-commit-quality.cjs && git status --porcelain && ' +
+      "git commit -m 'fix(security): close remaining commit-hook message-source bypasses'",
+  ],
+  [
+    'a bash script invocation (not a commit)',
+    'bash "C:/Users/55/.claude/plugins/cache/superpowers/scripts/review-package" "docs/plan.md" 26af33d d6d2b29',
+  ],
+  [
+    'a vitest run naming the commit-hook test file',
+    'npx vitest run .claude/hooks/tests/commit-hook.test.mjs',
+  ],
+  [
+    'a simple good commit',
+    "git commit -m 'fix(security): allowlist commit literalness, drop wrapper denylist'",
+  ],
+  // r3/rv-probe.cjs false-positive hunt
+  ["the '\\'' apostrophe idiom", "git commit -m 'fix: don'\\''t crash'"],
+  ['an escaped \\$ in double quotes', 'git commit -m "fix: escape \\$HOME in docs"'],
+  ['an escaped backtick in double quotes', 'git commit -m "docs: mention \\`pnpm verify\\` step"'],
+  ['escaped \\" and \\\\ in double quotes', 'git commit -m "fix: quote \\"x\\" and a \\\\ path"'],
+  ['a bare $ followed by a space in double quotes', 'git commit -m "fix: costs $ 5"'],
+  ['a quoted [id] pathspec', "git commit -m 'feat: x' 'apps/admin/app/[id]/page.tsx'"],
+  ['a mid-word ~ pathspec', "git commit -m 'feat: x' docs/file~1.md"],
+  ['a glob pathspec after --', "git commit -m 'feat: x' -- src/*.ts"],
+  ['bash -euo pipefail -c', `bash -euo pipefail -c 'git commit -m "feat: x"'`],
+  [
+    'timeout running vitest on commit-hook',
+    'timeout 120 npx vitest run .claude/hooks/tests/commit-hook.test.mjs',
+  ],
+  ['nohup with no commit', 'nohup pnpm dev > /dev/null 2>&1 &'],
+  ['git log | xargs (no commit word)', 'git log --oneline -3 | xargs -n1 echo'],
+  [
+    'git log --grep=commit | xargs git show',
+    'git log --grep=commit --format=%H | xargs -n1 git show --stat',
+  ],
+  ['a bash script file with commit in its name', 'bash scripts/check-commit-msg.sh'],
+  [
+    'a heredoc body full of shell metacharacters',
+    HEREDOC(
+      'feat: x [a] {b,c} ~d *e ?f\n\nBody with $(not run) and `ticks`, sudo eval bash -c commit.',
+    ),
+  ],
+  [
+    'a heredoc body that mentions GIT_CONFIG_COUNT=',
+    HEREDOC('docs: explain hook\n\nBlocks GIT_CONFIG_COUNT=1 prefixes.'),
+  ],
+  [
+    'a single-quoted subject that mentions GIT_CONFIG_KEY_0=',
+    "git commit -m 'docs: note GIT_CONFIG_KEY_0= is blocked'",
+  ],
+  ['a CRLF heredoc', `git commit -m "$(cat <<'EOF'\r\nfeat: x\r\n\r\nbody\r\nEOF\r\n)"`],
+  ['?[]{}*~ inside double quotes', 'git commit -m "fix: why?" -m "body [b] {c} *d* ~e"'],
+  ['a quoted Windows -C path', 'git -C "C:\\Users\\55\\cc-1c-w1-4" commit -m \'feat: x\''],
+  [
+    'two quoted assignment prefixes',
+    'GIT_AUTHOR_NAME="Shubham U" GIT_AUTHOR_EMAIL="s@x.io" git commit -m \'feat: x\'',
+  ],
+  ['-c with quoted values', 'git -c user.name="A B" -c user.email=a@b.c commit -m \'feat: x\''],
+  ['-c commit.gpgsign=false', "git -c commit.gpgsign=false commit -m 'feat: x'"],
+  ['a mid-word ~ in a -c value', "git -c core.excludesFile=~/.gitignore commit -m 'feat: x'"],
+  [
+    'bash -c with a double-quoted chain',
+    `bash -c "cd /c/x && git add -A && git commit -m 'feat: x'"`,
+  ],
+  ['sh -c with a ? in the subject', `sh -c 'git commit -m "fix: why?"'`],
+  ['bash -lc', `bash -lc 'git commit -m "feat: x"'`],
+  ['a subshell cd && commit', "(cd /repo && git commit -m 'feat: x')"],
+  [
+    'if ! git diff; then commit',
+    "if ! git diff --cached --quiet; then git commit -m 'feat: x'; fi",
+  ],
+  ['commit && push', "git commit -m 'feat: x' && git push -u origin feat/x"],
+  ['commit | tail', "git commit -m 'feat: x' 2>&1 | tail -20"],
+  [
+    '--author= and --date= with quoted values',
+    'git commit --author="Shubham <s@x.io>" --date="2026-10-22 10:00" -m \'feat: x\'',
+  ],
+  ['-S -s', "git commit -S -s -m 'feat: x'"],
+  ['-qam', "git commit -qam 'feat: x'"],
+  ['an attached -m with ?', "git commit -m'feat: x?'"],
+  ['--message= with [a]?', 'git commit --message="fix: [a]?"'],
+  ['an attached -am" with ?', 'git commit -am"fix: why?"'],
+  ['--trailer with [#12]?', 'git commit -m \'feat: x\' --trailer "Refs: [#12]?"'],
+  [
+    'gh pr create with a heredoc body that mentions git commit',
+    `gh pr create --title 'feat: x' --body "$(cat <<'EOF'\n## Summary\n- git commit -m 'bad'\n- sudo eval bash commit\nEOF\n)"`,
+  ],
+  ['cat > notes with a heredoc body', "cat > notes.md <<'EOF'\nsudo git commit -m bad\nEOF"],
+  ['echo a git commit line into a file', `echo 'git commit -m "x"' > notes.txt`],
+  ['a git status chain', 'git status && git log --oneline -3 && git diff --stat'],
+  [
+    'a for loop of adds then a commit',
+    'for f in a b; do git add "$f"; done && git commit -m \'feat: x\'',
+  ],
+  ['line continuations', "git commit \\\n  -m 'feat: x' \\\n  -m 'body'"],
+  ['a trailing comment', "git commit -m 'feat: x' # done"],
+  ['export then commit', "export FOO=bar; git commit -m 'feat: x'"],
+  [
+    'export GIT_CONFIG_NOSYSTEM then commit',
+    "export GIT_CONFIG_NOSYSTEM=1; git commit -m 'feat: x'",
+  ],
+  ['HASH=$(...) && commit', "HASH=$(git rev-parse HEAD) && git commit -m 'feat: x'"],
+  ['feat!:', "git commit -m 'feat!: drop x'"],
+  ['100%', 'git commit -m "fix: handle 100% case"'],
+  ['an apostrophe in double quotes', 'git commit -m "fix: don\'t crash"'],
+  [
+    'escaped quotes in a double-quoted body',
+    'git commit -m "feat: x" -m "Body mentions \\"quoted\\" text."',
+  ],
+  ['heredoc && push', `${HEREDOC('feat: x')} && git push`],
+  ['--cleanup=strip', "git commit --cleanup=strip -m 'feat: x'"],
+  ['env with a quoted-value assignment', "env GIT_AUTHOR_NAME='A B' git commit -m 'feat: x'"],
+  ['bash -c echo && commit', "bash -c 'echo hello' && git commit -m 'feat: x'"],
+  ['a brace group', "{ git add .; git commit -m 'feat: x'; }"],
+  ['a case statement', "case x in *) git commit -m 'feat: x';; esac"],
+  [
+    'a multi-line single-quoted message with ? [ ] ( )',
+    "git commit -m 'fix: handle [edge] case (round 3)?\n\nBody: a {b} *c* ~d.'",
+  ],
+  ['pnpm test filtered to commit-hook', 'pnpm --filter @credit-coach/hooks test -- commit-hook'],
+  ['npx commitlint', 'npx commitlint --from HEAD~1'],
+  ['git -C . log', 'git -C . log -1 --format=%B'],
+  // r3/rv-probe2.cjs
+  [
+    'a heredoc with a double-quoted "EOF" delimiter',
+    `git commit -m "$(cat <<"EOF"\nfeat: x\nEOF\n)"`,
+  ],
+  ['a heredoc with a space after <<', `git commit -m "$(cat << 'EOF'\nfeat: x\nEOF\n)"`],
+  ['a heredoc then -- path', `${HEREDOC('feat: x')} -- src/a.ts`],
+  [
+    'a multi-paragraph heredoc with a Refs trailer',
+    HEREDOC('feat(engine): add x\n\nWhy: y.\n\nRefs: #12'),
+  ],
+  [
+    'cd && add && heredoc commit',
+    `cd /c/Users/55/cc-1c-w1-4 && git add -A && ${HEREDOC('feat: x')}`,
+  ],
+  [
+    'time env VAR=x command git commit',
+    "time env GIT_AUTHOR_NAME=x command git commit -m 'feat: x'",
+  ],
+  ['-c then -C then commit', "git -c user.name=x -C . commit -m 'feat: x'"],
+  // F4: a quoted, space-containing env operand is still a literal assignment
+  ['env with a whole-word-quoted assignment operand', 'env "A=b c" git commit -m \'feat: ok\''],
+];
+
+describe('commit-hook: fix round 4 - legitimate literal commands must not block', () => {
+  it.each(MUST_NOT_BLOCK)('does not block: %s', async (_label, command) => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage(command);
+    expect(isClean(result), JSON.stringify(result?.issues)).toBe(true);
+  });
+
+  it('still blocks the stricter counterparts of the literalness fixes', async () => {
+    const { validateCommitMessage } = await hook();
+    const unescapedVariable = await validateCommitMessage(
+      'git commit -m "fix: escape $HOME in docs"',
+    );
+    const leadingTilde = await validateCommitMessage("git commit -m 'feat: x' ~/notes.md");
+    const unquotedTail = await validateCommitMessage("git commit -m 'fix: don'\\''t'crash");
+    expect(hasIssue(unescapedVariable, 'commit-message-unreadable')).toBe(true);
+    expect(hasIssue(leadingTilde, 'commit-message-unreadable')).toBe(true);
+    expect(hasIssue(unquotedTail, 'commit-message-unreadable')).toBe(true);
+  });
+});
+
+describe('commit-hook: fix round 4, Tier 1 - recognized shapes are parsed', () => {
+  // F1: -o/-O always takes the next word, wherever it sits in the cluster,
+  // so -c's script argument is found (and validated) instead of misread.
+  it.each([
+    ['bash -co pipefail', `bash -co pipefail 'git commit -m "bad subject"'`],
+    ['bash -oc pipefail', `bash -oc pipefail 'git commit -m "bad subject"'`],
+    ['bash -ceo pipefail', `bash -ceo pipefail 'git commit -m "bad subject"'`],
+    ['bash -cO extglob', `bash -cO extglob 'git commit -m "bad subject"'`],
+    ['bash -o pipefail -c', `bash -o pipefail -c 'git commit -m "bad subject"'`],
+    ['bash +o posix -c', `bash +o posix -c 'git commit -m "bad subject"'`],
+    ['bash -xc', `bash -xc 'git commit -m "bad subject"'`],
+    ['a path-qualified zsh -c', `/usr/bin/zsh -c 'git commit -m "bad subject"'`],
+    ['a quoted git command word', `'git' commit -m "bad subject"`],
+  ])('parses and validates the commit inside: %s', async (_label, command) => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage(command);
+    expect(hasIssue(result, 'commit-format'), JSON.stringify(result?.issues)).toBe(true);
+  });
+
+  // A correctly parsed non-commit git invocation stops here: Tier 2/3's
+  // text checks never override it.
+  it.each([
+    ['git log --grep commit', 'git log --grep commit'],
+    ['git log --grep="git commit"', 'git log --grep="git commit" --oneline'],
+    ['git show of a path named commit', 'git show --stat HEAD -- commit'],
+  ])('is not a candidate: %s', async (_label, command) => {
+    const { validateCommitMessage } = await hook();
+    expect(await validateCommitMessage(command)).toBeNull();
+  });
+
+  it.each([
+    ['brace expansion', "git co{mmit,} -m 'feat: ok'"],
+    ['ANSI-C escapes', "git $'\\x63ommit' -m 'feat: ok'"],
+  ])(
+    'blocks a git subcommand word that is not literal (%s could make it commit)',
+    async (_label, command) => {
+      const { validateCommitMessage } = await hook();
+      const result = await validateCommitMessage(command);
+      expect(hasIssue(result, 'commit-message-unreadable')).toBe(true);
+    },
+  );
+
+  // F4: a quoted, space-containing assignment operand of env is dequoted and
+  // walked past like any other literal assignment.
+  it('walks past a quoted env assignment operand to validate the commit', async () => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage(
+      `env "GIT_AUTHOR_NAME=A B" git commit -m 'bad subject'`,
+    );
+    expect(hasIssue(result, 'commit-format')).toBe(true);
+  });
+});
+
+describe('commit-hook: fix round 4, Tier 2 - an opaque string mentioning git commit blocks', () => {
+  it.each([
+    ['eval', `eval 'git commit -m "feat: ok"'`],
+    ['env -S with an attached quoted payload', `env -S'git commit -m "feat: ok"'`],
+    ['env with a quoted -S', `env '-S' 'git commit -m "feat: ok"'`],
+    ['env -vS cluster', `env -vS 'git commit -m "feat: ok"'`],
+    ['env --split-string=', `env --split-string='git commit -m "feat: ok"'`],
+    ['env -u X -S', `env -u FOO -S 'git commit -m "feat: ok"'`],
+    ['cmd //c', 'cmd //c "git commit -m feat"'],
+    ['powershell -Command', `powershell -Command "git commit -m 'feat: ok'"`],
+    ['bash -s with a herestring', `bash -s <<< 'git commit -m "feat: ok"'`],
+    ['a dynamic bash -c script', `bash -c "git commit -m \\"$MSG\\""`],
+    ['nice bash -c', `nice bash -c 'git commit -m "feat: ok"'`],
+    ['sudo sh -c', `sudo sh -c 'git commit -m "feat: ok"'`],
+    ['su -c', `su -c 'git commit -m "feat: ok"' user`],
+    ['python -c', `python -c "import os; os.system('git commit -m x')"`],
+    ['a piped xargs sh -c', `printf 'git commit -m bad' | xargs -I{} sh -c '{}'`],
+    ['a heredoc fed to python', `python - <<'EOF'\nimport os\nos.system("git commit -m x")\nEOF`],
+    ['a command substitution as the command word', '$(echo git commit) -m "feat: ok"'],
+    // A data-only command loses its exemption once its output is fed to a
+    // process substitution, and a git invocation upstream still counts when
+    // one of its own words carries the text (git log --format prints it).
+    ['tee into a >(bash) process substitution', `echo 'git commit -m "feat: ok"' | tee >(bash)`],
+    ['echo redirected into >(sh)', `echo 'git commit -m "feat: ok"' > >(sh)`],
+    ['git log --format piped to sh', "git log -1 --format='git commit -m bad' | sh"],
+    [
+      'git log --format piped to xargs sh -c',
+      "git log -1 --format='git commit -m bad' | xargs -I{} sh -c '{}'",
+    ],
+    ['gh alias set --shell', "gh alias set --shell ci 'git commit -m bad' && gh ci"],
+  ])('blocks: %s', async (_label, command) => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage(command);
+    expect(hasIssue(result, 'commit-message-unreadable'), JSON.stringify(result?.issues)).toBe(
+      true,
+    );
+  });
+});
+
+describe('commit-hook: fix round 4, Tier 3 - an unrecognized wrapper in front of git commit blocks', () => {
+  // F2/F3/F7: no list of wrapper spellings; any word naming git (by
+  // basename, dequoted) followed later by a literal `commit` word blocks.
+  it.each([
+    ['setsid', "setsid git commit -m 'feat: ok'"],
+    ['stdbuf', "stdbuf -oL git commit -m 'feat: ok'"],
+    ['coproc', "coproc git commit -m 'feat: ok'"],
+    ['find -exec', "find . -maxdepth 0 -exec git commit -m 'feat: ok' \\;"],
+    ['winpty', "winpty git commit -m 'feat: ok'"],
+    ['pnpm exec', "pnpm exec git commit -m 'feat: ok'"],
+    ['sudo', "sudo git commit -m 'feat: ok'"],
+    ['exec -a', "exec -a x git commit -m 'feat: ok'"],
+    ['a path-qualified env', "/usr/bin/env git commit -m 'feat: ok'"],
+    ['a path-qualified time', "/usr/bin/time git commit -m 'feat: ok'"],
+    ['a single-quoted env', "'env' git commit -m 'feat: ok'"],
+    ['a double-quoted command', '"command" git commit -m \'feat: ok\''],
+    ['a backslash-escaped env', "\\env git commit -m 'feat: ok'"],
+    ['a path-qualified git.exe behind a wrapper', "nohup /c/Git/bin/git.exe commit -m 'feat: ok'"],
+    ['a dynamic command word', "$G commit -m 'feat: ok'"],
+    ['an ANSI-C escaped command word', "$'\\x67it' commit -m 'feat: ok'"],
+    ['a locale-quoted command word', `$"g"it commit -m 'feat: ok'`],
+  ])('blocks: %s', async (_label, command) => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage(command);
+    expect(hasIssue(result, 'commit-message-unreadable'), JSON.stringify(result?.issues)).toBe(
+      true,
+    );
+  });
+});
+
+describe('commit-hook: fix round 4 - GIT_CONFIG_* is checked on assignment words only', () => {
+  it.each([
+    ['GIT_CONFIG_GLOBAL', "GIT_CONFIG_GLOBAL=/tmp/evil git commit -m 'feat: ok'"],
+    ['GIT_CONFIG_SYSTEM', "GIT_CONFIG_SYSTEM=/tmp/evil git commit -m 'feat: ok'"],
+    [
+      'GIT_CONFIG_PARAMETERS via env',
+      `env GIT_CONFIG_PARAMETERS="'trailer.co.key'='Co-authored-by'" git commit -m 'feat: ok'`,
+    ],
+    [
+      'lowercase git_config_* (Windows env is case-insensitive)',
+      "git_config_count=1 git_config_key_0=trailer.co.key git_config_value_0=x git commit -m 'feat: ok'",
+    ],
+    ['a quoted env operand', `env "GIT_CONFIG_COUNT=1" git commit -m 'feat: ok'`],
+    [
+      'an assignment-only segment before the commit',
+      "GIT_CONFIG_COUNT=1; git commit -m 'feat: ok'",
+    ],
+    [
+      'a bare export of the name',
+      "GIT_CONFIG_KEY_0=trailer.co.key; export GIT_CONFIG_KEY_0; git commit -m 'feat: ok'",
+    ],
+    ['declare -x', "declare -x GIT_CONFIG_COUNT=1; git commit -m 'feat: ok'"],
+  ])('blocks: %s', async (_label, command) => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage(command);
+    expect(hasIssue(result, 'commit-unsafe-config'), JSON.stringify(result?.issues)).toBe(true);
+  });
+
+  it('does not block a GIT_CONFIG_* assignment when no commit is present', async () => {
+    const { validateCommitMessage } = await hook();
+    expect(await validateCommitMessage('GIT_CONFIG_COUNT=1 git log -1')).toBeNull();
+  });
+});
+
+describe('commit-hook: fix round 4, D1 - every word before -- must be literal', () => {
+  it.each([
+    ['--author $X', "git commit --author $X -m 'feat: ok'"],
+    ['--author {x,--amend}', "git commit --author {x,--amend} -m 'feat: ok'"],
+    ['--date $(...)', "git commit --date $(echo now --amend) -m 'feat: ok'"],
+    ['--date= with a substitution', `git commit --date="$(date)" -m 'feat: ok'`],
+    ['-S$X', "git commit -S$X -m 'feat: ok'"],
+    ['--cleanup=$X', "git commit --cleanup=$X -m 'feat: ok'"],
+    ['git -C $(...)', "git -C $(echo . --amend) commit -m 'feat: ok'"],
+    ['git --git-dir $X', "git --git-dir $X commit -m 'feat: ok'"],
+    ['git --work-tree {a,b}', "git --work-tree {a,b} commit -m 'feat: ok'"],
+    // A leading ~ is a tilde expansion, so -C ~/repo is not literal either.
+    ['git -C ~/repo', "git -C ~/repo commit -m 'feat: ok'"],
+  ])('blocks a non-literal flag value: %s', async (_label, command) => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage(command);
+    expect(hasIssue(result, 'commit-message-unreadable'), JSON.stringify(result?.issues)).toBe(
+      true,
+    );
+  });
+});

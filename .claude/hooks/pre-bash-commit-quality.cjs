@@ -182,187 +182,181 @@ function findFileIssues(filePath) {
   return issues;
 }
 
-// Fix round 1 (controller-reviewed bypasses): commit detection and message
-// reading are now parse-based, not substring-based. See
-// docs/security/checklist.md and the "Fix round 1" section of the W1-4
-// report for the exact bypasses this replaces and why.
+// Commit detection is parse-based: the vendored shell scanner splits the
+// command into simple commands (on `&&`, `||`, `;`, `|`, newlines and
+// subshells), and each one is classified by a closed 3-tier model:
 //
-// Fix round 2 (N2, a regression vs. the original 702cb8f substring check):
-// a `git ... commit ...` invocation wrapped by `env`/`command`/`time`/`!`/a
-// compound-command keyword, embedded in a `bash -c '…'`/`sh -c '…'`
-// argument, or embedded in a `$( … )` command substitution anywhere in the
-// command must still be found — not just a bare leading `git`.
+//   Tier 1, a recognized shape, parsed and validated. `git` (after literal
+//     `NAME=value` prefixes and the transparent `env`/`command`/`time`/
+//     `builtin`/`!`/compound-keyword prefixes), or bash/sh/dash/zsh/ksh
+//     with a literal `-c` script, which is re-scanned as its own command
+//     text. A correctly parsed git invocation whose subcommand is not
+//     `commit` stops here: it is never a candidate.
+//   Tier 2, an opaque string. Any other command (except the closed
+//     DATA_ONLY_COMMANDS list) whose own text, or the stdin it is fed
+//     (heredoc, here-string, or the pipeline feeding it), matches
+//     `git … commit` is blocked as unreadable.
+//   Tier 3, the fallback net. Any other segment in which a `git` word (or a
+//     non-literal word that could become one) is followed by a literal
+//     `commit` word is blocked as unreadable.
 //
-// Principle: once a `git ... commit` invocation is detected anywhere in the
-// command (including after shell chaining, global git options, an
-// environment-variable prefix, or any of the wrapping forms above), either
-// every part of its message is read literally and validated, or the commit
-// is BLOCKED (exit 2) with a hint. Nothing is ever passed through unread.
+// Once a commit segment is found, every word in it before `--` must be
+// literal (isLiteralWord) and its message must be read literally, or the
+// commit is BLOCKED (exit 2) with a hint. Nothing is passed through unread.
 const { createBudget, scanShell } = require('./lib/shell-scan.cjs');
 
 function basename(value) {
   return value.replace(/\\/g, '/').split('/').pop();
 }
 
-function isGitExecutable(value) {
-  const name = basename(value).toLowerCase();
-  return name === 'git' || name === 'git.exe';
+// The name all three tiers compare: dequoted, path-stripped, lower-cased
+// (Windows resolves command names case-insensitively), `.exe` removed.
+function commandName(value) {
+  return basename(value).toLowerCase().replace(/\.exe$/, '');
 }
 
-// A leading `KEY=value` shell-assignment word (e.g. `GIT_AUTHOR_NAME=x`,
-// `MSG=foo`) before the executable. Only literal prefix assignments are
-// skipped here — this hook does not need to track exported environment
-// state the way block-no-verify.cjs's hook-bypass scanner does; it only
-// needs to walk past them to find the git invocation itself.
+function isGitExecutable(value) {
+  return commandName(value) === 'git';
+}
+
+// A `NAME=value` assignment word, matched on the DEQUOTED text so a quoted
+// value (`GIT_AUTHOR_NAME="A B"`) or a whole-word-quoted `env` operand
+// (`env "A=b c"`) is still recognized as the literal assignment it is.
 const SHELL_ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
 
-// Fix round 2 (N2): a command whose real subcommand is `git ... commit ...`
-// but is itself prefixed by a wrapper word — `env`, `command`, `time`, a
-// bare `!`, or a leading compound-command keyword word (`if`, plus `then`/
-// `elif`/`else`/`while`/`until`/`do`, which is how the vendored scanner
-// represents the START of an `if`/`while`/`for` BODY once `;`/newline has
-// split it from its own `if`/`while`/`for` word — `if` itself is needed too,
-// since an `if`'s own CONDITION command runs directly as `if`'s argument,
-// e.g. `if git commit -m "x"; then :; fi`) — must still be found. These are
-// skipped one word at a time, repeatedly interleaved with `KEY=value`
-// assignment prefixes, until a non-wrapper word is reached. `builtin` is
-// included for the same reason even though it is not in the findings'
-// required test list: it is the same class of wrapper as `command`.
-const WRAPPER_SKIP_WORDS = new Set([
+function skipLeadingAssignments(words, start) {
+  let index = start;
+  const assignments = [];
+  while (index < words.length && SHELL_ASSIGNMENT.test(words[index].value)) {
+    assignments.push(words[index]);
+    index++;
+  }
+  return { index, assignments };
+}
+
+// Tier 1's transparent prefixes: an unquoted word here runs the rest of the
+// segment directly. `then`/`do`/... are how the scanner represents the start
+// of a compound command's body once `;`/newline has split it off.
+const TRANSPARENT_PREFIX_WORDS = new Set([
   'env', 'command', 'time', 'builtin', '!',
   'if', 'then', 'elif', 'else', 'while', 'until', 'do'
 ]);
 
-// Advisor review round (fix round 2, second pass): only `env`/`command`/
-// `time` take their OWN options (`env -i`, `command -p`, `time -p`) — a
-// bare compound keyword or `!` never does. Without skipping these, the
-// wrapper word was found but the option word right after it (not `git`)
-// became "the next word", so the git executable was never reached.
-const WRAPPERS_WITH_OWN_OPTIONS = new Set(['env', 'command', 'time']);
-// `env -u NAME`/`--unset NAME` and `env -C dir`/`--chdir dir` consume a
-// SEPARATE following word as their operand — skipping only the option word
-// itself would misread that operand as the next flag (or as `git`).
+const ENV_BOOLEAN_OPTION = /^-[i0v]+$/;
+const ENV_LONG_BOOLEAN_OPTIONS = new Set(['--ignore-environment', '--null', '--debug']);
 const ENV_OPTIONS_WITH_SEPARATE_VALUE = new Set(['-u', '--unset', '-C', '--chdir']);
+const ENV_OPTION_WITH_ATTACHED_VALUE = /^(?:-[uC].|--unset=|--chdir=)/;
+const COMMAND_OPTION = /^-[pvV]+$/;
 
-// Fix round 3, Rule 2: a QUOTED assignment VALUE (`GIT_AUTHOR_NAME="A B"`)
-// is still perfectly literal and readable — `word.quoted` only means SOME
-// part of the word was inside quotes, not that the word is unsafe. The
-// PREVIOUS `!words[i].quoted` guard here was a real regression vs. the
-// original 702cb8f substring check: it stopped unwrapping entirely at the
-// first quoted assignment, so `GIT_AUTHOR_NAME="A B" git commit ...` was
-// never even recognized as a commit at all. Only a DYNAMIC assignment value
-// (`X=$(...) git commit ...`) is unsafe — same literalness rule as
-// everywhere else — and is reported via `hasDynamicAssignment` so the
-// caller can block the segment instead of silently reading past it.
-function skipLeadingAssignments(words, start) {
-  let i = start;
-  let hasDynamicAssignment = false;
-  while (i < words.length && SHELL_ASSIGNMENT.test(words[i].raw)) {
-    if (words[i].dynamic) hasDynamicAssignment = true;
-    i++;
+// How many words one option of a transparent prefix spans (1, or 2 when it
+// takes a separate value), or 0 when it is not recognized. Anything not
+// recognized, including every `env -S`/`--split-string` spelling, makes the
+// prefix opaque, so the segment falls through to Tier 2/3 instead.
+function prefixOptionWidth(prefix, value) {
+  if (prefix === 'command') return COMMAND_OPTION.test(value) ? 1 : 0;
+  if (prefix === 'time') return value === '-p' ? 1 : 0;
+  if (value === '-' || ENV_BOOLEAN_OPTION.test(value) || ENV_LONG_BOOLEAN_OPTIONS.has(value)) return 1;
+  if (ENV_OPTIONS_WITH_SEPARATE_VALUE.has(value)) return 2;
+  return ENV_OPTION_WITH_ATTACHED_VALUE.test(value) ? 1 : 0;
+}
+
+// Returns the index after `prefix`'s own options, or -1 when they are not
+// fully recognized (an unknown option, or a quoted/non-literal option word).
+function skipPrefixOptions(prefix, words, start) {
+  if (prefix !== 'env' && prefix !== 'command' && prefix !== 'time') return start;
+  let index = start;
+  while (index < words.length && words[index].value.startsWith('-')) {
+    const word = words[index];
+    if (word.quoted || !isLiteralWord(word)) return -1;
+    if (word.value === '--') return index + 1;
+    const width = prefixOptionWidth(prefix, word.value);
+    if (width === 0) return -1;
+    if (width === 2 && !(words[index + 1] && isLiteralWord(words[index + 1]))) return -1;
+    index += width;
   }
-  return { index: i, hasDynamicAssignment };
+  return index;
 }
 
-// Fix round 3, Rule 5: `env -S`/`--split-string` re-tokenizes a literal
-// payload into argv words FOR the wrapped command — fundamentally different
-// from plain `env`, which just runs its next argument directly. Treating it
-// as transparently unwrappable (like plain `env`) would misread its payload
-// as if it were already the wrapped command's own arguments. `unwrapCommandStart`
-// stops and reports `opaque: true` instead, so the caller applies Rule 5's
-// "block when the text mentions commit" rule rather than guessing.
-function isEnvSplitStringFlag(value) {
-  return value === '-S' || value === '--split-string'
-    || value.startsWith('--split-string=') || value.startsWith('-S');
-}
-
+// Walks literal assignment prefixes and transparent prefixes (with their
+// own options) to the real command word. `opaque` means a prefix had an
+// option this walk does not model; `assignments` are every assignment word
+// walked past (bare prefixes and `env` operands alike).
 function unwrapCommandStart(words) {
-  let i = 0;
-  let hasDynamicAssignment = false;
+  let index = 0;
+  const assignments = [];
   for (;;) {
-    const skipped = skipLeadingAssignments(words, i);
-    hasDynamicAssignment = hasDynamicAssignment || skipped.hasDynamicAssignment;
-    const next = skipped.index;
-    const word = words[next];
-    if (!word || word.quoted || !WRAPPER_SKIP_WORDS.has(word.value)) {
-      return { start: next, opaque: false, hasDynamicAssignment };
+    const skipped = skipLeadingAssignments(words, index);
+    assignments.push(...skipped.assignments);
+    const word = words[skipped.index];
+    if (!word || word.quoted || !TRANSPARENT_PREFIX_WORDS.has(word.value)) {
+      return { start: skipped.index, opaque: false, assignments };
     }
-    const wrapperWord = word.value;
-    i = next + 1;
-    if (!WRAPPERS_WITH_OWN_OPTIONS.has(wrapperWord)) continue;
-    while (i < words.length && !words[i].quoted && words[i].value.startsWith('-') && words[i].value !== '--') {
-      if (wrapperWord === 'env' && isEnvSplitStringFlag(words[i].value)) {
-        return { start: next, opaque: true, hasDynamicAssignment };
-      }
-      if (wrapperWord === 'env' && ENV_OPTIONS_WITH_SEPARATE_VALUE.has(words[i].value)) { i += 2; continue; }
-      i++;
-    }
-    if (i < words.length && !words[i].quoted && words[i].value === '--') i++;
+    const next = skipPrefixOptions(word.value, words, skipped.index + 1);
+    if (next === -1) return { start: skipped.index, opaque: true, assignments };
+    index = next;
   }
 }
 
-// Fix round 3, Rule 2: git reads GIT_CONFIG_COUNT/GIT_CONFIG_KEY_n/
-// GIT_CONFIG_VALUE_n/GIT_CONFIG_PARAMETERS identically whether set as a
-// bare leading assignment, via `env NAME=value cmd`, or via an earlier
-// `export` elsewhere in the same overall command text — a per-segment,
-// per-assignment-word check can't see all three shapes without real
-// variable-flow tracking. A single belt-and-braces scan of the WHOLE raw
-// command text is the same "defense in depth" pattern already used for
-// attribution (hasAttributionInRawText): if this pattern appears ANYWHERE
-// and a commit is also found anywhere, block every segment outright — there
-// is no legitimate reason an automated commit needs any of these.
-const GIT_CONFIG_ENV_PATTERN = /\bGIT_CONFIG_(?:COUNT|KEY_[0-9]+|VALUE_[0-9]+|PARAMETERS)\s*=/;
+// git reads these environment variables the way it reads `-c` (or as a
+// whole extra config file), so setting one alongside a commit is config
+// injection. Checked on assignment-shaped words only, never on raw text, so
+// a message or heredoc body that merely mentions one is not affected.
+// Case-insensitive: Windows environment variable names are.
+const GIT_CONFIG_ENV_NAME = /^GIT_CONFIG_(?:COUNT|PARAMETERS|GLOBAL|SYSTEM|(?:KEY|VALUE)_\d+)$/i;
+const EXPORTING_BUILTINS = new Set(['export', 'declare', 'typeset', 'readonly', 'local']);
+const VARIABLE_NAME_PREFIX = /^([A-Za-z_][A-Za-z0-9_]*)(?:=|$)/;
 
-function hasGitConfigEnvInjection(command) {
-  return GIT_CONFIG_ENV_PATTERN.test(command);
+function gitConfigEnvName(word) {
+  const match = VARIABLE_NAME_PREFIX.exec(word.value);
+  return match && GIT_CONFIG_ENV_NAME.test(match[1]) ? match[1] : null;
 }
 
-// git global options that take a separate value word (space-separated:
-// `-c key=value`, `-C <dir>`, …). Matches the set block-no-verify.cjs scans
-// past for the same reason: so the real subcommand word is found correctly.
+// Records every GIT_CONFIG_* name set by this command's bare assignment
+// prefixes, its `env` operands, or (for export/declare/typeset/readonly/
+// local) its operands. Recorded across the whole command, since an
+// assignment in one segment reaches a commit in a later one.
+function recordGitConfigEnv(words, unwrap, context) {
+  const candidates = [...unwrap.assignments];
+  const head = words[unwrap.start];
+  if (head && !head.quoted && EXPORTING_BUILTINS.has(head.value)) {
+    candidates.push(...words.slice(unwrap.start + 1));
+  }
+  for (const word of candidates) {
+    const name = gitConfigEnvName(word);
+    if (name) context.gitConfigEnv.push(name);
+  }
+}
+
+// git global options that take a separate value word (`-c key=value`,
+// `-C <dir>`, …), so the real subcommand word is found correctly.
 const GIT_GLOBAL_OPTIONS_WITH_SEPARATE_VALUE = new Set([
   '-c', '-C', '--config-env', '--work-tree', '--git-dir', '--namespace', '--super-prefix'
 ]);
 
-// Fix round 3, Rule 3: generalizes N3's `trailer.*.key`-only check. A `-c`/
-// `--config-env` setting is unsafe when its KEY matches a sensitive config
+// A `-c`/`--config-env` setting is unsafe when its KEY is in a sensitive
 // namespace (trailers can be aliased into attribution text; `include`/
-// `includeIf` can inject an entire extra config file; `alias` can redefine
-// what a git subcommand even means) — no legitimate automated commit needs
-// to set any of these — OR when the key or value half is not literal
-// (word.dynamic, or an unquoted brace/glob/tilde expansion): a non-literal
-// setting could become anything by the time git actually reads it,
-// including a sensitive key this hook would otherwise recognize and block.
+// `includeIf` inject a whole extra config file; `alias` redefines what a
+// subcommand means), or when its key or value is not literal (it could
+// become anything, including a sensitive key, by the time git reads it).
 const UNSAFE_CONFIG_KEY_PATTERN = /^(trailer\.|include\.|includeif\.|alias\.)/i;
 
 function isUnsafeConfigKey(setting) {
   return UNSAFE_CONFIG_KEY_PATTERN.test(String(setting).split('=')[0]);
 }
 
-// `settingText` is the DEQUOTED "key=value" (or bare "key") text to
-// pattern-match; `word` is the WORD it was read from (the whole flag word
-// for an inline `-cKEY=VALUE`/`--config-env=KEY=VALUE` form, since
-// `word.dynamic` is tracked per-WHOLE-word anyway, or the separate next-word
-// for the space-separated form) — used only for the literalness check.
+// `settingText` is the DEQUOTED "key=value" text to pattern-match; `word` is
+// the word it was read from, used only for the literalness check.
 function checkConfigSetting(unsafeConfigs, settingText, word) {
   if (settingText === undefined) return;
   if (!word || !isLiteralWord(word)) { unsafeConfigs.push(settingText); return; }
   if (isUnsafeConfigKey(settingText)) unsafeConfigs.push(settingText);
 }
 
-// Returns the word index of the subcommand (e.g. `commit`) after `git` and
-// any global options, or -1 when `words[start]` is not a git invocation at
-// all. Handles space-separated global option values (`-c k=v`, `-C <dir>`)
-// and inline forms (`-ck=v`, `--config-env=x`) by simply skipping one word
-// per flag when it is not one of the known separate-value options — good
-// enough to locate the subcommand; this hook does not need to resolve what
-// those options' values actually are the way block-no-verify.cjs does. Any
-// `-c`/`--config-env` setting checkConfigSetting flags is recorded into
-// `unsafeConfigs` (mutated in place) regardless of whether this turns out
-// to be a `commit` invocation — the caller only reads it once `commit` is
-// confirmed.
+// Returns the word index of the subcommand after `git` and its global
+// options, or -1 when there is none. Every `-c`/`--config-env` setting
+// walked past is checked into `unsafeConfigs` (mutated in place); the caller
+// only reads it once `commit` is confirmed.
 function findGitSubcommandIndex(words, start, unsafeConfigs) {
-  if (!words[start] || !isGitExecutable(words[start].value)) return -1;
   let index = start + 1;
   while (index < words.length) {
     const word = words[index];
@@ -390,228 +384,240 @@ function findGitSubcommandIndex(words, start, unsafeConfigs) {
   return index < words.length ? index : -1;
 }
 
-function addGitCommitSegment(words, unwrap, text, segments) {
+const READABLE_FORMS_HINT = "run git directly with -m '…' or the quoted heredoc form";
+
+const OPAQUE_STRING_REASON =
+  'commit-message-unreadable: `git … commit` is passed to another program as an opaque ' +
+  'string (eval, env -S, a shell fed a dynamic script or stdin, cmd, powershell, an ' +
+  `interpreter, …) and cannot be read here; ${READABLE_FORMS_HINT}`;
+const UNRECOGNIZED_WRAPPER_REASON =
+  'commit-message-unreadable: `git … commit` runs behind a wrapper or command word this ' +
+  `hook does not parse; ${READABLE_FORMS_HINT}`;
+const NON_LITERAL_SUBCOMMAND_REASON =
+  'commit-message-unreadable: the git subcommand word is not literal, so it could expand ' +
+  `to commit; ${READABLE_FORMS_HINT}`;
+
+function pushUnreadable(context, reason) {
+  context.segments.push({ opaqueBlock: true, reason });
+}
+
+// Tier 1, git: a literal `commit` subcommand becomes a segment to validate.
+// Any other literal subcommand is not a candidate (no fallthrough to Tier
+// 2/3); a non-literal subcommand word (`co{mmit,}`, `$SUB`) is unreadable.
+function addGitCommitSegment(words, unwrap, text, context) {
   const unsafeConfigs = [];
   const subcommandIndex = findGitSubcommandIndex(words, unwrap.start, unsafeConfigs);
-  if (subcommandIndex === -1 || words[subcommandIndex].value !== 'commit') return;
-  segments.push({
+  if (subcommandIndex === -1) return;
+  const subcommand = words[subcommandIndex];
+  if (!isLiteralWord(subcommand)) { pushUnreadable(context, NON_LITERAL_SUBCOMMAND_REASON); return; }
+  if (subcommand.value !== 'commit') return;
+  context.segments.push({
     words,
+    commandStart: unwrap.start,
     commitIndex: subcommandIndex,
     start: words[0].start,
     end: words[words.length - 1].end,
     sourceText: text,
     unsafeConfigs,
-    hasDynamicAssignment: unwrap.hasDynamicAssignment
+    hasDynamicAssignment: unwrap.assignments.some((word) => word.dynamic)
   });
 }
 
-// Fix round 2 (N2): `bash -c '…'`/`sh -c '…'` — the quoted argument is
-// further shell source text, not a message or data; every POSIX shell
-// (including git-bash on Windows) runs it as a fresh command. Matches the
-// same `SHELLS` set block-no-verify.cjs scans for its own `-c`/stdin-source
-// detection, for the same reason: dash/zsh/ksh all share bash's `-c`
-// convention.
-const SHELL_DASH_C_EXECUTABLES = new Set([
-  'bash', 'bash.exe', 'sh', 'sh.exe', 'dash', 'dash.exe', 'zsh', 'zsh.exe', 'ksh', 'ksh.exe'
-]);
-
-function isShellDashCExecutable(value) {
-  return SHELL_DASH_C_EXECUTABLES.has(basename(value).toLowerCase());
-}
-
-// Fix round 3, Rule 4: `-c` is rarely the FIRST flag — `-lc`, `-ec`, a
-// preceding `--norc`/`--noprofile`/`--posix` long flag, or `--rcfile <file>`/
-// `--init-file <file>` (which consume a separate value word) are all
-// common. Deliberately simpler than block-no-verify.cjs's own shell-role
-// parser: good enough to find a `-c`-family invocation's script argument,
-// not to classify every shell flag shape. Returns the index of the script
-// argument word, or -1 whenever the shape is anything this walk doesn't
-// confidently recognize — a bare `--`/`-`, a QUOTED flag-shaped word
-// (`"-c"`), an `-o`/`-O` cluster (takes a value this walk doesn't model,
-// e.g. `-o pipefail`), or simply no `-c` found at all (a script FILE
-// argument, or the shell reading stdin/a heredoc). -1 is deliberately
-// treated by the caller as "I don't know", not "this is safe".
+// Tier 1, shells. Every POSIX shell (git-bash included) runs a `-c` script
+// as fresh command text.
+const SHELL_NAMES = new Set(['bash', 'sh', 'dash', 'zsh', 'ksh']);
+// Boolean single-letter shell options. `o`/`O` each take the NEXT word as
+// their argument wherever they sit in a cluster (`-co pipefail`,
+// `-oc pipefail`, `-ceo pipefail`); `c` marks a `-c` invocation. Any other
+// letter is unrecognized.
+const SHELL_BOOLEAN_OPTION_CHARS = new Set([...'euxvilmnpBCEHPT']);
+const SHELL_OPTION_CLUSTER = /^[-+][A-Za-z]+$/;
 const SHELL_LONG_FLAGS_NO_VALUE = new Set([
   '--noprofile', '--norc', '--posix', '--restricted', '--verbose', '--login'
 ]);
 const SHELL_LONG_FLAGS_WITH_VALUE = new Set(['--rcfile', '--init-file']);
 
-function findShellScriptIndex(words, start) {
-  let i = start + 1;
-  let sawDashC = false;
-  while (i < words.length) {
-    const word = words[i];
-    const value = word.value;
-    if (value === '--' || value === '-') return -1;
-    if (SHELL_LONG_FLAGS_WITH_VALUE.has(value)) { i += 2; continue; }
-    if (SHELL_LONG_FLAGS_NO_VALUE.has(value)) { i++; continue; }
-    if (/^[-+][A-Za-z]+$/.test(value)) {
-      // Rule 4: a QUOTED flag-shaped word (`"-c"`) is unrecognized — a real
-      // shell's own option parser works on raw argv text, not on whether
-      // the AGENT happened to quote it, so this hook must not silently
-      // treat a quoted "-c" the same as a bare -c. This check is scoped to
-      // words that already LOOK like an option cluster — the eventual
-      // script argument itself is always (and legitimately) quoted, and is
-      // reached via the `break` below, never this branch.
-      if (word.quoted) return -1;
-      if (value.includes('c')) sawDashC = true;
-      else if (/[oO]/.test(value)) return -1;
-      i++;
-      continue;
-    }
-    break;
+// One shell option word: how many words it spans and whether it sets `-c`,
+// or null when it is not recognized.
+function shellOption(value) {
+  if (SHELL_LONG_FLAGS_NO_VALUE.has(value)) return { width: 1, setsDashC: false };
+  if (SHELL_LONG_FLAGS_WITH_VALUE.has(value)) return { width: 2, setsDashC: false };
+  if (!SHELL_OPTION_CLUSTER.test(value)) return null;
+  let width = 1;
+  let setsDashC = false;
+  for (const letter of value.slice(1)) {
+    if (letter === 'o' || letter === 'O') width++;
+    else if (letter === 'c' && value[0] === '-') setsDashC = true;
+    else if (!SHELL_BOOLEAN_OPTION_CHARS.has(letter)) return null;
   }
-  if (!sawDashC) return -1;
-  return i < words.length ? i : -1;
+  return { width, setsDashC };
 }
 
-// Fix round 3, Rules 4/5: wrappers this hook does not try to unwrap at all
-// (`sudo`, `exec`, `eval`, `nohup`, `timeout`, `nice`, `xargs`) — if the
-// segment's text contains "commit" anywhere, block as unreadable rather
-// than attempt to parse further into an unbounded set of wrapper shapes.
-const OPAQUE_WRAPPER_WORDS = new Set([
-  'sudo', 'exec', 'eval', 'nohup', 'timeout', 'nice', 'xargs'
+// Index of the `-c` script word, or -1 for anything this walk does not
+// fully recognize: an unknown option (`-s`, a bare `--`/`-`), a quoted or
+// non-literal option word or option argument, or no `-c` at all (a script
+// file, or a shell reading stdin).
+function findShellScriptIndex(words, start) {
+  let index = start + 1;
+  let sawDashC = false;
+  while (index < words.length && /^[-+]/.test(words[index].value)) {
+    const word = words[index];
+    if (word.quoted || !isLiteralWord(word)) return -1;
+    const option = shellOption(word.value);
+    if (!option) return -1;
+    for (let k = 1; k < option.width; k++) {
+      if (!words[index + k] || !isLiteralWord(words[index + k])) return -1;
+    }
+    sawDashC = sawDashC || option.setsDashC;
+    index += option.width;
+  }
+  return sawDashC && index < words.length ? index : -1;
+}
+
+// Recurses into a literal `-c` script and returns true; returns false (so
+// the segment falls through to Tier 2/3) when no literal script was found.
+function recurseIntoLiteralShellScript(words, start, budget, context) {
+  const scriptIndex = findShellScriptIndex(words, start);
+  if (scriptIndex === -1 || !isLiteralWord(words[scriptIndex])) return false;
+  collectCommitSegments(words[scriptIndex].value, budget, context);
+  return true;
+}
+
+// Tier 2/3 exemption: commands that only print, search or copy their
+// arguments and stdin, and never execute them. Closed on purpose. Adding a
+// name only ever removes a false positive, and a command missing from it
+// fails closed, since Tier 2/3 still apply to it.
+const DATA_ONLY_COMMANDS = new Set([
+  'echo', 'printf', 'cat', 'grep', 'egrep', 'fgrep', 'head', 'tail', 'wc', 'tee', 'gh'
 ]);
+// gh subcommands that define or run shell aliases and extensions.
+const GH_EXECUTING_SUBCOMMANDS = new Set(['alias', 'extension', 'ext']);
+
+// A `>(…)` process substitution among a command's words or redirect targets
+// runs its output through another command, so that output is no longer
+// just data.
+function feedsProcessSubstitution(cmd) {
+  const words = [...cmd.words, ...cmd.redirects.map((redirect) => redirect.word)];
+  return words.some((word) => String(word.raw || '').includes('>('));
+}
+
+function isDataOnlyCommand(name, cmd, unwrap) {
+  if (!DATA_ONLY_COMMANDS.has(name) || feedsProcessSubstitution(cmd)) return false;
+  if (name !== 'gh') return true;
+  const subcommand = cmd.words.slice(unwrap.start + 1).find((word) => !word.value.startsWith('-'));
+  return !(subcommand && GH_EXECUTING_SUBCOMMANDS.has(subcommand.value));
+}
+
+const GIT_COMMIT_TEXT = /\bgit\b[\s\S]*\bcommit\b/i;
 
 function commandRawText(words, text) {
   if (!words.length) return '';
   return text.slice(words[0].start, words[words.length - 1].end);
 }
 
-// Fix round 3, Rules 4/5: a cheap, deliberately simple "does this command
-// text mention commit at all" pre-check — walks the whole pipe chain
-// (`cmd.pipeFrom`) and every heredoc/here-string body attached to any
-// command in that chain, since `echo '...git commit...' | bash` and
-// `bash <<'EOF' ... git commit ... EOF` both feed a shell's stdin rather
-// than a -c argument. Not a security analysis of its own (no recursion into
-// further substitutions here) — just the signal that decides whether an
-// unparseable wrapper/shell shape should block or silently pass. Reusing
-// block-no-verify.cjs's own (far more thorough) unwrapping machinery here
-// would pull in a dependency this narrower job doesn't need; a local text
-// scan is enough for "block when in doubt".
-function commandSearchText(cmd, text) {
-  const parts = [];
-  for (let current = cmd; current; current = current.pipeFrom) {
-    parts.push(commandRawText(current.words, text));
-    for (const redirect of current.redirects) {
-      if (redirect.operator === '<<<') parts.push(redirect.word.value);
-      else if (redirect.operator === '<<' || redirect.operator === '<<-') parts.push(redirect.body);
-    }
+// Both spellings of a command for Tier 2: its raw text and its dequoted
+// words, so quote-splitting (`g'i't`) can't hide either word.
+function commandText(words, text) {
+  return `${commandRawText(words, text)}\n${words.map((word) => word.value).join(' ')}`;
+}
+
+function heredocBodies(cmd) {
+  const bodies = [];
+  for (const redirect of cmd.redirects) {
+    if (redirect.operator === '<<<') bodies.push(redirect.word.value);
+    else if (redirect.operator === '<<' || redirect.operator === '<<-') bodies.push(redirect.body);
   }
-  return parts.join('\n');
+  return bodies;
 }
 
-function blockIfLooksLikeCommit(cmd, text, segments) {
-  if (!/commit/i.test(commandSearchText(cmd, text))) return;
-  segments.push({
-    opaqueBlock: true,
-    reason:
-      'commit-message-unreadable: an unrecognized wrapper, shell invocation shape, or ' +
-      'dynamic command word could not be safely parsed, and the command text mentions ' +
-      '"commit" — blocked rather than guessed at'
-  });
+function isGitInvocation(cmd) {
+  const unwrap = unwrapCommandStart(cmd.words);
+  const word = cmd.words[unwrap.start];
+  return Boolean(word) && !unwrap.opaque && isLiteralWord(word) && isGitExecutable(word.value);
 }
 
-// Fix round 3, Rule 4: recurse into a shell `-c`-family argument ONLY when
-// the option walk unambiguously finds a single script word AND that word is
-// fully literal (Rule 1's standard, via isLiteralWord). Anything else — an
-// unrecognized option shape, no `-c` found at all (a script file, stdin, a
-// heredoc), or a dynamic/brace-expanded script argument — is blocked
-// outright when the segment's own text contains "commit", rather than
-// silently passed through. This is what closes round 2's own new-breakage
-// item 1: an outer-shell `$VAR`/`$(...)` landing inside the inner script's
-// quotes looked literal from the outside but wasn't once re-examined; the
-// dynamic check here is on the ARGUMENT WORD ITSELF, before any recursion,
-// so it can never be fooled by what the inner text looks like after
-// substitution.
-function maybeHandleShellWrapper(words, start, cmd, text, budget, segments) {
-  const scriptIndex = findShellScriptIndex(words, start);
-  if (scriptIndex !== -1) {
-    const script = words[scriptIndex];
-    if (script && isLiteralWord(script)) {
-      collectCommitSegments(script.value, budget, segments);
-      return;
-    }
+// True when what a command is fed on stdin mentions `git … commit`: its own
+// heredoc/here-string bodies, or the text of any command upstream in its
+// pipeline. An upstream git invocation is tested one word at a time, so
+// `git log --grep=commit | …` stays clean while a word that would print the
+// text itself (`git log --format='git commit …' | sh`) does not.
+function stdinLooksLikeCommit(cmd, text) {
+  const parts = heredocBodies(cmd);
+  for (let upstream = cmd.pipeFrom; upstream; upstream = upstream.pipeFrom) {
+    if (isGitInvocation(upstream)) parts.push(...upstream.words.map((word) => word.value));
+    else parts.push(commandText(upstream.words, text), ...heredocBodies(upstream));
   }
-  blockIfLooksLikeCommit(cmd, text, segments);
+  return parts.some((part) => GIT_COMMIT_TEXT.test(part));
 }
 
-// Fix round 3: replaces round 2's `addCommitSegmentIfPresent` +
-// `maybeRecurseIntoShellDashC` pair with one dispatcher per simple command,
-// classifying its (unwrapped) command word as exactly one of: a git
-// invocation (parsed fully), a shell `-c`-family invocation (recursed into
-// only when safe, else blocked-if-mentions-commit), another wrapper or a
-// dynamic command word (blocked-if-mentions-commit, never unwrapped), or
-// anything else — a literal non-git, non-shell, non-wrapper command, which
-// is NOT a candidate at all and must stay silent (`grep -m 1 "git commit"
-// CLAUDE.md`, `cat >> foo <<'EOF' ... EOF`, `time pnpm verify`, `env
-// NODE_ENV=test node ...` all still exit 0 untouched).
-function processCommandForCommitSegments(cmd, text, budget, segments) {
+// Tier 3: a `git` word, or a non-literal word that could become one,
+// followed later in the segment by a literal `commit` word.
+function hasGitThenCommitWords(words) {
+  let sawGitCandidate = false;
+  for (const word of words) {
+    if (sawGitCandidate && word.value.toLowerCase() === 'commit') return true;
+    if (!isLiteralWord(word) || isGitExecutable(word.value)) sawGitCandidate = true;
+  }
+  return false;
+}
+
+function processCommandForCommitSegments(cmd, text, budget, context) {
   const words = cmd.words;
   const unwrap = unwrapCommandStart(words);
-  if (unwrap.opaque) { blockIfLooksLikeCommit(cmd, text, segments); return; }
+  recordGitConfigEnv(words, unwrap, context);
   const word = words[unwrap.start];
   if (!word) return;
-  if (word.dynamic) { blockIfLooksLikeCommit(cmd, text, segments); return; }
-  if (isGitExecutable(word.value)) {
-    addGitCommitSegment(words, unwrap, text, segments);
+  const name = !unwrap.opaque && isLiteralWord(word) ? commandName(word.value) : null;
+  if (name === 'git') { addGitCommitSegment(words, unwrap, text, context); return; }
+  if (isDataOnlyCommand(name, cmd, unwrap)) return;
+  if (SHELL_NAMES.has(name) && recurseIntoLiteralShellScript(words, unwrap.start, budget, context)) {
+    if (stdinLooksLikeCommit(cmd, text)) pushUnreadable(context, OPAQUE_STRING_REASON);
     return;
   }
-  if (isShellDashCExecutable(word.value)) {
-    maybeHandleShellWrapper(words, unwrap.start, cmd, text, budget, segments);
+  if (GIT_COMMIT_TEXT.test(commandText(words, text)) || stdinLooksLikeCommit(cmd, text)) {
+    pushUnreadable(context, OPAQUE_STRING_REASON);
     return;
   }
-  if (OPAQUE_WRAPPER_WORDS.has(basename(word.value).toLowerCase())) {
-    blockIfLooksLikeCommit(cmd, text, segments);
-  }
+  if (hasGitThenCommitWords(words)) pushUnreadable(context, UNRECOGNIZED_WRAPPER_REASON);
 }
 
 /**
- * Scan `text` for `git ... commit ...` invocations, pushing one entry per
- * match (or one opaque-block marker) onto `segments` (shared across the
- * whole recursive scan). Recurses into forms a single word-level scan can't
- * see directly: a shell `-c`-family argument's literal text (Rule 4), and
- * any `$( … )` command-substitution text found anywhere in a command
- * (`cmd.nested`, already populated by the vendored scanner) — both
- * re-tokenized as their own independent command source, recursively.
- * `budget` is shared across every recursive call so the total scanning work
- * stays bounded by the OUTERMOST command's length, the same way
- * block-no-verify.cjs's own recursive scan is bounded.
+ * Scan `text` for commit candidates, pushing onto `context.segments` one
+ * entry per `git … commit …` invocation (or one opaque-block marker). Also
+ * recurses into every `$( … )` command substitution (`cmd.nested`, from
+ * the vendored scanner). `budget` is shared across the whole recursive scan
+ * so total work stays bounded by the outermost command's length.
  *
  * @param {string} text
  * @param {object} budget
- * @param {object[]} segments
+ * @param {{segments: object[], gitConfigEnv: string[]}} context
  */
-function collectCommitSegments(text, budget, segments) {
+function collectCommitSegments(text, budget, context) {
   budget.spend(text.length + 1);
   const scan = scanShell(text, budget);
   for (const cmd of scan.commands) {
     if (cmd.scopeExit || !cmd.words.length) continue;
-    processCommandForCommitSegments(cmd, text, budget, segments);
-    for (const nested of cmd.nested) collectCommitSegments(nested, budget, segments);
+    processCommandForCommitSegments(cmd, text, budget, context);
+    for (const nested of cmd.nested) collectCommitSegments(nested, budget, context);
   }
 }
 
+function scanForCommits(command) {
+  const context = { segments: [], gitConfigEnv: [] };
+  collectCommitSegments(command, createBudget(command.length), context);
+  return context;
+}
+
 /**
- * Parse `command` with the vendored shell scanner and return one entry per
- * `git ... commit ...` invocation found anywhere in it — including behind
- * `env`/`command`/`time`/`!`/a compound-command keyword, inside a `bash -c
- * '…'`/`sh -c '…'` argument, or inside a `$( … )` command substitution
- * (splitting on `&&`, `||`, `;`, `|` and newlines is scanShell's job, not
- * ours — it already returns one `commands[]` entry per segment; subshells
- * `( … )`/`{ … ; }` are walked the same way, since the commands inside them
- * are also plain entries in `scan.commands`). A `grep -m 1 "git commit"
- * CLAUDE.md` never matches: `grep` is not `git`, so this never even looks at
- * its arguments.
+ * Every commit candidate found anywhere in `command` (see the 3-tier model
+ * above): parsed `git … commit …` segments, and opaque-block markers for
+ * Tier 2/3. A `grep -m 1 "git commit" CLAUDE.md` yields none.
  *
  * @param {string} command
- * @returns {{words: object[], commitIndex: number, start: number, end: number, sourceText: string, unsafeConfigs: string[]}[]}
+ * @returns {object[]}
  */
 function findCommitSegments(command) {
-  const budget = createBudget(command.length);
-  const segments = [];
-  collectCommitSegments(command, budget, segments);
-  return segments;
+  return scanForCommits(command).segments;
 }
 
 // Only the accepted heredoc shape, with a QUOTED delimiter, is trusted as
@@ -658,29 +664,17 @@ function isAnsiCQuoted(raw) {
   return /^\$'/.test(String(raw));
 }
 
-// Fix round 2 (N1): a value is trusted as literal text only when EVERY
-// character in `raw` is inside a quote — single quotes (opaque to this
-// hook's own expansion model, matching bash), or double quotes containing
-// none of `$`/backtick. A SINGLE stray unquoted character anywhere — not
-// just a `$(...)`/backtick — means a real shell could transform this text
-// (brace expansion, globbing, tilde expansion, word splitting) before git
-// ever sees it, so the value is unreadable, not literal. This is what
-// catches `-m{,}'Co-Authored-By: X'`: bash brace-expands the unquoted `{,}`
-// before git ever runs, but the vendored scanner's own `dynamic` flag (which
-// only tracks `$(...)`/backtick) never flags it, so without this check the
-// pre-expansion text (containing the literal `{,}` noise) is read and
-// validated instead of what git would actually receive.
-//
-// Fix round 3, correction 1: `{ } * ? [ ~` were WRONGLY included here too.
-// Bash does not brace-expand, glob, or tilde-expand inside "..." — only `$`
-// and backtick remain active there — so this was blocking harmless literal
-// subjects like `-m "fix: why does it fail?"` or
-// `-m "fix(engine): handle [edge] case"` for no security benefit. Those
-// characters are still checked, but only when truly UNQUOTED — see
-// `hasUnquotedExpansionChar` (fix round 3, Rule 1), which every word in a
-// commit segment is checked against, not just a flag's own value.
-const FORBIDDEN_IN_DOUBLE_QUOTES = /[$`]/;
-
+// A message/trailer VALUE is trusted as literal text only when every
+// character of its raw text is quoted or backslash-escaped:
+//   - inside '...' (bash expands nothing there);
+//   - inside "..." with no active expansion (see hasDoubleQuoteExpansion);
+//   - a backslash-escaped character outside quotes, which bash reads as that
+//     literal character. This is what keeps the `'don'\''t'` apostrophe
+//     idiom literal.
+// Any other unquoted character (brace expansion `-m{,}'…'`, a glob, a tilde,
+// word splitting) means a real shell could hand git different text than is
+// read here, so the value is unreadable. Brace/glob/tilde are inert inside
+// "..." in bash, so they are only checked unquoted (hasUnquotedExpansionChar).
 function findDoubleQuoteEnd(text, start) {
   let i = start;
   while (i < text.length) {
@@ -689,6 +683,25 @@ function findDoubleQuoteEnd(text, start) {
     i++;
   }
   return -1;
+}
+
+// After a `$`, the characters that start a bash expansion inside "...":
+// a parameter name or special parameter, `${`, `$(`, `$[`. A `$` followed by
+// anything else (a space, the closing quote) is a literal dollar sign.
+const DOLLAR_EXPANSION_START = /[A-Za-z0-9_@*#?$!{(\[-]/;
+
+// True when a double-quoted body (the text between the quotes) contains an
+// active expansion: an unescaped backtick, or an unescaped `$` that starts
+// one. `\$`, `` \` ``, `\"` and `\\` are literal escapes, so a backslash pair
+// is skipped whole.
+function hasDoubleQuoteExpansion(body) {
+  for (let i = 0; i < body.length; i++) {
+    const c = body[i];
+    if (c === '\\') { i++; continue; }
+    if (c === '`') return true;
+    if (c === '$' && DOLLAR_EXPANSION_START.test(body[i + 1] || '')) return true;
+  }
+  return false;
 }
 
 function isFullyQuotedLiteral(raw) {
@@ -704,11 +717,11 @@ function isFullyQuotedLiteral(raw) {
     }
     if (c === '"') {
       const close = findDoubleQuoteEnd(text, i + 1);
-      if (close === -1) return false;
-      if (FORBIDDEN_IN_DOUBLE_QUOTES.test(text.slice(i + 1, close))) return false;
+      if (close === -1 || hasDoubleQuoteExpansion(text.slice(i + 1, close))) return false;
       i = close + 1;
       continue;
     }
+    if (c === '\\' && i + 1 < text.length) { i += 2; continue; }
     return false; // an unquoted character anywhere makes the whole value unreadable
   }
   return true;
@@ -719,20 +732,17 @@ const NOT_FULLY_QUOTED_REASON =
   "tilde character would reach git differently than read here); use -m '…' or " +
   'the quoted heredoc form';
 
-// Fix round 3, Rule 1: characters that still actively expand when UNQUOTED
-// (brace expansion, globbing, tilde expansion) — inert inside BOTH `'...'`
-// and `"..."` (bash does not brace/glob/tilde-expand inside quotes of
-// either kind — see correction 1 above), so only an occurrence OUTSIDE any
-// quote matters here. `$` and backtick are deliberately NOT in this set:
-// those are already tracked by the vendored scanner's own `word.dynamic`
-// flag (and a backslash-escaped occurrence, e.g. `\$foo`, never reaches the
-// scanner's dynamic-marking logic either, nor this check — see below).
-const UNQUOTED_EXPANSION_CHARS = /[{}*?[~]/;
+// Characters that expand only when UNQUOTED: brace expansion and globbing
+// anywhere in a word, tilde expansion only at the very start of one
+// (`docs/file~1.md` and `HEAD~1` are literal). `$` and backtick are not
+// here: the vendored scanner's own `word.dynamic` flag tracks those.
+const UNQUOTED_EXPANSION_CHARS = /[{}*?[]/;
 
-// Scans raw word text tracking quote state; true when one of
-// UNQUOTED_EXPANSION_CHARS appears OUTSIDE any quote. A backslash-escaped
-// character outside quotes (`\{`, `\*`, …) is inert — bash's own escape
-// already neutralizes it — so it is skipped as a pair, not inspected.
+// Scans raw word text tracking quote state; true when an expansion
+// character appears OUTSIDE any quote, or an ANSI-C `$'…'` / locale `$"…"`
+// quote opens (bash rewrites their contents, e.g. `$'\x67it'` is `git`, and
+// the vendored scanner does not model that). A backslash-escaped character
+// outside quotes (`\{`, `\*`, …) is inert, so it is skipped as a pair.
 function hasUnquotedExpansionChar(raw) {
   const text = String(raw);
   let i = 0;
@@ -747,22 +757,18 @@ function hasUnquotedExpansionChar(raw) {
     }
     if (c === "'" || c === '"') { quote = c; i++; continue; }
     if (c === '\\' && i + 1 < text.length) { i += 2; continue; }
-    if (UNQUOTED_EXPANSION_CHARS.test(c)) return true;
+    if (c === '$' && (text[i + 1] === "'" || text[i + 1] === '"')) return true;
+    if ((c === '~' && i === 0) || UNQUOTED_EXPANSION_CHARS.test(c)) return true;
     i++;
   }
   return false;
 }
 
-// Fix round 3, Rule 1: a word is LITERAL — safe to trust as-is, including a
-// bare/positional word this hook would otherwise never inspect — only when
-// it carries no unresolved shell expansion of ANY kind: not dynamic (the
-// scanner's own `$(...)`/backtick/bare-`$VAR` tracking), and no unquoted
-// brace/glob/tilde character the scanner does not model at all. This is
-// intentionally more PERMISSIVE than isFullyQuotedLiteral (which still
-// requires a flag's own VALUE to be entirely inside quotes): an ordinary
-// unquoted pathspec like `src/file.ts` is common and harmless, so Rule 1
-// only cares whether the word could still be transformed by a real shell,
-// not whether it happens to be quoted.
+// A word is LITERAL (a real shell passes it on unchanged) when it carries
+// no unresolved expansion of any kind: not dynamic (the scanner's own
+// `$(...)`/backtick/`$VAR` tracking) and no unquoted brace/glob/leading-tilde
+// character. More permissive than isFullyQuotedLiteral on purpose: an
+// unquoted pathspec like `src/file.ts` is literal, just not quoted.
 function isLiteralWord(word) {
   return !word.dynamic && !hasUnquotedExpansionChar(word.raw);
 }
@@ -1058,6 +1064,15 @@ function readTrailerValue(valueWord) {
   return { ok: true, text: valueWord.value };
 }
 
+// Index of the first word in [from, to) that is not literal, skipping the
+// words a value reader already validated (`exempt`), or -1 when all are.
+function firstNonLiteralWordIndex(words, from, to, exempt) {
+  for (let index = from; index < Math.min(to, words.length); index++) {
+    if (!exempt.has(index) && !isLiteralWord(words[index])) return index;
+  }
+  return -1;
+}
+
 /**
  * Analyze one parsed commit segment's words (everything from `commitIndex`
  * onward). Returns the issue strings this segment contributes (empty when
@@ -1067,14 +1082,23 @@ function readTrailerValue(valueWord) {
  * as `commit-unknown-option` and blocked — per the "never pass unread"
  * principle, nothing after `commit` is silently skipped by default.
  *
+ * Every word from `literalFrom` (the `git` word itself, for a parsed
+ * segment) up to the first `--` must also be literal (see
+ * firstNonLiteralWordIndex), flag values and global-option values included.
+ * Words after `--` are pathspecs only: git reads none of them as an option.
+ *
  * @param {object[]} words
  * @param {number} commitIndex
  * @param {string} rawSegmentText
+ * @param {number} [literalFrom]
  * @returns {{issues: string[], message: string|null}}
  */
-function analyzeCommitWords(words, commitIndex, rawSegmentText) {
+function analyzeCommitWords(words, commitIndex, rawSegmentText, literalFrom = commitIndex) {
   const issues = [];
   const messageParts = [];
+  // Words already read by a stricter value reader (message and trailer
+  // values, including the accepted heredoc form, which is `dynamic`).
+  const valueWords = new Set();
   let sawMessageFlag = false;
   let blockedReading = false;
 
@@ -1103,6 +1127,7 @@ function analyzeCommitWords(words, commitIndex, rawSegmentText) {
       const valueWord = inline
         ? { raw: word.raw.slice('--trailer='.length), dynamic: word.dynamic, value: value.slice('--trailer='.length) }
         : words[i + 1];
+      valueWords.add(inline ? i : i + 1);
       const result = readTrailerValue(valueWord);
       if (!result.ok) {
         issues.push(`commit-message-unreadable: ${result.reason}`);
@@ -1123,6 +1148,7 @@ function analyzeCommitWords(words, commitIndex, rawSegmentText) {
     const flag = messageFlagAt(words, i);
     if (flag) {
       sawMessageFlag = true;
+      valueWords.add(flag.kind === 'separate' ? flag.valueIndex : i);
       const result = readFlagValue(words, flag);
       if (!result.ok) {
         issues.push(`commit-message-unreadable: ${result.reason}`);
@@ -1167,6 +1193,7 @@ function analyzeCommitWords(words, commitIndex, rawSegmentText) {
         // the next word, same as a bare `-m`.
         sawMessageFlag = true;
         const inlineValueIndex = clusterInlineValueIndex(word, cluster.index);
+        valueWords.add(inlineValueIndex === null ? i + 1 : i);
         const result = inlineValueIndex === null
           ? readFlagValue(words, { kind: 'separate', valueIndex: i + 1 })
           : readInlineClusterValue(word, inlineValueIndex);
@@ -1184,24 +1211,19 @@ function analyzeCommitWords(words, commitIndex, rawSegmentText) {
       continue;
     }
 
-    // A bare word (no leading '-'): normally a pathspec or similar
-    // positional argument, not an option — but fix round 3 (Rule 1) closes
-    // the gap where this was true UNCONDITIONALLY: a brace-expansion
-    // fragment (`{-m,'Co-authored-by: X'}`) or a bare command substitution/
-    // parameter expansion (`$(echo --amend)`, `$EXTRA`) also lands here
-    // (neither starts with `-`), and a real shell could turn either into
-    // EXTRA words — possibly new flags/values — before git ever runs. Any
-    // such word blocks the whole segment as unreadable; a genuinely literal
-    // bare word (an ordinary pathspec) is unaffected.
-    if (!isLiteralWord(word)) {
-      issues.push(
-        'commit-message-unreadable: a positional word is not literal (dynamic, or an ' +
-        'unquoted brace/glob/tilde character) — a real shell could expand it into ' +
-        'additional words, including new flags, before git ever runs'
-      );
-      blockedReading = true;
-    }
+    // A bare word (no leading '-'): a pathspec or similar positional. Its
+    // literalness is checked below with every other word.
     i++;
+  }
+
+  const nonLiteralIndex = firstNonLiteralWordIndex(words, literalFrom, i, valueWords);
+  if (nonLiteralIndex !== -1) {
+    issues.push(
+      `commit-message-unreadable: ${JSON.stringify(words[nonLiteralIndex].raw)} is not literal ` +
+      '(dynamic, or an unquoted brace/glob/leading-tilde character); a real shell could ' +
+      'expand it into different or additional words, including new flags, before git runs'
+    );
+    blockedReading = true;
   }
 
   if (!sawMessageFlag) {
@@ -1237,30 +1259,27 @@ function analyzeCommitWords(words, commitIndex, rawSegmentText) {
  *   non-empty `issues` means BLOCK.
  */
 async function validateCommitMessage(command) {
-  const segments = findCommitSegments(command);
+  const { segments, gitConfigEnv } = scanForCommits(command);
   if (segments.length === 0) return null;
 
   const { checkCommitMessage } = await import('./lib/contracts.mjs');
   const allIssues = [];
   let firstMessage = null;
 
-  // Fix round 3, Rule 2: a GIT_CONFIG_* environment-variable prefix is the
-  // same config-injection technique as an unsafe `-c`, whether set bare, via
-  // `env`, or via an earlier `export` elsewhere in this same command text —
-  // see hasGitConfigEnvInjection's own comment for why this is a whole-
-  // command text scan rather than a per-segment one.
-  if (hasGitConfigEnvInjection(command)) {
+  // A GIT_CONFIG_* assignment anywhere in this command (bare prefix, `env`
+  // operand, or `export`-family operand, in any segment) is the same config
+  // injection as an unsafe `-c`. See recordGitConfigEnv.
+  if (gitConfigEnv.length > 0) {
     allIssues.push(
-      'commit-unsafe-config: a GIT_CONFIG_COUNT/KEY_n/VALUE_n/PARAMETERS environment ' +
-      'variable is set somewhere in this command; it configures git identically to -c ' +
-      'and is not allowed ahead of a commit'
+      `commit-unsafe-config: ${[...new Set(gitConfigEnv)].join(', ')} is set in this ` +
+      'command; git reads it the way it reads -c (or as an extra config file), so it is ' +
+      'not allowed alongside a commit'
     );
   }
 
   for (const segment of segments) {
-    // Fix round 3, Rule 4/5: an opaque-block marker (an unrecognized
-    // wrapper/shell shape whose text mentions "commit") carries no parsed
-    // words at all — just block with its own reason.
+    // A Tier 2/3 opaque-block marker carries no parsed words: just block
+    // with its own reason.
     if (segment.opaqueBlock) {
       allIssues.push(segment.reason);
       continue;
@@ -1290,7 +1309,9 @@ async function validateCommitMessage(command) {
         '$(...) or ` substitution'
       );
     }
-    const { issues, message } = analyzeCommitWords(segment.words, segment.commitIndex, rawSegmentText);
+    const { issues, message } = analyzeCommitWords(
+      segment.words, segment.commitIndex, rawSegmentText, segment.commandStart
+    );
     allIssues.push(...issues);
     if (message !== null) {
       allIssues.push(...checkCommitMessage(message));
