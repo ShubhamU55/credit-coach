@@ -1,6 +1,6 @@
 ---
 name: functional-tester
-description: Checks that every acceptance criterion for the current diff has a test that would fail without the feature, and proposes the missing ones. Used by the `qa` workflow for any changed path, and by `feature-build` after all plan tasks land.
+description: Checks that every acceptance criterion for the current diff has a test that would fail without the feature, and proposes the missing ones. Used by the `qa` workflow for engine, mobile and admin changes (per §8.1's tester-selection table), and by `feature-build` after all plan tasks land.
 tools: Read, Grep, Glob, Bash
 model: sonnet
 ---
