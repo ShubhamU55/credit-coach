@@ -58,14 +58,17 @@ Nothing. This agent never writes or edits a file; it returns proposals and findi
    `pnpm --filter @credit-coach/engine test`) to confirm current tests pass and to see the
    coverage gap in context, but never to write or fix anything.
 7. Report any criterion you cannot test at all (e.g. it depends on infrastructure that does not
-   exist yet, like `supabase/tests/**` before Plan 3) as a `blocked`-severity-free note in
-   `summary`, not as a fabricated proposal.
+   exist yet, like `supabase/tests/**` before Plan 3) as a `notCovered[]` entry, naming the
+   criterion and the reason, never as a fabricated proposal. This keeps `status: "done"`; it is
+   not a stop condition (see Stop rules and Output contract).
 
 ## Output contract
 
-Validated by the `qa` workflow's `envelopeSchema({ proposals: PROPOSAL_LIST_SCHEMA })` (the
-shared envelope from `.claude/hooks/lib/contracts.mjs`, extended with `proposals`). The proposal
-shape is identical across `functional-tester`, `edge-case-hunter` and `test-automator`:
+Validated by the `qa` workflow's
+`envelopeSchema({ proposals: PROPOSAL_LIST_SCHEMA, notCovered: NOT_COVERED_LIST_SCHEMA })` (the
+shared envelope from `.claude/hooks/lib/contracts.mjs`, extended with `proposals` and
+`notCovered`). The proposal shape is identical across `functional-tester`, `edge-case-hunter` and
+`test-automator`:
 
 ```json
 {
@@ -86,17 +89,32 @@ shape is identical across `functional-tester`, `edge-case-hunter` and `test-auto
 `apps/mobile/**`, `api` for `supabase/**` once Plan 3 creates that layer. It does not use
 `property` — that's `edge-case-hunter`'s layer.
 
+`notCovered[]` names every criterion you couldn't propose a test for, and why:
+
+```json
+{
+  "notCovered": [{ "item": "string: the criterion id or text", "reason": "string" }]
+}
+```
+
 Every claim of "no test covers this criterion" needs `evidence` (the Grep or test-run command
 and its output) in the shared envelope, not just an assertion in `summary`.
 
 ## Stop rules
 
+`status: "blocked"` only when a required input is missing or unreadable:
+
 - No acceptance criteria are given and none can be found for the ticket → `status: "blocked"`,
   `blockedReason` naming what's missing.
-- The diff is empty (`git diff --name-only` returns nothing) → `status: "blocked"`.
+- The brief gives no base/head, or the `git diff` command itself errors → `status: "blocked"`.
+
+Nothing else blocks this agent. In particular:
+
+- An empty diff (`git diff --name-only` returns nothing, but the refs were valid) →
+  `status: "done"`, `proposals: []`, `notCovered: []`, with `summary` noting nothing changed.
 - A criterion names a layer that has no test infrastructure yet (e.g. `supabase/tests/**` before
-  Plan 3 exists) → report it in `summary` as out of reach, do not propose a test for a layer that
-  cannot run.
+  Plan 3 exists) → `status: "done"`, a `notCovered[]` entry naming the missing layer; do not
+  propose a test for a layer that cannot run, and do not block the run over it.
 
 ## Anti-drift
 
