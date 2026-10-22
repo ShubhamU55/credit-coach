@@ -1,7 +1,8 @@
 ---
 paths:
-  - "apps/mobile/**"
+  - 'apps/mobile/**'
 ---
+
 <!-- Adapted from affaan-m/ECC (MIT) @ 90606c8 -->
 
 # React Native rules
@@ -21,20 +22,20 @@ Expo Router is Expo's built-in, file-based router (`app/` directory); React Navi
 
 ```tsx
 // app/user/[id].tsx
-import { useLocalSearchParams, router } from 'expo-router'
-import { z } from 'zod'
+import { useLocalSearchParams, router } from 'expo-router';
+import { z } from 'zod';
 
-const Params = z.object({ id: z.string().uuid() })
+const Params = z.object({ id: z.string().uuid() });
 
 export default function UserScreen() {
   // Use safeParse, not parse: a malformed deep link would otherwise throw
   // during render and crash the screen. Redirect instead of throwing.
-  const parsed = Params.safeParse(useLocalSearchParams())
+  const parsed = Params.safeParse(useLocalSearchParams());
   if (!parsed.success) {
-    router.replace('/not-found')
-    return null
+    router.replace('/not-found');
+    return null;
   }
-  return <UserProfile userId={parsed.data.id} />
+  return <UserProfile userId={parsed.data.id} />;
 }
 ```
 
@@ -42,14 +43,14 @@ export default function UserScreen() {
 
 The rule is to keep these concerns separate and not duplicate server data into client stores. The tools listed are common choices, not requirements — pick what fits your project.
 
-| Concern | Common choices |
-|---------|---------|
-| Server state | a server-cache library (TanStack Query, SWR) |
-| Client/UI state | a lightweight store (Zustand, Jotai) or Context |
-| Navigation/route state | Expo Router params (NOT a global store) |
-| Form state | a form library (e.g. React Hook Form) with schema validation |
-| Secure persistence | `expo-secure-store` |
-| Non-secure persistence | `AsyncStorage` / MMKV |
+| Concern                | Common choices                                               |
+| ---------------------- | ------------------------------------------------------------ |
+| Server state           | a server-cache library (TanStack Query, SWR)                 |
+| Client/UI state        | a lightweight store (Zustand, Jotai) or Context              |
+| Navigation/route state | Expo Router params (NOT a global store)                      |
+| Form state             | a form library (e.g. React Hook Form) with schema validation |
+| Secure persistence     | `expo-secure-store`                                          |
+| Non-secure persistence | `AsyncStorage` / MMKV                                        |
 
 - Derive values instead of storing redundant computed state.
 - Keep global client state minimal; prefer local `useState` until sharing is actually needed.
@@ -69,7 +70,7 @@ function useUser(id: string) {
   return useQuery({
     queryKey: ['user', id],
     queryFn: async () => userSchema.parse(await api.getUser(id)),
-  })
+  });
 }
 ```
 
@@ -88,7 +89,6 @@ function useUser(id: string) {
 
 - Clean up subscriptions, timers, and listeners in the effect's return function.
 - Cancel or ignore stale async results on unmount to avoid setState-after-unmount.
-
 
 ## React Native / Expo Security
 
@@ -128,19 +128,18 @@ Treat everything shipped in the app as readable by an attacker. A mobile binary 
 - Run `expo-doctor` and `npm audit` regularly; keep the Expo SDK and native deps current.
 - Use `/security-scan` (AgentShield) on the agent configuration itself.
 
-
 ## React Native / Expo Testing
 
 > Coverage target and TDD workflow are inherited from common/testing.md (engine ≥ 90% lines; apps via Maestro flows; RED-GREEN-REFACTOR).
 
 ## Tooling
 
-| Layer | Tool |
-|-------|------|
+| Layer            | Tool                                                            |
+| ---------------- | --------------------------------------------------------------- |
 | Unit / component | Jest + `@testing-library/react-native` (via `jest-expo` preset) |
-| Hooks | `@testing-library/react-native` `renderHook` |
-| E2E | Maestro (recommended, simple YAML flows) or Detox |
-| Type safety | `tsc --noEmit` in CI |
+| Hooks            | `@testing-library/react-native` `renderHook`                    |
+| E2E              | Maestro (recommended, simple YAML flows) or Detox               |
+| Type safety      | `tsc --noEmit` in CI                                            |
 
 ## Component Tests
 
@@ -149,16 +148,16 @@ Treat everything shipped in the app as readable by an attacker. A mobile binary 
 - Follow Arrange-Act-Assert.
 
 ```tsx
-import { render, screen, fireEvent } from '@testing-library/react-native'
+import { render, screen, fireEvent } from '@testing-library/react-native';
 
 test('calls onSelect with the user id when pressed', () => {
-  const onSelect = jest.fn()
-  render(<UserCard user={{ id: '1', email: 'a@b.com' }} onSelect={onSelect} />)
+  const onSelect = jest.fn();
+  render(<UserCard user={{ id: '1', email: 'a@b.com' }} onSelect={onSelect} />);
 
-  fireEvent.press(screen.getByText('a@b.com'))
+  fireEvent.press(screen.getByText('a@b.com'));
 
-  expect(onSelect).toHaveBeenCalledWith('1')
-})
+  expect(onSelect).toHaveBeenCalledWith('1');
+});
 ```
 
 ## Mocking
@@ -174,8 +173,7 @@ test('calls onSelect with the user id when pressed', () => {
 
 ## What to test first
 
-Use the `tdd-guide` agent proactively for new features: write a failing test that captures the behavior, then implement.
-
+Use the `implementer` agent proactively for new features: write a failing test that captures the behavior, then implement.
 
 ## React Native / Expo Performance
 
@@ -215,7 +213,6 @@ Use the `tdd-guide` agent proactively for new features: write a failing test tha
 
 - Profile with the React DevTools profiler, the Hermes sampling profiler, and the in-app performance monitor. (Avoid Flipper — it is deprecated and not supported on the New Architecture.)
 - Watch for: long lists without virtualization, oversized images, frequent full-tree re-renders, and synchronous work on the JS thread.
-
 
 ## React Native / Expo Production Readiness
 
