@@ -161,11 +161,91 @@ function resolveProjectPath(...segments) {
   return normalizeFilePath(path.join(PROJECT_ROOT, ...segments));
 }
 
-const PROTECTED_SETTINGS_PATH = resolveProjectPath('.claude', 'settings.json');
-const PROTECTED_SETTINGS_LOCAL_PATH = resolveProjectPath('.claude', 'settings.local.json');
+// Advisor review round (fix round 2, second pass): `resolveProjectPath`
+// lowercases for the STRING comparison, which is correct there (NTFS is
+// case-insensitive), but passing that lowercased string to `fs.statSync`/
+// `fs.realpathSync.native` for the IDENTITY fallback would look up the
+// wrong, nonexistent path on a case-sensitive filesystem whose repo path
+// has uppercase letters. Keep a separate, case-PRESERVING resolved path for
+// those `fs` calls.
+function resolveProjectPathRaw(...segments) {
+  return path.resolve(PROJECT_ROOT, ...segments);
+}
 
+// Fix round 2, N6: an NTFS alternate-data-stream suffix (`file::$DATA`, the
+// default unnamed stream, or `file:streamname:$DATA`) is a different HANDLE
+// on the exact same file content/inode — but it is a different STRING, so
+// normalizeFilePath's string comparison never recognized it as the
+// protected path. Strip it before any existence/identity check. A
+// drive-letter colon (`C:\...`) is never a stream delimiter, so the search
+// for `:` starts only after it and after the last path separator — the
+// earliest position an ADS colon could legitimately appear.
+function stripAlternateDataStream(filePath) {
+  const value = String(filePath);
+  let searchFrom = /^[A-Za-z]:/.test(value) ? 2 : 0;
+  const lastSep = Math.max(value.lastIndexOf('/'), value.lastIndexOf('\\'));
+  if (lastSep + 1 > searchFrom) searchFrom = lastSep + 1;
+  const colonIndex = value.indexOf(':', searchFrom);
+  return colonIndex === -1 ? value : value.slice(0, colonIndex);
+}
+
+// Fix round 2, N6: an 8.3 short name (`SETTIN~1.JSO`) also names the exact
+// same file as its long name, but again as a different STRING. Rather than
+// trying to resolve what a short name expands to ourselves, compare the
+// CANDIDATE path's real on-disk identity (inode/device, with a real-path
+// string as a second, independent signal) against the protected path's own
+// identity — this works for ANY alias a filesystem recognizes, not just the
+// two shapes this round's review found. Only meaningful when the candidate
+// names an EXISTING file (a not-yet-created path has no inode to compare —
+// the B10 bootstrap case already handled by the existence check elsewhere).
+function statIdentity(filePath) {
+  try {
+    const stat = fs.statSync(filePath);
+    return { dev: stat.dev, ino: stat.ino };
+  } catch {
+    return null;
+  }
+}
+
+function realPathIdentity(filePath) {
+  try {
+    return fs.realpathSync.native(filePath);
+  } catch {
+    return null;
+  }
+}
+
+function sameFileIdentity(candidatePath, protectedPath) {
+  const candidateStat = statIdentity(candidatePath);
+  const protectedStat = statIdentity(protectedPath);
+  if (
+    candidateStat &&
+    protectedStat &&
+    candidateStat.dev === protectedStat.dev &&
+    candidateStat.ino === protectedStat.ino
+  ) {
+    return true;
+  }
+  const candidateReal = realPathIdentity(candidatePath);
+  const protectedReal = realPathIdentity(protectedPath);
+  if (candidateReal === null || protectedReal === null) return false;
+  return candidateReal.toLowerCase() === protectedReal.toLowerCase();
+}
+
+const PROTECTED_SETTINGS_PATH = resolveProjectPath('.claude', 'settings.json');
+const PROTECTED_SETTINGS_PATH_RAW = resolveProjectPathRaw('.claude', 'settings.json');
+const PROTECTED_SETTINGS_LOCAL_PATH = resolveProjectPath('.claude', 'settings.local.json');
+const PROTECTED_SETTINGS_LOCAL_PATH_RAW = resolveProjectPathRaw('.claude', 'settings.local.json');
+
+// Fix round 2, N6: the string match is the cheap first-pass check (and the
+// only one possible for a not-yet-created path, which has no inode). When
+// `filePath` names an EXISTING file but the string doesn't match, fall back
+// to real-identity comparison (using the case-PRESERVING `_RAW` path for
+// the actual `fs` calls) — this is what catches an ADS suffix or an 8.3
+// short name aliasing the protected path.
 function isClaudeSettingsPath(filePath) {
-  return normalizeFilePath(filePath) === PROTECTED_SETTINGS_PATH;
+  if (normalizeFilePath(filePath) === PROTECTED_SETTINGS_PATH) return true;
+  return protectedFileExists(filePath) && sameFileIdentity(filePath, PROTECTED_SETTINGS_PATH_RAW);
 }
 
 // Fix round 1, item 10: `.claude/settings.local.json` is protected
@@ -175,7 +255,11 @@ function isClaudeSettingsPath(filePath) {
 // could otherwise create fresh to quietly re-enable something `settings.
 // json` denies, without ever "modifying an existing" protected file.
 function isClaudeSettingsLocalPath(filePath) {
-  return normalizeFilePath(filePath) === PROTECTED_SETTINGS_LOCAL_PATH;
+  if (normalizeFilePath(filePath) === PROTECTED_SETTINGS_LOCAL_PATH) return true;
+  return (
+    protectedFileExists(filePath) &&
+    sameFileIdentity(filePath, PROTECTED_SETTINGS_LOCAL_PATH_RAW)
+  );
 }
 
 // Fix round 1, item 11: the guard scripts that make up this repo's hook
@@ -184,16 +268,26 @@ function isClaudeSettingsLocalPath(filePath) {
 // file) to stop blocking anything. Deliberately NOT included:
 // `.claude/hooks/lib/contracts.mjs` and the rest of `.claude/hooks/**` —
 // W2-W4 of this plan must still be able to edit those.
-const PROTECTED_GUARD_SCRIPT_PATHS = [
+const PROTECTED_GUARD_SCRIPT_RELATIVE_PATHS = [
   'block-no-verify.cjs',
   'pre-bash-commit-quality.cjs',
   'config-protection.cjs',
   'protect-env.mjs',
   path.join('lib', 'shell-scan.cjs')
-].map((relativePath) => resolveProjectPath('.claude', 'hooks', relativePath));
+];
+const PROTECTED_GUARD_SCRIPT_PATHS = PROTECTED_GUARD_SCRIPT_RELATIVE_PATHS.map(
+  (relativePath) => resolveProjectPath('.claude', 'hooks', relativePath)
+);
+const PROTECTED_GUARD_SCRIPT_PATHS_RAW = PROTECTED_GUARD_SCRIPT_RELATIVE_PATHS.map(
+  (relativePath) => resolveProjectPathRaw('.claude', 'hooks', relativePath)
+);
 
 function isProtectedGuardScript(filePath) {
-  return PROTECTED_GUARD_SCRIPT_PATHS.includes(normalizeFilePath(filePath));
+  if (PROTECTED_GUARD_SCRIPT_PATHS.includes(normalizeFilePath(filePath))) return true;
+  if (!protectedFileExists(filePath)) return false;
+  return PROTECTED_GUARD_SCRIPT_PATHS_RAW.some((protectedPath) =>
+    sameFileIdentity(filePath, protectedPath),
+  );
 }
 
 function parseInput(inputOrRaw) {
@@ -243,8 +337,13 @@ function run(inputOrRaw, options = {}) {
   }
 
   const input = parseInput(inputOrRaw);
-  const filePath = input?.tool_input?.file_path || input?.tool_input?.file || '';
-  if (!filePath) return { exitCode: 0 };
+  const rawFilePath = input?.tool_input?.file_path || input?.tool_input?.file || '';
+  if (!rawFilePath) return { exitCode: 0 };
+  // Fix round 2, N6: strip a trailing NTFS alternate-data-stream suffix
+  // once, up front, so every check below (string match, basename, identity
+  // comparison) operates on the real file path. Stripping is a no-op for an
+  // ordinary path without a stream suffix.
+  const filePath = stripAlternateDataStream(rawFilePath);
 
   if (isClaudeSettingsPath(filePath)) {
     if (!protectedFileExists(filePath)) return { exitCode: 0 };

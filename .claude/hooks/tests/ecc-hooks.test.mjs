@@ -266,6 +266,47 @@ describe('config-protection.cjs: spawned stdin fallback', () => {
     const result = runProtection(otherHookFile);
     expect(result.status).toBe(0);
   });
+
+  // Fix round 2, N6: an NTFS alternate-data-stream suffix (`::$DATA`) or an
+  // 8.3 short name (`SETTIN~1.JSO`) names the SAME underlying file as
+  // `settings.json`, but normalizeFilePath's string-only normalization never
+  // recognized either as that file. Windows-only (NTFS-specific aliasing);
+  // skipped elsewhere since there is no equivalent alias to test.
+  (process.platform === 'win32' ? describe : describe.skip)(
+    'N6: Windows path-alias bypasses (ADS, 8.3 short names)',
+    () => {
+      it.each([['an NTFS alternate-data-stream alias of settings.json', '::$DATA']])(
+        'blocks %s (exit 2)',
+        (_label, suffix) => {
+          const settingsPath = path.join(repoRoot, '.claude', 'settings.json');
+          expect(fs.existsSync(settingsPath)).toBe(true);
+          const result = runProtection(settingsPath + suffix);
+          expect(result.status).toBe(2);
+        },
+      );
+
+      it('blocks the 8.3 short name of settings.json (exit 2)', () => {
+        const shortPath = path.join(repoRoot, '.claude', 'SETTIN~1.JSO');
+        expect(fs.existsSync(shortPath)).toBe(true);
+        const result = runProtection(shortPath);
+        expect(result.status).toBe(2);
+      });
+
+      it('blocks an NTFS alternate-data-stream alias of config-protection.cjs (exit 2)', () => {
+        const guardPath = path.join(repoRoot, '.claude', 'hooks', 'config-protection.cjs');
+        expect(fs.existsSync(guardPath)).toBe(true);
+        const result = runProtection(guardPath + '::$DATA');
+        expect(result.status).toBe(2);
+      });
+
+      it('blocks the 8.3 short name of config-protection.cjs (exit 2)', () => {
+        const shortPath = path.join(repoRoot, '.claude', 'hooks', 'CONFIG~1.CJS');
+        expect(fs.existsSync(shortPath)).toBe(true);
+        const result = runProtection(shortPath);
+        expect(result.status).toBe(2);
+      });
+    },
+  );
 });
 
 describe('config-protection.cjs: no stdin listener attaches on require (module guard)', () => {

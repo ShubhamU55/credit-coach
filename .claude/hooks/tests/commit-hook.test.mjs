@@ -86,6 +86,217 @@ describe('commit-hook: commits detected by parsing, not substrings', () => {
   });
 });
 
+// Fix round 2: a fresh Opus re-review of the fix-round-1 commit (0d913bb)
+// found these bypasses still open. Each describe block below is named after
+// the review's own item id so it's easy to cross-reference against the
+// fix-round-2 report and findings file
+// (task-W1-4-fix2-findings.md).
+describe('commit-hook: N1 - brace-expansion / unquoted-value bypass is blocked', () => {
+  // Bash expands `-m{,}'Co-Authored-By: X'` into the attached text
+  // `-mCo-Authored-By: X` BEFORE git ever runs — but the vendored scanner's
+  // own `dynamic` flag only tracks `$(...)`/backtick, so the pre-expansion
+  // token (still containing the literal `{,}` noise) was read and
+  // validated instead, and the anchored attribution regexes never matched
+  // past that noise.
+  it('blocks a brace-expanded Co-Authored-By trailer attached to -m', async () => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage(
+      "git commit -m 'feat: ok' -m{,}'Co-Authored-By: Claude <x@y>'",
+    );
+    expect(isBlocked(result)).toBe(true);
+    expect(result.issues.some((issue) => issue.startsWith('commit-message-unreadable'))).toBe(true);
+  });
+
+  it('blocks a brace-expanded --message= value', async () => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage(
+      "git commit -m 'feat: ok' --message={,}'Co-authored-by: Claude <x@y>'",
+    );
+    expect(isBlocked(result)).toBe(true);
+    expect(result.issues.some((issue) => issue.startsWith('commit-message-unreadable'))).toBe(true);
+  });
+
+  it('blocks a brace-expanded --trailer= value', async () => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage(
+      "git commit -m 'feat: ok' --trailer={,}'Co-authored-by: Claude <x@y>'",
+    );
+    expect(isBlocked(result)).toBe(true);
+    expect(result.issues.some((issue) => issue.startsWith('commit-message-unreadable'))).toBe(true);
+  });
+
+  it('blocks "Generated with" split across an unquoted brace fragment', async () => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage(
+      "git commit -m 'feat: ok' -m'Gen'{,}'erated with Claude Code'",
+    );
+    expect(isBlocked(result)).toBe(true);
+    expect(result.issues.some((issue) => issue.startsWith('commit-message-unreadable'))).toBe(true);
+  });
+
+  // Regression guard for the fix itself: the --trailer= inline construction
+  // used to slice its "raw" text from the DEQUOTED word value (which never
+  // carries quote characters at all), so a perfectly ordinary, fully
+  // single-quoted --trailer= value would have been wrongly rejected as
+  // unreadable instead of being read and flagged as attribution.
+  it('still reads a legitimately single-quoted --trailer= inline value (not unreadable)', async () => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage(
+      "git commit -m 'feat: ok' --trailer='Co-authored-by: Claude <x@y>'",
+    );
+    expect(result.issues.some((issue) => issue.startsWith('commit-attribution'))).toBe(true);
+    expect(result.issues.some((issue) => issue.startsWith('commit-message-unreadable'))).toBe(
+      false,
+    );
+  });
+});
+
+describe('commit-hook: N2 - wrapped commits are still detected (regression vs. 702cb8f)', () => {
+  it.each([
+    ['env wrapper', 'env git commit -m "bad subject"'],
+    ['command wrapper', 'command git commit -m "bad subject"'],
+    ['time wrapper', 'time git commit -m "bad subject"'],
+    ['! wrapper', '! git commit -m "bad subject"'],
+    ['if/then/fi wrapper', 'if true; then git commit -m "bad subject"; fi'],
+    ['bash -c wrapper', `bash -c 'git commit -m "bad subject"'`],
+    ['command substitution', 'echo $(git commit -m "bad subject")'],
+  ])('detects a commit wrapped by: %s', async (_label, command) => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage(command);
+    expect(result).not.toBeNull();
+    expect(result.issues.some((issue) => issue.startsWith('commit-format'))).toBe(true);
+  });
+
+  it('detects a wrapped commit chained with &&', async () => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage('env git commit -m "bad subject" && echo done');
+    expect(result).not.toBeNull();
+    expect(result.issues.some((issue) => issue.startsWith('commit-format'))).toBe(true);
+  });
+
+  // Advisor review round (fix round 2, second pass): `if`'s own CONDITION
+  // command (not just its then/else body) runs directly, and was missing
+  // from the wrapper-skip set.
+  it('detects a commit as the condition of an if (not just its then-body)', async () => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage('if git commit -m "bad subject"; then :; fi');
+    expect(result).not.toBeNull();
+    expect(result.issues.some((issue) => issue.startsWith('commit-format'))).toBe(true);
+  });
+
+  // Advisor review round: a shell -c invocation is not always a bare `-c` —
+  // a combined option cluster (`-lc`, `-ec`) or a preceding long flag
+  // (`--norc`) is common, and other POSIX shells (dash/zsh/ksh) use the
+  // same `-c` convention.
+  it.each([
+    ['bash -lc (combined option cluster)', `bash -lc 'git commit -m "bad subject"'`],
+    ['sh -ec (combined option cluster)', `sh -ec 'git commit -m "bad subject"'`],
+    ['bash --norc -c (a preceding long flag)', `bash --norc -c 'git commit -m "bad subject"'`],
+    ['dash -c', `dash -c 'git commit -m "bad subject"'`],
+    ['zsh -c', `zsh -c 'git commit -m "bad subject"'`],
+    ['ksh -c', `ksh -c 'git commit -m "bad subject"'`],
+  ])('detects a commit wrapped by: %s', async (_label, command) => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage(command);
+    expect(result).not.toBeNull();
+    expect(result.issues.some((issue) => issue.startsWith('commit-format'))).toBe(true);
+  });
+
+  // Advisor review round: a -c argument built with an outer-shell variable
+  // reference (not a plain single-quoted literal) was treated as opaque and
+  // skipped entirely (fail-open — the commit became invisible). It must
+  // still be recursed into; the variable reference itself then correctly
+  // fails closed as an unreadable message value, rather than the whole
+  // commit going undetected.
+  it('still finds a commit inside a -c argument carrying a $VAR reference (fails closed on the value, not invisible)', async () => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage(`bash -c "git commit -m \\"$MSG\\""`);
+    expect(result).not.toBeNull();
+    expect(isBlocked(result)).toBe(true);
+  });
+
+  // Advisor review round: a wrapper's OWN option (`env -i`, `command -p`,
+  // `time -p`) must not stop the unwrapping from reaching the real `git`
+  // word.
+  it.each([
+    ['env -i wrapper', 'env -i git commit -m "bad subject"'],
+    ['command -p wrapper', 'command -p git commit -m "bad subject"'],
+    ['time -p wrapper', 'time -p git commit -m "bad subject"'],
+  ])('detects a commit wrapped by: %s', async (_label, command) => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage(command);
+    expect(result).not.toBeNull();
+    expect(result.issues.some((issue) => issue.startsWith('commit-format'))).toBe(true);
+  });
+});
+
+describe('commit-hook: N3 - trailer-key alias evasion is blocked outright', () => {
+  it('blocks a -c trailer.*.key alias ahead of commit', async () => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage(
+      "git -c trailer.co.key=Co-authored-by commit -m 'feat: ok' --trailer 'co: Claude <x@y>'",
+    );
+    expect(isBlocked(result)).toBe(true);
+    expect(result.issues.some((issue) => issue.startsWith('commit-unsafe-config'))).toBe(true);
+  });
+
+  // Advisor review round: the SAME alias, expressed as a leading
+  // GIT_CONFIG_COUNT/KEY_n/VALUE_n environment-variable prefix instead of
+  // `-c` — git reads this form identically, and it is just as visible in
+  // the command text.
+  it('blocks the same alias expressed as a GIT_CONFIG_* environment-variable prefix', async () => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage(
+      'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=trailer.co.key GIT_CONFIG_VALUE_0=Co-authored-by ' +
+        "git commit -m 'feat: ok' --trailer 'co: Claude <x@y>'",
+    );
+    expect(isBlocked(result)).toBe(true);
+    expect(result.issues.some((issue) => issue.startsWith('commit-unsafe-config'))).toBe(true);
+  });
+
+  // A1's existing case must still pass: an ordinary -c setting unrelated to
+  // trailer-key aliasing is not blocked by this new check.
+  it('still allows a plain -c user.name=x ahead of commit', async () => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage("git -c user.name=x commit -m 'feat: ok'");
+    expect(result.issues).toEqual([]);
+  });
+
+  // Regression guard: an ordinary GIT_AUTHOR_NAME=x prefix (A1's existing
+  // environment-variable case) must still pass — only GIT_CONFIG_KEY_n
+  // values matching the trailer-key-alias pattern are blocked.
+  it('still allows an ordinary GIT_AUTHOR_NAME=x environment-variable prefix', async () => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage("GIT_AUTHOR_NAME=x git commit -m 'feat: ok'");
+    expect(result.issues).toEqual([]);
+  });
+});
+
+describe('commit-hook: N5 - an attached value on a short-flag cluster is read, not the next word', () => {
+  it("reads the attached value of -am'...', not the following word", async () => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage("git commit -am'style: bad' 'feat: ok'");
+    expect(result.message).toBe('style: bad');
+    expect(result.issues.some((issue) => issue.startsWith('commit-format'))).toBe(true);
+  });
+
+  it("reads the attached value of a whole-word-quoted '-mstyle: bad', not the following word", async () => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage("git commit '-mstyle: bad' 'feat: ok'");
+    expect(result.message).toBe('style: bad');
+    expect(result.issues.some((issue) => issue.startsWith('commit-format'))).toBe(true);
+  });
+
+  // Regression guard: a bare cluster with nothing attached still reads the
+  // NEXT word as its value, same as before this fix.
+  it('still reads a bare -am cluster value from the next word', async () => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage('git commit -am "feat: ok"');
+    expect(result.message).toBe('feat: ok');
+    expect(result.issues).toEqual([]);
+  });
+});
+
 describe('commit-hook: --amend is blocked as a parsed flag, with or without -m', () => {
   it('blocks --amend with a message', async () => {
     const { validateCommitMessage } = await hook();
