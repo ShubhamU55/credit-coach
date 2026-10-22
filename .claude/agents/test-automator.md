@@ -67,8 +67,27 @@ through `finding-verifier` and `implementer` instead.
 
 ## Output contract
 
-Extends the shared envelope (`envelopeSchema` in `.claude/hooks/lib/contracts.mjs`) with one
-extra array:
+Validated by the `qa` and `bugfix` workflows' `envelopeSchema({ landed: LANDED_LIST_SCHEMA })`
+(the shared envelope from `.claude/hooks/lib/contracts.mjs`, extended with `landed`). Each input
+proposal you consume has the same shape every tester returns (identical across
+`functional-tester`, `edge-case-hunter` and `test-automator`):
+
+```json
+{
+  "proposals": [
+    {
+      "name": "string: the test's descriptive name (docs/standards.md Test naming)",
+      "layer": "vitest | property | maestro | playwright | api",
+      "file": "string: target test file path",
+      "assertion": "string: what the test checks",
+      "criterion": "string: the acceptance criterion it covers, verbatim or by its id"
+    }
+  ]
+}
+```
+
+Your own output is one `landed` entry per proposal you land, carrying the same `name`/`layer`/
+`file` plus how it landed:
 
 ```json
 {

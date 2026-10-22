@@ -63,8 +63,9 @@ Nothing. This agent never writes or edits a file; it returns proposals and findi
 
 ## Output contract
 
-Extends the shared envelope (`envelopeSchema` in `.claude/hooks/lib/contracts.mjs`) with one
-extra array:
+Validated by the `qa` workflow's `envelopeSchema({ proposals: PROPOSAL_LIST_SCHEMA })` (the
+shared envelope from `.claude/hooks/lib/contracts.mjs`, extended with `proposals`). The proposal
+shape is identical across `functional-tester`, `edge-case-hunter` and `test-automator`:
 
 ```json
 {
@@ -79,6 +80,11 @@ extra array:
   ]
 }
 ```
+
+`functional-tester` proposes any layer the criterion's changed path maps to (§ Procedure step 3):
+`vitest` for `packages/engine/**`, `playwright` for `apps/admin/**`, `maestro` for
+`apps/mobile/**`, `api` for `supabase/**` once Plan 3 creates that layer. It does not use
+`property` — that's `edge-case-hunter`'s layer.
 
 Every claim of "no test covers this criterion" needs `evidence` (the Grep or test-run command
 and its output) in the shared envelope, not just an assertion in `summary`.
@@ -97,7 +103,8 @@ and its output) in the shared envelope, not just an assertion in `summary`.
 - Do not propose refactors, renames, or "improvements" to the tests you read — you only report
   gaps.
 - Do not touch `.env*` files or read their contents.
-- Do not run `--no-verify` on any command, or any command that writes to the working tree.
+- Do not run `--no-verify` on any command, or any command that changes a tracked file (a test
+  command that writes to a gitignored output directory, such as `coverage/`, is fine).
 - Do not install packages. If a proposal would need a new dependency, say so in a finding instead
   of assuming it is available.
 - Do not propose a test for a criterion that is not in the brief's scope, even if you notice a

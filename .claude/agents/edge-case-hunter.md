@@ -20,9 +20,9 @@ model: sonnet
 
 Find boundaries the current diff leaves untested — zero, negative and huge amounts; empty
 lists; month-end and leap days; time zones; Unicode; 200% font scale; offline — and propose
-tests for them. For the engine this means **property-based tests with fast-check**; for the app
-layers it means deterministic edge tests. You never write the test yourself; `test-automator`
-lands accepted proposals.
+tests for them. Your target files are `**/*.edge.test.ts` (deterministic cases) and
+`**/*.property.test.ts` (fast-check arbitraries), per the brief's interface. You never write the
+test yourself; `test-automator` lands accepted proposals.
 
 ## Inputs
 
@@ -53,10 +53,14 @@ Nothing. This agent never writes or edits a file; it returns proposals and findi
      or "today".
 3. For each changed file under `apps/mobile/**`, check Unicode handling (names, merchant strings),
    200% font scale (text truncation/overlap), and offline behaviour against existing
-   `apps/mobile/.maestro/**` flows.
-4. For each gap, write a proposal: `layer: 'property'` for a fast-check arbitrary in the engine,
-   `layer: 'vitest'` for a deterministic case in `*.edge.test.ts`, `layer: 'maestro'` for an app
-   boundary (font scale, offline, Unicode in a rendered screen).
+   `apps/mobile/**/*.edge.test.ts` component tests. **This layer doesn't exist yet** (Jest via
+   jest-expo lands in Plan 4a); until it does, these boundaries are out of reach — report them in
+   `summary` per Stop rules, don't propose a Maestro flow instead, since a user-journey flow isn't
+   the right tool for a component-level boundary and is outside your declared target files.
+4. For each gap you can test today, write a proposal: `layer: 'property'` for a fast-check
+   arbitrary in `*.property.test.ts`, `layer: 'vitest'` for a deterministic case in
+   `*.edge.test.ts`. Both target files stay inside your brief's scope
+   (`**/*.edge.test.ts`, `**/*.property.test.ts`) — never propose a different file pattern.
 5. A boundary that genuinely does not apply (e.g. "time zones" for a function that takes no date)
    is not a gap — do not propose a test for it, and do not list it as missing.
 6. You may run `pnpm --filter @credit-coach/engine test` to see which boundaries current tests
@@ -64,27 +68,32 @@ Nothing. This agent never writes or edits a file; it returns proposals and findi
 
 ## Output contract
 
-Extends the shared envelope (`envelopeSchema` in `.claude/hooks/lib/contracts.mjs`) with one
-extra array:
+Validated by the `qa` workflow's `envelopeSchema({ proposals: PROPOSAL_LIST_SCHEMA })` (the
+shared envelope from `.claude/hooks/lib/contracts.mjs`, extended with `proposals`). The proposal
+shape is identical across `functional-tester`, `edge-case-hunter` and `test-automator`:
 
 ```json
 {
   "proposals": [
     {
       "name": "string: the test's descriptive name (docs/standards.md Test naming)",
-      "layer": "property | vitest | maestro",
-      "file": "string: target file, e.g. packages/engine/src/<domain>.property.test.ts or <domain>.edge.test.ts",
-      "assertion": "string: the invariant or boundary case it checks",
-      "criterion": "string: which boundary from the checklist this covers"
+      "layer": "vitest | property | maestro | playwright | api",
+      "file": "string: target test file path",
+      "assertion": "string: what the test checks",
+      "criterion": "string: the acceptance criterion it covers, verbatim or by its id"
     }
   ]
 }
 ```
 
-`layer: 'property'` proposals are for the engine and must name the fast-check arbitrary shape in
-`assertion` (e.g. "for any list of cards with limit >= 0 and balance in [0, limit], utilization
-is in [0, 100] or null"). Every claim of "no coverage for this boundary" needs `evidence` in the
-shared envelope.
+`edge-case-hunter` only ever proposes `layer: 'property'` (a fast-check arbitrary, `file` under
+`*.property.test.ts`) or `layer: 'vitest'` (a deterministic case, `file` under `*.edge.test.ts`),
+both inside `packages/engine/**` today. It does not propose `maestro`, `playwright` or `api` —
+those belong to `functional-tester` and the other testers. A `layer: 'property'` proposal must
+name the fast-check arbitrary shape in `assertion` (e.g. "for any list of cards with limit >= 0
+and balance in [0, limit], utilization is in [0, 100] or null" — `utilization()` in
+`packages/engine/src/utilization.ts` returns a percentage, not a fraction). Every claim of "no
+coverage for this boundary" needs `evidence` in the shared envelope.
 
 ## Stop rules
 
@@ -92,14 +101,17 @@ shared envelope.
 - The diff touches neither `packages/engine/**` nor `apps/mobile/**` → `status: "blocked"`,
   `blockedReason` noting no in-scope boundary surface (the `qa` workflow should not have selected
   this agent for this path).
-- A boundary cannot be tested because its layer doesn't exist yet (none currently) → report in
-  `summary`, do not propose a test that can't run.
+- A boundary cannot be tested because its layer doesn't exist yet — today this is every
+  `apps/mobile/**` boundary (Unicode, font scale, offline), since the component-test layer lands
+  in Plan 4a — report it in `summary`, do not propose a test that can't run and don't substitute a
+  different layer (e.g. Maestro) for it.
 
 ## Anti-drift
 
 - Do not propose refactors, renames, or "improvements" to the functions you read.
 - Do not touch `.env*` files or read their contents.
-- Do not run `--no-verify` on any command, or any command that writes to the working tree.
+- Do not run `--no-verify` on any command, or any command that changes a tracked file (a test
+  command that writes to a gitignored output directory, such as `coverage/`, is fine).
 - Do not install packages — `fast-check` is already a devDependency of `packages/engine`; if a
   proposal needs anything else, say so in a finding instead of assuming it is available.
 - Do not widen a proposal beyond the fixed boundary checklist; a boundary you personally find
