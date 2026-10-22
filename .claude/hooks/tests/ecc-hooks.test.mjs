@@ -69,10 +69,19 @@ describe('pre-bash-commit-quality.cjs: validateCommitMessage (reuses contracts.m
     expect(result.issues).toEqual([]);
   });
 
-  it('returns null when the command carries no -m/--message flag', async () => {
+  it('returns null when the command is not a git commit invocation at all', async () => {
+    const { validateCommitMessage } = await import(preBashCommitQualityPath);
+    const result = await validateCommitMessage('git status');
+    expect(result).toBeNull();
+  });
+
+  // Fix round 1: --amend now BLOCKS (agents never amend), it does not make
+  // this hook stand down. See commit-hook.test.mjs for the full matrix.
+  it('blocks --amend instead of returning null', async () => {
     const { validateCommitMessage } = await import(preBashCommitQualityPath);
     const result = await validateCommitMessage('git commit --amend');
-    expect(result).toBeNull();
+    expect(result).not.toBeNull();
+    expect(result.issues.some((issue) => issue.startsWith('commit-amend'))).toBe(true);
   });
 });
 
@@ -140,10 +149,11 @@ describe('pre-bash-commit-quality.cjs: evaluate() runs the message check regardl
 });
 
 describe('config-protection.cjs: spawned stdin fallback', () => {
-  function runProtection(filePath) {
+  function runProtection(filePath, options = {}) {
     return spawnSync(process.execPath, [configProtectionScriptPath], {
       input: JSON.stringify({ tool_input: { file_path: filePath } }),
       encoding: 'utf8',
+      ...(options.cwd ? { cwd: options.cwd } : {}),
     });
   }
 
@@ -164,6 +174,80 @@ describe('config-protection.cjs: spawned stdin fallback', () => {
     expect(fs.existsSync(settingsPath)).toBe(true);
     const result = runProtection(settingsPath);
     expect(result.status).toBe(2);
+  });
+
+  // Fix round 1, item 9: normalize (path.resolve) and compare
+  // case-insensitively, so a different case, a `./`-prefixed path, a `..`
+  // traversal, or a doubled separator all still resolve to the protected
+  // settings.json.
+  it.each([
+    ['a different case basename', path.join(repoRoot, '.claude', 'Settings.json')],
+    ['a different case directory', path.join(repoRoot, '.CLAUDE', 'settings.json')],
+    ['all-caps basename', path.join(repoRoot, '.claude', 'SETTINGS.JSON')],
+    ['a doubled separator', `${repoRoot.replace(/\\/g, '/')}/.claude//settings.json`],
+    [
+      'a `..` traversal back to the same file',
+      path.join(repoRoot, '.claude', 'nope', '..', 'settings.json'),
+    ],
+  ])('blocks %s (exit 2)', (_label, variantPath) => {
+    const result = runProtection(variantPath);
+    expect(result.status).toBe(2);
+  });
+
+  it('blocks a relative, `./`-prefixed settings.json path (exit 2)', () => {
+    const originalCwd = process.cwd();
+    try {
+      process.chdir(repoRoot);
+      const result = runProtection('./.claude/./settings.json');
+      expect(result.status).toBe(2);
+    } finally {
+      process.chdir(originalCwd);
+    }
+  });
+
+  // Fix round 1, item 10: settings.local.json is blocked unconditionally,
+  // including first-time creation (no existing file required).
+  it('blocks creating a brand-new .claude/settings.local.json (exit 2)', () => {
+    const localSettingsPath = path.join(repoRoot, '.claude', 'settings.local.json');
+    expect(fs.existsSync(localSettingsPath)).toBe(false);
+    const result = runProtection(localSettingsPath);
+    expect(result.status).toBe(2);
+  });
+
+  // Fix round 1, item 11: the guard scripts themselves are protected, but
+  // lib/contracts.mjs (and the rest of .claude/hooks/**) must stay editable
+  // for later plan waves.
+  it.each([
+    'block-no-verify.cjs',
+    'pre-bash-commit-quality.cjs',
+    'config-protection.cjs',
+    path.join('lib', 'shell-scan.cjs'),
+  ])('blocks editing the guard script %s (exit 2)', (relativePath) => {
+    const guardPath = path.join(repoRoot, '.claude', 'hooks', relativePath);
+    expect(fs.existsSync(guardPath)).toBe(true);
+    const result = runProtection(guardPath);
+    expect(result.status).toBe(2);
+  });
+
+  it('blocks editing the guard script protect-env.mjs (exit 2)', () => {
+    const guardPath = path.join(repoRoot, '.claude', 'hooks', 'protect-env.mjs');
+    expect(fs.existsSync(guardPath)).toBe(true);
+    const result = runProtection(guardPath);
+    expect(result.status).toBe(2);
+  });
+
+  it('still allows editing lib/contracts.mjs (exit 0)', () => {
+    const contractsPath = path.join(repoRoot, '.claude', 'hooks', 'lib', 'contracts.mjs');
+    expect(fs.existsSync(contractsPath)).toBe(true);
+    const result = runProtection(contractsPath);
+    expect(result.status).toBe(0);
+  });
+
+  it('still allows editing an unrelated file under .claude/hooks/** (exit 0)', () => {
+    const otherHookFile = path.join(repoRoot, '.claude', 'hooks', 'format-on-edit.mjs');
+    expect(fs.existsSync(otherHookFile)).toBe(true);
+    const result = runProtection(otherHookFile);
+    expect(result.status).toBe(0);
   });
 });
 

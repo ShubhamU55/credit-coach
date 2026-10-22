@@ -136,9 +136,64 @@ function isProtectedName(basename) {
 // registration so a later edit slips past the other hooks in this file).
 // Path-based rather than basename-based, since "settings.json" alone is too
 // generic a name to protect everywhere it might appear.
+//
+// Fix round 1: a plain `endsWith('/.claude/settings.json')` check (string
+// comparison on the backslash-normalized raw path) missed every one of:
+// a different case (`.claude/Settings.json`, `.CLAUDE/settings.json`), a
+// `./`-prefixed or doubled-slash path (`./.claude/./settings.json`,
+// `.claude//settings.json`), and relied on luck for `..` segments. `path.
+// resolve` is the standard, battle-tested way to collapse `.`/`..`/
+// redundant separators on both POSIX and Windows; comparing the resolved,
+// slash-normalized, lower-cased form against the repo's own resolved
+// `.claude/settings.json` path handles all of those at once, on both
+// case-sensitive and case-insensitive filesystems.
+//
+// PROJECT_ROOT is derived from this file's own location (not process.cwd()),
+// so the comparison is correct regardless of which directory a tool happens
+// to be invoked from.
+const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
+
+function normalizeFilePath(filePath) {
+  return path.resolve(String(filePath)).replace(/\\/g, '/').toLowerCase();
+}
+
+function resolveProjectPath(...segments) {
+  return normalizeFilePath(path.join(PROJECT_ROOT, ...segments));
+}
+
+const PROTECTED_SETTINGS_PATH = resolveProjectPath('.claude', 'settings.json');
+const PROTECTED_SETTINGS_LOCAL_PATH = resolveProjectPath('.claude', 'settings.local.json');
+
 function isClaudeSettingsPath(filePath) {
-  const normalized = String(filePath).replace(/\\/g, '/');
-  return normalized === '.claude/settings.json' || normalized.endsWith('/.claude/settings.json');
+  return normalizeFilePath(filePath) === PROTECTED_SETTINGS_PATH;
+}
+
+// Fix round 1, item 10: `.claude/settings.local.json` is protected
+// unconditionally, INCLUDING first-time creation — unlike every other
+// protected path, there is no "allow if it doesn't exist yet" escape hatch.
+// A personal/local override file is exactly the kind of thing an agent
+// could otherwise create fresh to quietly re-enable something `settings.
+// json` denies, without ever "modifying an existing" protected file.
+function isClaudeSettingsLocalPath(filePath) {
+  return normalizeFilePath(filePath) === PROTECTED_SETTINGS_LOCAL_PATH;
+}
+
+// Fix round 1, item 11: the guard scripts that make up this repo's hook
+// chain must not be editable by the same agents they are meant to guard —
+// otherwise an agent could simply rewrite block-no-verify.cjs (or this very
+// file) to stop blocking anything. Deliberately NOT included:
+// `.claude/hooks/lib/contracts.mjs` and the rest of `.claude/hooks/**` —
+// W2-W4 of this plan must still be able to edit those.
+const PROTECTED_GUARD_SCRIPT_PATHS = [
+  'block-no-verify.cjs',
+  'pre-bash-commit-quality.cjs',
+  'config-protection.cjs',
+  'protect-env.mjs',
+  path.join('lib', 'shell-scan.cjs')
+].map((relativePath) => resolveProjectPath('.claude', 'hooks', relativePath));
+
+function isProtectedGuardScript(filePath) {
+  return PROTECTED_GUARD_SCRIPT_PATHS.includes(normalizeFilePath(filePath));
 }
 
 function parseInput(inputOrRaw) {
@@ -198,6 +253,29 @@ function run(inputOrRaw, options = {}) {
       'It carries this repo\'s hook registrations and permission deny-list; weakening it ' +
       'defeats every other guard hook. If this is a legitimate settings change, disable ' +
       'the config-protection hook temporarily.'
+    );
+  }
+
+  if (isClaudeSettingsLocalPath(filePath)) {
+    // No existence check: a BRAND-NEW .claude/settings.local.json is blocked
+    // too (item 10) — unlike every other protected path, there is no
+    // legitimate "bootstrap a fresh config" case for this one.
+    return blockResult(
+      'BLOCKED: Creating or modifying .claude/settings.local.json via Write/Edit/MultiEdit ' +
+      'is not allowed, including first-time creation. A local settings override is exactly ' +
+      'the kind of file an agent could use to quietly re-enable something settings.json ' +
+      'denies. If this is a legitimate local-settings change, disable the config-protection ' +
+      'hook temporarily.'
+    );
+  }
+
+  if (isProtectedGuardScript(filePath)) {
+    if (!protectedFileExists(filePath)) return { exitCode: 0 };
+    return blockResult(
+      `BLOCKED: Modifying ${path.basename(filePath)} via Write/Edit/MultiEdit is not allowed. ` +
+      'It is one of this repo\'s guard-hook scripts; an agent weakening its own guard defeats ' +
+      'the purpose of every hook in this chain. If this is a legitimate change to the guard ' +
+      'itself (e.g. a planned fix-round task), disable the config-protection hook temporarily.'
     );
   }
 
