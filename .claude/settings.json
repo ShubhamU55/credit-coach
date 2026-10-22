@@ -29,7 +29,17 @@
     "PreToolUse": [
       {
         "matcher": "Write|Edit|MultiEdit",
-        "hooks": [{ "type": "command", "command": "node .claude/hooks/protect-env.mjs" }]
+        "hooks": [
+          { "type": "command", "command": "node .claude/hooks/protect-env.mjs" },
+          { "type": "command", "command": "node .claude/hooks/config-protection.cjs" }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "node .claude/hooks/block-no-verify.cjs" },
+          { "type": "command", "command": "node .claude/hooks/pre-bash-commit-quality.cjs" }
+        ]
       }
     ],
     "PostToolUse": [

@@ -41,10 +41,12 @@ npx eslint . --plugin security
 ## Review Workflow
 
 ### 1. Initial Scan
+
 - Run `npm audit`, `eslint-plugin-security`, search for hardcoded secrets
 - Review high-risk areas: auth, API endpoints, DB queries, file uploads, payments, webhooks
 
 ### 2. OWASP Top 10 Check
+
 1. **Injection** — Queries parameterized? User input sanitized? ORMs used safely?
 2. **Broken Auth** — Passwords hashed (bcrypt/argon2)? JWT validated? Sessions secure?
 3. **Sensitive Data** — HTTPS enforced? Secrets in env vars? PII encrypted? Logs sanitized?
@@ -57,20 +59,21 @@ npx eslint . --plugin security
 10. **Insufficient Logging** — Security events logged? Alerts configured?
 
 ### 3. Code Pattern Review
+
 Flag these patterns immediately:
 
-| Pattern | Severity | Fix |
-|---------|----------|-----|
-| Hardcoded secrets | CRITICAL | Use `process.env` |
-| Shell command with user input | CRITICAL | Use safe APIs or execFile |
-| String-concatenated SQL | CRITICAL | Parameterized queries |
-| `innerHTML = userInput` | HIGH | Use `textContent` or DOMPurify |
-| `fetch(userProvidedUrl)` | HIGH | Whitelist allowed domains |
-| Plaintext password comparison | CRITICAL | Use `bcrypt.compare()` |
-| No auth check on route | CRITICAL | Add authentication middleware |
-| Balance check without lock | CRITICAL | Use `FOR UPDATE` in transaction |
-| No rate limiting | HIGH | Add `express-rate-limit` |
-| Logging passwords/secrets | MEDIUM | Sanitize log output |
+| Pattern                       | Severity | Fix                             |
+| ----------------------------- | -------- | ------------------------------- |
+| Hardcoded secrets             | CRITICAL | Use `process.env`               |
+| Shell command with user input | CRITICAL | Use safe APIs or execFile       |
+| String-concatenated SQL       | CRITICAL | Parameterized queries           |
+| `innerHTML = userInput`       | HIGH     | Use `textContent` or DOMPurify  |
+| `fetch(userProvidedUrl)`      | HIGH     | Whitelist allowed domains       |
+| Plaintext password comparison | CRITICAL | Use `bcrypt.compare()`          |
+| No auth check on route        | CRITICAL | Add authentication middleware   |
+| Balance check without lock    | CRITICAL | Use `FOR UPDATE` in transaction |
+| No rate limiting              | HIGH     | Add `express-rate-limit`        |
+| Logging passwords/secrets     | MEDIUM   | Sanitize log output             |
 
 ## Key Principles
 
@@ -92,6 +95,7 @@ Flag these patterns immediately:
 ## Emergency Response
 
 If you find a CRITICAL vulnerability:
+
 1. Document with detailed report
 2. Alert project owner immediately
 3. Provide secure code example
@@ -111,6 +115,18 @@ If you find a CRITICAL vulnerability:
 - No secrets in code
 - Dependencies up to date
 - Security checklist complete
+
+## Credit Coach checklist
+
+Before approving any security-triggering change, work through `docs/security/checklist.md` (derived from `docs/security/threat-model.md`, a one-page STRIDE pass over the app, admin, Supabase, the LLM Edge Function and the demo path). It covers:
+
+- **PAN masking and logging, consent timestamp** — PAN is never stored in full (hash + last 4) and never logged; it is masked everywhere in the UI (`ABXXXXX34F`); consent to fetch a report is recorded with a timestamp.
+- **RLS deny-by-default** — every table has RLS enabled, policies use `(SELECT auth.uid())`, policy columns are indexed, no `GRANT ALL` to application users. See the RLS section of `docs/security/checklist.md`, drawn from ECC's `agents/database-reviewer.md` @ 90606c8 (MIT; not vendored into this repo — this project has no local `database-reviewer` agent yet).
+- **Secrets** — only the Supabase anon key ships in any client bundle; the service role key and the Anthropic key live only in Edge Function secrets; `.claude/**` carries no hidden Unicode or hidden instructions; agents cannot bypass hooks (`--no-verify`) or weaken a lint/format config to pass a check.
+- **MASVS / OWASP Mobile Top 10** — session tokens use `expo-secure-store` (never plain `AsyncStorage`), no HTTP, no debug logs in release builds.
+- **Dependency audit** — `pnpm audit` / OSV-Scanner, CodeQL and Sonar security hotspots are green on the PR.
+
+Each checklist item names the plan whose test enforces it (or "today" when a hook/CI gate already enforces it); flag any item with no enforcing test yet as a finding rather than assuming it is covered.
 
 ## Reference
 
