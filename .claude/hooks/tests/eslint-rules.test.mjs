@@ -1,10 +1,13 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ESLint } from 'eslint';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '../../..');
+
+// Cold-start ESLint (plugin resolution) flakes past the 5s default under CPU load.
+vi.setConfig({ testTimeout: 30_000 });
 
 function lintTextAt(cwd) {
   const eslint = new ESLint({ cwd });
