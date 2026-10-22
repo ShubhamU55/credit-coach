@@ -63,4 +63,4 @@ Return `status: blocked` with `blockedReason` instead of guessing when:
 
 ## Anti-drift
 
-Never refactor or redesign beyond the failing error — minimal diffs only. Never touch `.env*` files. Never pass `--no-verify` to any command. Never run `git reset` — `implementer` is the only agent that resets the working tree. Never amend a commit. Exactly one commit per fix pass.
+Never refactor or redesign beyond the failing error — minimal diffs only. Never touch `.env*` files. Never install, add or upgrade a package, under any circumstance — return `blocked` instead (see Stop rules). Never pass `--no-verify` to any command. Never run `git reset` — `implementer` is the only agent that resets the working tree. Never amend a commit. Exactly one commit per fix pass.

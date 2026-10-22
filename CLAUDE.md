@@ -5,7 +5,7 @@
 ## Start here
 
 - **`docs/status.md`** is the session handoff log: current state, blockers, next step. Read it first, and update it at the end of every session.
-- **Parallel-wave exception:** a session working one ticket of several parallel tickets in the same wave does not own `docs/status.md` for that wave. It writes its handoff in its own run ledger (`docs/agent-runs/`) instead, and leaves `docs/status.md` to the session that closes out the wave.
+- **Parallel-wave exception:** a session that the wave's hotspot table (Plan 1c) doesn't name as the `docs/status.md` owner writes its handoff in its run ledger (`docs/agent-runs/`) instead.
 
 ## Source of truth
 
