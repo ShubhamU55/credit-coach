@@ -198,9 +198,16 @@ function stripAlternateDataStream(filePath) {
 // two shapes this round's review found. Only meaningful when the candidate
 // names an EXISTING file (a not-yet-created path has no inode to compare —
 // the B10 bootstrap case already handled by the existence check elsewhere).
+// Fix round 3 (flagged Minor by the round-2 re-review, cheap to fix before
+// the merge locks this file): a plain `fs.statSync` returns `ino`/`dev` as
+// JS `Number`s, which lose precision above 2^53 — and this volume's own
+// guard-script inodes are confirmed to be above that threshold. A precision
+// collision there would only ever produce a FALSE POSITIVE (two genuinely
+// different files compared as the same), never a missed block, but
+// `{ bigint: true }` removes the risk entirely at no extra cost.
 function statIdentity(filePath) {
   try {
-    const stat = fs.statSync(filePath);
+    const stat = fs.statSync(filePath, { bigint: true });
     return { dev: stat.dev, ino: stat.ino };
   } catch {
     return null;

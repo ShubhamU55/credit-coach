@@ -680,3 +680,179 @@ describe('commit-hook: 15-commit regression (pinned snapshot of real main messag
     expect(result.issues.some((issue) => issue.startsWith('commit-format'))).toBe(true);
   });
 });
+
+// Fix round 3: rounds 1 and 2 kept closing one denylisted expansion/wrapper
+// shape only to have the re-review find another of the same kind. Round 3
+// flips the model: every commit segment is allowlisted by literalness, not
+// denylisted by shape. See task-W1-4-fix3-findings.md, rules 1-5, plus two
+// corrections to round 2's own work.
+describe('commit-hook: fix round 3, Rule 1 - every word must be literal, positionals included', () => {
+  it.each([
+    [
+      "brace-expansion injecting -m/'Co-authored-by'",
+      "git commit -m 'feat: ok' {-m,'Co-authored-by: Claude <x@y>'}",
+    ],
+    [
+      "brace-expansion injecting --trailer/'Co-authored-by'",
+      "git commit -m 'feat: ok' {--trailer,'Co-authored-by: Claude <x@y>'}",
+    ],
+    ['a bare $EXTRA positional', "git commit -m 'feat: ok' $EXTRA"],
+    [
+      'a bare $(...) building a --trailer flag',
+      "git commit -m 'feat: ok' $(printf -- '--trailer=Co-%s' 'authored-by: X')",
+    ],
+    ['a bare $(...) building --amend', "git commit -m 'feat: ok' $(echo --amend)"],
+  ])('blocks %s', async (_label, command) => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage(command);
+    expect(isBlocked(result)).toBe(true);
+  });
+
+  it('still allows an ordinary literal pathspec positional', async () => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage('git commit -m "feat: ok" src/file.ts');
+    expect(result.issues).toEqual([]);
+  });
+});
+
+describe('commit-hook: fix round 3, correction 1 - double quotes do not glob/brace/tilde-expand', () => {
+  it.each([
+    ['a literal ? in a double-quoted subject', 'git commit -m "fix: why does it fail?"'],
+    ['literal [ ] in a double-quoted subject', 'git commit -m "fix(engine): handle [edge] case"'],
+  ])('does not flag %s as unreadable', async (_label, command) => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage(command);
+    expect(result.issues.some((issue) => issue.startsWith('commit-message-unreadable'))).toBe(
+      false,
+    );
+  });
+});
+
+describe('commit-hook: fix round 3, Rule 2 - assignment prefixes', () => {
+  it('detects and validates a commit behind a QUOTED assignment value (regression vs. 702cb8f)', async () => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage('GIT_AUTHOR_NAME="A B" git commit -m "bad subject"');
+    expect(result).not.toBeNull();
+    expect(result.issues.some((issue) => issue.startsWith('commit-format'))).toBe(true);
+  });
+
+  it('blocks a DYNAMIC assignment value', async () => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage('X=$(echo foo) git commit -m "feat: ok"');
+    expect(isBlocked(result)).toBe(true);
+  });
+
+  it('blocks a GIT_CONFIG_* prefix set via an earlier export in the same command text', async () => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage(
+      'export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=trailer.co.key GIT_CONFIG_VALUE_0=Co-authored-by; ' +
+        "git commit -m 'feat: ok' --trailer 'co: Claude <x@y>'",
+    );
+    expect(isBlocked(result)).toBe(true);
+    expect(result.issues.some((issue) => issue.startsWith('commit-unsafe-config'))).toBe(true);
+  });
+
+  it('still allows a plain, literal GIT_AUTHOR_NAME=x prefix (regression guard)', async () => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage("GIT_AUTHOR_NAME=x git commit -m 'feat: ok'");
+    expect(result.issues).toEqual([]);
+  });
+});
+
+describe('commit-hook: fix round 3, Rule 3 - -c/--config-env generalized beyond trailer.*.key', () => {
+  it.each([
+    ['include.path', "git -c include.path=/tmp/evil commit -m 'feat: ok'"],
+    ['includeIf.onbranch.path', "git -c includeIf.onbranch.path=/tmp/evil commit -m 'feat: ok'"],
+    ['alias.*', "git -c alias.foo=bar commit -m 'feat: ok'"],
+  ])('blocks a sensitive -c key: %s', async (_label, command) => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage(command);
+    expect(isBlocked(result)).toBe(true);
+  });
+
+  it('blocks a -c value that is dynamic, even for an otherwise-ordinary key', async () => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage("git -c user.name=$(whoami) commit -m 'feat: ok'");
+    expect(isBlocked(result)).toBe(true);
+  });
+
+  it('still allows a plain, literal, non-sensitive -c user.name=x (regression guard)', async () => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage("git -c user.name=x commit -m 'feat: ok'");
+    expect(result.issues).toEqual([]);
+  });
+});
+
+describe('commit-hook: fix round 3, Rule 4 - shell wrappers recurse only when unambiguously literal', () => {
+  it.each([
+    ['-o pipefail (an unmodeled option)', `bash -o pipefail -c 'git commit -m "bad subject"'`],
+    ['a bare -- during option parsing', `bash -c -- 'git commit -m "bad subject"'`],
+    ['a quoted "-c" flag word', `bash "-c" 'git commit -m "bad subject"'`],
+    ['piped stdin instead of -c', `echo 'git commit -m "bad subject"' | bash`],
+  ])('blocks an unrecognized shell shape that mentions commit: %s', async (_label, command) => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage(command);
+    expect(isBlocked(result)).toBe(true);
+  });
+
+  it('blocks a heredoc fed to a shell (stdin, not -c) that mentions commit', async () => {
+    const { validateCommitMessage } = await hook();
+    const command = 'bash <<\'EOF\'\ngit commit -m "bad subject"\nEOF';
+    const result = await validateCommitMessage(command);
+    expect(isBlocked(result)).toBe(true);
+  });
+
+  it('still recurses into an ordinary literal bash -c argument (regression guard)', async () => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage(`bash -c 'git commit -m "bad subject"'`);
+    expect(result.issues.some((issue) => issue.startsWith('commit-format'))).toBe(true);
+  });
+
+  it('does NOT block an unrecognized shell shape with no "commit" anywhere (must not regress)', async () => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage(`bash -o pipefail -c 'echo hello'`);
+    expect(result).toBeNull();
+  });
+});
+
+describe('commit-hook: fix round 3, Rule 5 - other wrappers and dynamic command words', () => {
+  it.each([
+    ['sudo', 'sudo git commit -m "bad subject"'],
+    ['eval', `eval 'git commit -m "bad subject"'`],
+    ['a dynamic command word', '$(echo git) commit -m "bad subject"'],
+    ['env -S (opaque re-tokenization, not transparent)', `env -S 'git commit -m "bad subject"'`],
+  ])('blocks a wrapper that mentions commit: %s', async (_label, command) => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage(command);
+    expect(isBlocked(result)).toBe(true);
+  });
+
+  it('does not regress: a non-git, non-shell, non-wrapper command is not a candidate at all', async () => {
+    const { validateCommitMessage } = await hook();
+    const results = await Promise.all([
+      validateCommitMessage('grep -m 1 "git commit" CLAUDE.md'),
+      validateCommitMessage(`cat >> foo <<'EOF'\nsome content\nEOF`),
+      validateCommitMessage('time pnpm verify'),
+      validateCommitMessage('env NODE_ENV=test node script.js'),
+    ]);
+    for (const result of results) expect(result).toBeNull();
+  });
+});
+
+describe('commit-hook: fix round 3, pre-merge smoke test (false-positive guard)', () => {
+  it('passes a realistic cd && git add && git commit chain', async () => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage(
+      "cd /repo && git add -A && git commit -m 'feat: add the thing'",
+    );
+    expect(result.issues).toEqual([]);
+  });
+
+  it('passes a subject containing ?, [ ], and ( ) as literal characters', async () => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage(
+      "git commit -m 'fix: handle [edge] case (round 3)?'",
+    );
+    expect(result.issues).toEqual([]);
+  });
+});
