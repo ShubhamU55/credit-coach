@@ -2,6 +2,54 @@
 
 > Read this first when starting a new session. Update it at the end of every session (newest entry on top).
 
+## 2026-10-22 (session stopped mid-Wave 1: handoff)
+
+### Where things stand
+
+- `main` = `7888ceb`. **Wave 0 is done**, and **W1-1, W1-2 and W1-3 are merged.** Each was reviewed (spec + quality) and fixed until clean.
+- **New agents on `main`:** implementer, gate-checker, build-error-resolver, finding-verifier, consistency-reviewer, functional-tester, edge-case-hunter, test-automator. `tdd-guide` is retired. They resolve via `agentType` only in a fresh session.
+- **finding-verifier passed its live hand-run.** It refuted a planted false finding with confidence 0.95, citing the guard in `utilization.ts`.
+- **W1-4 (security docs + ECC guard hooks) is the only open Wave 1 ticket.**
+  - Worktree: `../cc-1c-w1-4`, branch `feat/1c-w1-4-security-hooks`, last commit `702cb8f`.
+  - Its Opus review found commit-hook bypasses and config-protection gaps.
+  - Fix round 1 was **in progress, with uncommitted edits in that worktree**, when the session stopped.
+  - The full findings and binding rulings are in `docs/agent-runs/2026-10-22-plan-1c-wave-0-1.md` (appendix), and locally in `.superpowers/sdd/2026-10-21-plan-1c-agentic-system/task-W1-4-fix1-findings.md`.
+
+### Resume steps (next session)
+
+1. **Finish W1-4.**
+   - In `../cc-1c-w1-4`, run `git status` and `git log --oneline main..HEAD`.
+   - If the fix commit `fix(security): fail closed on unreadable commit messages` exists and the tree is clean, go straight to the scoped re-review.
+   - If not, dispatch an implementer (Sonnet) in that worktree with the findings file and the uncommitted edits as a starting point. It should finish items A1–C14 test-first, then run `pnpm --filter @credit-coach/hooks test` and `pnpm verify && git status --porcelain`.
+   - Then run a scoped re-review (Opus, using the reviewer's probe cases), then `git rebase main` in the worktree and `git merge --ff-only feat/1c-w1-4-security-hooks` from `main`.
+   - **After this merge, config-protection is live.** It blocks agent edits to ESLint and Prettier configs, `.claude/settings*.json` and the 5 guard scripts.
+2. **Post-Wave-1 integration fix on `main`** (rulings W1-b and W1-c). Do it before step 1's merge, because config-protection doesn't cover `package.json`. It's safe either way.
+   - `apps/admin` `typecheck` becomes `next typegen && tsc --noEmit`. A fresh checkout fails without it, because `.next/types` is gitignored; CI and the fresh-clone check would fail too.
+   - Raise the timeout in `.claude/hooks/tests/eslint-rules.test.mjs` (e.g. 30 s). It flakes under CPU load.
+3. **Remove the merged worktrees and branches:**
+   - `git worktree remove ../cc-1c-w1-1` (same for `-w1-2`, `-w1-3`, and `-w1-4` after it merges)
+   - `git branch -d feat/1c-w1-1-build-agents feat/1c-w1-2-verify-agents feat/1c-w1-3-test-agents`
+4. **Run a final whole-wave review of Wave 1** (Opus, `7caf31d..HEAD`). Then start **Wave 2 (W2-1, then W2-2), in a fresh session.**
+
+### Carry-forwards for W2-1 (also in the plan and the "Residuals for W2-1" list below)
+
+- **Add these schemas to the contracts block:**
+  - `PROPOSAL_LIST_SCHEMA` `{name, layer, file, assertion, criterion}`
+  - `LANDED_LIST_SCHEMA`
+  - `QUARANTINED_LIST_SCHEMA`
+  - `NOT_COVERED_LIST_SCHEMA` `{item, reason}`
+  - `BOUNDARY_LIST_SCHEMA` `{category, verdict}`
+
+  The exact shapes are in the W1-3 agent files.
+
+- **`GATE_FACTS_SCHEMA` must accept gate-checker's `MODE: diff` output:** `facts.base` plus a top-level `diff` string.
+- **`gateBrief` must emit exactly** `MODE: check <sha>` / `TEST: <cmd>|none` / `EXPECT: <paths>|none`.
+- **W5-1:** add a CI commit-message lint, as a backstop for the commit hook.
+
+### Owner actions still open
+
+These are unchanged; see the list below. Also new: decide whether to commit or ignore `.design/`.
+
 ## 2026-10-22 (Wave 0 done)
 
 ### What landed
