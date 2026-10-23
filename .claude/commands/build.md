@@ -49,8 +49,12 @@ don't skip to writing code by hand.
    from the plan name) from the workflow's result: every agent call and model tier, each task's
    attempts and their failure reasons, the gate-checker facts that blocked or passed each attempt,
    confirmed and refuted findings (and any out-of-scope ones per step 4), the `qa` phase's counts
-   and `failedTesters`, and the `stats` object (`agents`, `retries`, `escalations`, `tokens`). This
-   is the main session's job until `journal-writer` exists — don't skip it even for a clean run.
+   and `failedTesters`, the post-QA fix pass's own result (`result.qaFix`: `null` when QA found
+   nothing confirmed and landed no failing proposal, otherwise `{ ok, reasons, findings }` — render
+   `reasons` even when `ok` is `true`, since a `qaFix.ok === false` is the only visible sign that a
+   confirmed QA finding or a newly landed red test is still unfixed), and the `stats` object
+   (`agents`, `retries`, `escalations`, `tokens`). This is the main session's job until
+   `journal-writer` exists — don't skip it even for a clean run.
 
 6. **Render any escalation.** For every task in the result with `status: 'escalated'`, show the
    owner a table of its attempts and reasons, then present the three §8.3 options verbatim:
@@ -58,7 +62,10 @@ don't skip to writing code by hand.
    - switch the agent or model
    - the owner decides
 
-   Stop there for that task; don't guess which option to take.
+   Stop there for that task; don't guess which option to take. If `result.qaFix` is present and
+   `ok: false`, render it the same way: its `findings` (what's still unfixed) and `reasons` (why
+   the fix pass failed), then the same three §8.3 options — a QA-phase escalation needs the same
+   visibility as a task escalation, not just a bump in `stats.escalations`.
 
 Report the final `status` (`done` | `partial` | `escalated`) and a one-line summary of what
 landed. Commit messages inside the loop are made by `implementer`/`build-error-resolver`

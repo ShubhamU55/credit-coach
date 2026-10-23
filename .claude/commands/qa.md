@@ -10,14 +10,18 @@ id, a PRD section, or free text; it's passed straight through as `args.scope` an
 
    ```
    git merge-base main HEAD
+   git rev-parse HEAD
    git diff --name-only <base>..HEAD
    git diff <base>..HEAD
    ```
 
-   to get `base`, `changedFiles` and the raw `diff` text yourself, exactly as `gate-checker`'s
-   `MODE: diff` would. (The `qa` Workflow also falls back to calling `gate-checker` itself with
-   `MODE: diff` if `changedFiles`/`diff` are omitted — computing them here just avoids a redundant
-   call when you already have a working tree to diff.)
+   to get `base`, `head`, `changedFiles` and the raw `diff` text yourself, exactly as
+   `gate-checker`'s `MODE: diff` would. Pass all four through to the Workflow in step 3 — every
+   tester's own brief needs `base`/`head` as much as `changedFiles`/`diff` does; omitting them is
+   not a shortcut, it silently leaves every tester prompt saying "not supplied" (fix round 1,
+   finding A). (The `qa` Workflow also falls back to calling `gate-checker` itself with
+   `MODE: diff` for whichever of the four you don't supply — computing them here just avoids a
+   redundant call when you already have a working tree to diff.)
 
 2. **Acceptance criteria.** If this scope has them (from `requirements-analyst`'s output for the
    ticket, or the plan task's own interfaces/acceptance criteria), pass them as `args.criteria`.
@@ -30,6 +34,8 @@ id, a PRD section, or free text; it's passed straight through as `args.scope` an
    ```json
    {
      "scope": "$ARGUMENTS",
+     "base": "<from step 1>",
+     "head": "<from step 1>",
      "changedFiles": ["<from step 1>"],
      "diff": "<from step 1>",
      "criteria": ["<from step 2, if any>"]

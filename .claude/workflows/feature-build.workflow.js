@@ -3,9 +3,15 @@ export const meta = {
   description:
     'Drives an approved plan task by task: implementer -> gate-checker -> retry or escalate (spec §8.2-§8.3), then code-reviewer/consistency-reviewer (+ ts/react reviewers by file type) -> finding-verifier -> one in-scope fix pass. After the last task, runs the qa workflow inline and lands its proposals.',
   phases: [
-    { title: 'Build', detail: 'per task: implementer, gate-checker, retry up to 2 times, else escalate' },
+    {
+      title: 'Build',
+      detail: 'per task: implementer, gate-checker, retry up to 2 times, else escalate',
+    },
     { title: 'Review', detail: 'reviewers by size/kind, deduped and adversarially verified' },
-    { title: 'QA', detail: "workflow('qa') over the whole plan diff, then test-automator lands proposals" },
+    {
+      title: 'QA',
+      detail: "workflow('qa') over the whole plan diff, then test-automator lands proposals",
+    },
   ],
 };
 
@@ -581,7 +587,11 @@ function implementerBrief(task, attemptStart, lastFailure) {
     `### Task ${task.id}: ${task.title}`,
     '',
     ...(lastFailure
-      ? ['Previous attempt failed. Address every reason below:', ...toList(lastFailure.reasons).map((reason) => `- ${reason}`), '']
+      ? [
+          'Previous attempt failed. Address every reason below:',
+          ...toList(lastFailure.reasons).map((reason) => `- ${reason}`),
+          '',
+        ]
       : []),
     `Files: ${files.join(' ') || '(none)'}`,
     `Test files: ${testFiles.join(' ') || '(none)'}`,
@@ -595,7 +605,9 @@ function implementerBrief(task, attemptStart, lastFailure) {
 
 /**
  * Dry-run only: a brief for the `general-purpose` fault-injector agent that runs *after* the
- * implementer, so the implementer's own brief above never mentions a fault and stays clean.
+ * implementer, so the implementer's own brief above never mentions a fault and stays clean. A
+ * "tests" fault with no test file to target is a no-op brief, never `to undefined.` (fix round 1,
+ * finding G1).
  */
 function faultBrief(fault, task) {
   if (fault === 'drift') {
@@ -605,6 +617,9 @@ function faultBrief(fault, task) {
     ].join('\n');
   }
   const testFile = toList(task.testFiles)[0];
+  if (!testFile) {
+    return 'No test file is available for this task, so the "tests" dry-run fault cannot run. Do nothing.';
+  }
   return [
     `Append the line it('dry-run fault', () => expect(1).toBe(2)); to ${testFile}.`,
     'Commit exactly: test: dry-run fault',
@@ -647,6 +662,85 @@ function unpredicted(predictedFiles, changedFiles) {
   const predicted = new Set(toList(predictedFiles));
   return toList(changedFiles).filter((file) => !predicted.has(file));
 }
+
+/**
+ * The implementer's brief for a confirmed-findings fix pass, using the same `Files:`/
+ * `Test files:`/`Test command:` labels `implementerBrief` uses -- `implementer.md`'s own Inputs
+ * section reads a brief's `Files:` list, so a differently-labelled "Allowed files:" line risks the
+ * implementer not recognizing its own scope. The findings themselves are untrusted text (a
+ * reviewer/tester's own prose, which may itself have processed untrusted diff content), so they
+ * are fenced with `wrapUntrusted`, not interpolated directly (Review Focus #5).
+ */
+function fixPassBrief(scopeLabel, files, testFiles, testCommand, confirmed, diffText) {
+  const findingsText = toList(confirmed)
+    .map((f) => `- [${f.severity}/${f.category}] ${f.file}: ${f.title} -- ${f.detail}`)
+    .join('\n');
+  return [
+    `Fix pass: ${scopeLabel}.`,
+    '',
+    `Files: ${toList(files).join(' ') || '(none)'}`,
+    `Test files: ${toList(testFiles).join(' ') || '(none)'}`,
+    testCommand ? `Test command: ${testCommand}` : 'Test command: none',
+    '',
+    'Confirmed findings to fix:',
+    wrapUntrusted('FINDINGS', findingsText),
+    '',
+    wrapUntrusted('DIFF', diffText ?? ''),
+  ].join('\n');
+}
+
+const PRODUCT_FILE_PATTERN = /\.(property\.|edge\.)?test\.([A-Za-z0-9]+)$/;
+
+/**
+ * The product file a test file's own name implies (`docs/standards.md` layout convention: a test
+ * colocates with the source it covers, `X.test.ts`/`X.property.test.ts`/`X.edge.test.ts` -> `X.ts`).
+ * `null` when the test file's name doesn't follow that convention (e.g. a Playwright spec or a
+ * Maestro flow has no single sibling product file) -- the caller must not guess in that case.
+ */
+function productFileFor(testFile) {
+  if (!PRODUCT_FILE_PATTERN.test(testFile)) return null;
+  return testFile.replace(PRODUCT_FILE_PATTERN, '.$2');
+}
+
+/** The real test command for a test file's own path prefix (`docs/testing.md` layer -> command), by path, never by layer alone (a `vitest` test can live under packages/engine or .claude/hooks). */
+function testCommandForFile(testFile) {
+  const file = normalizePath(testFile);
+  if (file.startsWith('packages/engine/')) return 'pnpm --filter @credit-coach/engine test';
+  if (file.startsWith('.claude/hooks/')) return 'pnpm --filter @credit-coach/hooks test';
+  if (file.startsWith('apps/admin/e2e/')) return 'pnpm --filter @credit-coach/admin test:e2e';
+  if (file.startsWith('apps/mobile/.maestro/')) return 'pnpm --filter @credit-coach/mobile e2e';
+  return null;
+}
+
+/**
+ * The finding-verifier brief for one finding: the full finding, fenced with `wrapUntrusted` since
+ * every field but `id` can carry text a reviewer copied from untrusted diff/PR content (Review
+ * Focus #5 -- every reviewer and verifier prompt wraps untrusted text with `wrapUntrusted`), plus
+ * the diff itself.
+ */
+function verifierPrompt(finding, diffText) {
+  const findingText = JSON.stringify(
+    {
+      id: finding.id,
+      severity: finding.severity,
+      category: finding.category,
+      file: finding.file,
+      line: finding.line ?? null,
+      title: finding.title,
+      detail: finding.detail,
+      evidence: finding.evidence,
+      proof: finding.proof ?? null,
+    },
+    null,
+    2,
+  );
+  return [
+    'You are finding-verifier. Verify exactly this one finding against the evidence below.',
+    wrapUntrusted('FINDING', findingText),
+    '',
+    wrapUntrusted('DIFF', diffText ?? ''),
+  ].join('\n');
+}
 // </pure>
 
 // --- runtime -----------------------------------------------------------------
@@ -669,11 +763,11 @@ const IMPLEMENTER_SCHEMA = envelopeSchema(
   { commit: { type: ['string', 'null'] }, predictedFiles: STRING_LIST },
   ['predictedFiles'],
 );
-// implementer.md/build-error-resolver.md both declare `commit` required even on `status:
-// "blocked"`, which has no commit to report -- see Task W2-1 carry-forwards item 7.2. This
-// workflow's own validation makes `commit` nullable and optional instead, so a blocked result's
-// `blockedReason` survives; the fix belongs in the `.md` files too (follow-up, not this ticket's
-// Files: list).
+// implementer.md declares `commit` required even on `status: "blocked"`, which has no commit to
+// report -- see Task W2-1 carry-forwards item 7.2. This workflow's own validation makes `commit`
+// nullable and optional instead, so a blocked result's `blockedReason` survives; the fix belongs
+// in the `.md` file too (follow-up, not this ticket's Files: list). `build-error-resolver` is not
+// called anywhere in this workflow -- it is not wired in at all, not even with a schema override.
 const GATE_RESULT_SCHEMA = envelopeSchema({ facts: GATE_FACTS_SCHEMA }, ['facts']);
 const REVIEWER_SCHEMA = envelopeSchema({}, []);
 
@@ -703,13 +797,19 @@ const gateCheck = (task, attemptStart) =>
   });
 
 const gateDiff = () =>
-  callAgent('gate-checker (diff)', 'MODE: diff', { agentType: 'gate-checker', schema: GATE_DIFF_SCHEMA });
+  callAgent('gate-checker (diff)', 'MODE: diff', {
+    agentType: 'gate-checker',
+    schema: GATE_DIFF_SCHEMA,
+  });
 
 const runImplementer = (brief) =>
   callAgent('implementer', brief, { agentType: 'implementer', schema: IMPLEMENTER_SCHEMA });
 
 const runFaultInjector = (brief) =>
-  callAgent('fault-injector', brief, { agentType: 'general-purpose', schema: envelopeSchema({}, []) });
+  callAgent('fault-injector', brief, {
+    agentType: 'general-purpose',
+    schema: envelopeSchema({}, []),
+  });
 
 function reviewerPrompt(reviewer, task, diffText) {
   return [
@@ -721,18 +821,10 @@ function reviewerPrompt(reviewer, task, diffText) {
 }
 
 const runReviewer = (reviewer, task, diffText) =>
-  callAgent(reviewer, reviewerPrompt(reviewer, task, diffText), { agentType: reviewer, schema: REVIEWER_SCHEMA });
-
-function verifierPrompt(finding, diffText) {
-  return [
-    'You are finding-verifier. Verify exactly this one finding against the diff below.',
-    `Finding (${finding.severity}/${finding.category}) in ${finding.file}: ${finding.title}`,
-    `Evidence: ${finding.evidence}`,
-    finding.proof ? `Proof: ${finding.proof}` : '(no proof given)',
-    '',
-    wrapUntrusted('DIFF', diffText ?? ''),
-  ].join('\n');
-}
+  callAgent(reviewer, reviewerPrompt(reviewer, task, diffText), {
+    agentType: reviewer,
+    schema: REVIEWER_SCHEMA,
+  });
 
 const runVerifier = (finding, diffText) =>
   callAgent('finding-verifier', verifierPrompt(finding, diffText), {
@@ -761,16 +853,25 @@ async function verifyFindings(findings, diffText) {
  * checkDrift -> nextStep, retrying with the SAME attemptStart (so a retry's `RESET TO` discards
  * exactly this task's own failed attempts) until `nextStep` says done/escalate. A blocked
  * implementer (a scope question, not a flaky failure) escalates immediately instead of burning
- * retries on it.
+ * retries on it. `attempt.unpredicted` is a separate advisory field, never mixed into `reasons` --
+ * a passing attempt (`ok: true`) must stay readable as passing (fix round 1, finding G3).
  */
 async function runTaskGate(task, dryRunFaults) {
   const start = await gateStart();
   if (start == null || start.status !== 'done') {
-    return { attempts: [], step: 'escalate', attemptStart: null };
+    return {
+      attempts: [{ n: 1, ok: false, reasons: ['gate-start-failed'], commit: null }],
+      step: 'escalate',
+      attemptStart: null,
+    };
   }
   const startReasons = checkStart(start.facts);
   if (startReasons.length > 0) {
-    return { attempts: [{ n: 1, ok: false, reasons: startReasons, commit: null }], step: 'escalate', attemptStart: null };
+    return {
+      attempts: [{ n: 1, ok: false, reasons: startReasons, commit: null }],
+      step: 'escalate',
+      attemptStart: null,
+    };
   }
   const attemptStart = start.facts.head;
 
@@ -781,7 +882,8 @@ async function runTaskGate(task, dryRunFaults) {
     const index = attempts.length;
     const fault = (dryRunFaults || [])[index] ?? null;
     const implResult = await runImplementer(implementerBrief(task, attemptStart, lastFailure));
-    const blockedReason = implResult != null && implResult.status === 'blocked' ? implResult.blockedReason : null;
+    const blockedReason =
+      implResult != null && implResult.status === 'blocked' ? implResult.blockedReason : null;
 
     if (fault) {
       await runFaultInjector(faultBrief(fault, task));
@@ -805,7 +907,7 @@ async function runTaskGate(task, dryRunFaults) {
     };
     if (implResult && implResult.predictedFiles && gate && gate.facts) {
       const extra = unpredicted(implResult.predictedFiles, gate.facts.changedFiles);
-      if (extra.length > 0) attempt.reasons = [...attempt.reasons, `unpredicted (advisory): ${extra.join(', ')}`];
+      if (extra.length > 0) attempt.unpredicted = extra;
     }
     attempts.push(attempt);
     lastFailure = attempt.ok ? null : { reasons };
@@ -814,24 +916,47 @@ async function runTaskGate(task, dryRunFaults) {
   return { attempts, step, attemptStart };
 }
 
-/** One fix pass, scoped to the confirmed findings' files plus the task's own test files. */
-async function runFixPass(task, attemptStart, confirmed, diffText) {
-  const fixFiles = [...new Set(confirmed.map((finding) => finding.file))];
-  const allowed = [...fixFiles, ...toList(task.testFiles)];
-  const brief = [
-    `Fix pass for Task ${task.id}: ${task.title}.`,
-    `Allowed files: ${allowed.join(' ')}`,
-    '',
-    'Confirmed findings to fix:',
-    ...confirmed.map((f) => `- [${f.severity}/${f.category}] ${f.file}: ${f.title} -- ${f.detail}`),
-    '',
-    wrapUntrusted('DIFF', diffText ?? ''),
-  ].join('\n');
-  await runImplementer(brief);
-  const gate = await gateCheck({ ...task, files: allowed }, attemptStart);
-  return gate != null && gate.status === 'done'
-    ? checkDrift(gate.facts, { ...task, files: allowed }, attemptStart)
-    : { ok: false, reasons: ['gate-check-failed'] };
+/**
+ * One fix pass for a set of confirmed findings. Takes a FRESH `gate-checker MODE: start` of its
+ * own, so the fix-pass gate's `changedFiles` range covers only what THIS fix pass's implementer
+ * touches -- never the original attempt's own already-committed, legitimate files (fix round 1,
+ * finding B: reusing the original `attemptStart` either escalates on the original commit's own
+ * files, or silently passes by coincidence without checking the fix implementer's own result).
+ * The fix implementer's own `status` is inspected explicitly: `blocked`/`failed`/`null` is never
+ * treated as "fixed".
+ */
+async function runFixPass(scopeLabel, files, testFiles, testCommand, confirmed, diffText) {
+  const start = await gateStart();
+  if (start == null || start.status !== 'done') {
+    return { ok: false, reasons: ['gate-start-failed'], commit: null };
+  }
+  const startReasons = checkStart(start.facts);
+  if (startReasons.length > 0) {
+    return { ok: false, reasons: startReasons, commit: null };
+  }
+  const fixAttemptStart = start.facts.head;
+
+  const implResult = await runImplementer(
+    fixPassBrief(scopeLabel, files, testFiles, testCommand, confirmed, diffText),
+  );
+  if (implResult == null) {
+    return { ok: false, reasons: ['implementer-returned-null'], commit: null };
+  }
+  if (implResult.status !== 'done') {
+    return {
+      ok: false,
+      reasons: [`blocked: ${implResult.blockedReason || implResult.status}`],
+      commit: implResult.commit || null,
+    };
+  }
+
+  const fixTask = { files, testFiles, testCommand };
+  const gate = await gateCheck(fixTask, fixAttemptStart);
+  const drift =
+    gate != null && gate.status === 'done'
+      ? checkDrift(gate.facts, fixTask, fixAttemptStart)
+      : { ok: false, reasons: ['gate-check-failed'] };
+  return { ok: drift.ok, reasons: drift.reasons, commit: implResult.commit || null };
 }
 
 /** `args` arrives verbatim; a JSON-encoded string is also accepted. Fail CLOSED on invalid input. */
@@ -872,16 +997,25 @@ for (const task of input.tasks) {
 
   if (gateResult.step !== 'done') {
     escalatedIds.push(task.id);
-    taskResults.push({ id: task.id, status: 'escalated', attempts: gateResult.attempts, confirmed: [], refuted: 0 });
+    taskResults.push({
+      id: task.id,
+      status: 'escalated',
+      attempts: gateResult.attempts,
+      confirmed: [],
+      refuted: 0,
+    });
     continue;
   }
 
   const size = classifySize(task);
   const reviewers = reviewersFor(task, size);
   const taskDiffResult = await gateDiff();
-  const taskDiff = taskDiffResult != null && taskDiffResult.status === 'done' ? taskDiffResult.diff : '';
+  const taskDiff =
+    taskDiffResult != null && taskDiffResult.status === 'done' ? taskDiffResult.diff : '';
 
-  const reviewResults = await parallel(reviewers.map((reviewer) => () => runReviewer(reviewer, task, taskDiff)));
+  const reviewResults = await parallel(
+    reviewers.map((reviewer) => () => runReviewer(reviewer, task, taskDiff)),
+  );
   agentsRun += reviewResults.length;
   const rawFindings = reviewResults.flatMap((result) =>
     result != null && result.status === 'done' ? toList(result.findings) : [],
@@ -894,32 +1028,53 @@ for (const task of input.tasks) {
   outOfScope.push(...split.outOfScope);
 
   let status = 'done';
+  let attempts = gateResult.attempts;
   if (split.inScope.length > 0) {
-    const fixDrift = await runFixPass(task, gateResult.attemptStart, split.inScope, taskDiff);
+    const fixFiles = [...new Set(split.inScope.map((finding) => finding.file))];
+    const fixResult = await runFixPass(
+      `Task ${task.id}: ${task.title}`,
+      fixFiles,
+      toList(task.testFiles),
+      task.testCommand,
+      split.inScope,
+      taskDiff,
+    );
     agentsRun += 1;
-    if (!fixDrift.ok) status = 'escalated';
+    attempts = [
+      ...attempts,
+      { n: attempts.length + 1, ok: fixResult.ok, reasons: fixResult.reasons, commit: fixResult.commit },
+    ];
+    if (!fixResult.ok) status = 'escalated';
   }
   if (status === 'escalated') escalatedIds.push(task.id);
 
-  taskResults.push({
-    id: task.id,
-    status,
-    attempts: gateResult.attempts,
-    confirmed: split.inScope,
-    refuted,
-  });
+  taskResults.push({ id: task.id, status, attempts, confirmed: split.inScope, refuted });
 }
 
-// After the last task: run `qa` inline over the whole plan's diff.
+// After the last task: run `qa` inline over the whole plan's diff, threading base/head through so
+// every tester gets a real range (fix round 1, finding A -- the args a bare `/qa` caller doesn't
+// have, `feature-build` already does, from this same gate-checker call).
 let qa = null;
+let qaFix = null;
 if (taskResults.some((task) => task.status === 'done')) {
   const finalDiff = await gateDiff();
   if (finalDiff != null && finalDiff.status === 'done') {
     qa = await workflow('qa', {
       scope: input.planPath,
+      base: finalDiff.facts.base,
+      head: finalDiff.facts.head,
       changedFiles: finalDiff.facts.changedFiles,
       diff: finalDiff.diff,
     });
+
+    // The scope boundary for a post-QA fix pass: everything the plan's own tasks were allowed to
+    // touch. A confirmed QA finding outside that union is out of scope here too (§8.1a) -- it is
+    // reported in `outOfScope`, never silently dropped (fix round 1, finding D).
+    const planAllowed = input.tasks.flatMap((task) => [
+      ...toList(task.files),
+      ...toList(task.testFiles),
+    ]);
+    const qaFixResults = [];
 
     if (qa != null && qa.proposals.length > 0) {
       const landed = await callAgent(
@@ -930,71 +1085,103 @@ if (taskResults.some((task) => task.status === 'done')) {
         ].join('\n'),
         {
           agentType: 'test-automator',
-          schema: envelopeSchema({ landed: LANDED_LIST_SCHEMA, quarantined: QUARANTINED_LIST_SCHEMA }, []),
+          schema: envelopeSchema(
+            { landed: LANDED_LIST_SCHEMA, quarantined: QUARANTINED_LIST_SCHEMA },
+            [],
+          ),
         },
       );
       agentsRun += 1;
 
       // A newly landed test that fails goes to finding-verifier: it becomes a product finding
       // if it matches the PRD/design, or is dropped (logged) if the test itself was wrong.
-      const redTests = landed != null && landed.status === 'done' ? toList(landed.landed).filter((t) => t.result === 'red') : [];
-      const qaFindings = [];
+      const redTests =
+        landed != null && landed.status === 'done'
+          ? toList(landed.landed).filter((t) => t.result === 'red')
+          : [];
       for (const redTest of redTests) {
-        const verdict = await runVerifier(
-          {
-            id: `qa-${redTest.file}`,
-            severity: 'medium',
-            category: 'test-adequacy',
-            file: redTest.file,
-            line: null,
-            title: `New test "${redTest.name}" fails`,
-            detail: 'A newly landed QA test fails on main; judge whether this is a real product gap.',
-            evidence: redTest.name,
-          },
+        const productFile = productFileFor(redTest.file);
+        const candidateFinding = {
+          id: `qa-${redTest.file}`,
+          severity: 'medium',
+          category: 'test-adequacy',
+          file: productFile || redTest.file,
+          line: null,
+          title: `New test "${redTest.name}" fails`,
+          detail: 'A newly landed QA test fails on main; judge whether this is a real product gap.',
+          evidence: redTest.name,
+        };
+        const verdict = await runVerifier(candidateFinding, finalDiff.diff);
+        agentsRun += 1;
+        if (applyVerifierPolicy(candidateFinding, verdict) !== 'confirmed') {
+          log(
+            `feature-build: dropping newly landed test "${redTest.name}" in ${redTest.file} -- ${verdict ? verdict.reasoning : 'no verdict'}`,
+          );
+          continue;
+        }
+        const finding = { ...candidateFinding, detail: verdict.reasoning, proof: verdict.reasoning };
+        if (!productFile) {
+          // No known product-file mapping (e.g. a Playwright/Maestro proposal has no single
+          // sibling source file) -- escalate instead of guessing a scope or widening it.
+          qaFixResults.push({ ok: false, reasons: [`no-product-file-mapping: ${redTest.file}`], findings: [finding] });
+          continue;
+        }
+        const testCommand = testCommandForFile(redTest.file);
+        const fixResult = await runFixPass(
+          `QA red test "${redTest.name}"`,
+          [productFile],
+          [redTest.file],
+          testCommand,
+          [finding],
           finalDiff.diff,
         );
         agentsRun += 1;
-        if (verdict != null && verdict.isReal) {
-          qaFindings.push({
-            id: `qa-${redTest.file}`,
-            severity: 'medium',
-            category: 'test-adequacy',
-            file: redTest.file,
-            line: null,
-            title: `New test "${redTest.name}" fails`,
-            detail: verdict.reasoning,
-            evidence: redTest.name,
-            proof: verdict.reasoning,
-          });
-        } else {
-          log(`feature-build: dropping newly landed test "${redTest.name}" in ${redTest.file} -- ${verdict ? verdict.reasoning : 'no verdict'}`);
-        }
+        qaFixResults.push({ ...fixResult, findings: [finding] });
       }
+    }
 
-      if (qaFindings.length > 0) {
-        const qaAllowed = qaFindings.map((f) => f.file);
-        const qaFixDrift = await runFixPass(
-          { id: 'qa', title: 'QA fix pass', files: qaAllowed, testFiles: [] },
-          finalDiff.facts.head,
-          qaFindings,
+    if (qa != null && qa.confirmed.length > 0) {
+      const qaScope = splitScope(qa.confirmed, planAllowed);
+      outOfScope.push(...qaScope.outOfScope);
+      if (qaScope.inScope.length > 0) {
+        const fixFiles = [...new Set(qaScope.inScope.map((finding) => finding.file))];
+        const fixResult = await runFixPass(
+          'QA confirmed findings',
+          fixFiles,
+          [],
+          null,
+          qaScope.inScope,
           finalDiff.diff,
         );
         agentsRun += 1;
-        if (!qaFixDrift.ok) {
-          escalatedIds.push('qa');
-        }
+        qaFixResults.push({ ...fixResult, findings: qaScope.inScope });
       }
+    }
+
+    if (qaFixResults.length > 0) {
+      const ok = qaFixResults.every((result) => result.ok);
+      qaFix = {
+        ok,
+        reasons: qaFixResults.flatMap((result) => result.reasons),
+        findings: qaFixResults.flatMap((result) => result.findings),
+      };
+      if (!ok) escalatedIds.push('qa');
     }
   }
 }
 
 const overallStatus =
-  escalatedIds.length === 0 ? 'done' : taskResults.some((task) => task.status === 'done') ? 'partial' : 'escalated';
+  escalatedIds.length === 0
+    ? 'done'
+    : taskResults.some((task) => task.status === 'done')
+      ? 'partial'
+      : 'escalated';
 
 return {
   status: overallStatus,
   tasks: taskResults,
   qa,
+  qaFix,
   stats: { agents: agentsRun, retries: retriesRun, escalations: escalatedIds.length, tokens: null },
   outOfScope,
 };

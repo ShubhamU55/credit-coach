@@ -538,34 +538,51 @@ function splitDeviceBound(testers) {
 }
 
 /**
- * Folds every tester's `{ tester, result }` into one QaResult. `result == null` (the agent file
- * doesn't exist yet, or the call errored) and `result.status !== 'done'` both count as a failed
- * tester -- a blocked tester's findings/proposals are never trusted, but it is never silently
- * dropped either (Review Focus #2: a null or malformed result must never read as success).
- * `verdicts[i]` aligns by index with `dedupeFindings`'s output order.
+ * Splits every tester's `{ tester, result }` into failed testers, raw findings (tagged with
+ * `foundBy` when the tester didn't set it) and proposals, then dedupes the findings once. Shared
+ * by `summarizeQa` below and the runtime, so the runtime's verifier dispatch and the final
+ * QaResult always see the exact same deduped findings in the exact same order -- never two
+ * separate `dedupeFindings` calls that could silently drift apart.
+ *
+ * `result == null` (the agent file doesn't exist yet, or the call errored) and
+ * `result.status !== 'done'` both count as a failed tester -- a blocked tester's findings/
+ * proposals are never trusted, but it is never silently dropped either (Review Focus #2: a null
+ * or malformed result must never read as success).
  */
-function summarizeQa(results, verdicts) {
-  const list = toList(results);
+function collectFindings(results) {
   const failedTesters = [];
   const rawFindings = [];
   const proposals = [];
 
-  for (const entry of list) {
+  for (const entry of toList(results)) {
     const tester = (entry || {}).tester;
     const result = (entry || {}).result;
     if (result == null || result.status !== 'done') {
       failedTesters.push(tester);
       continue;
     }
-    rawFindings.push(...toList(result.findings).map((f) => ({ ...f, foundBy: toList(f.foundBy).length > 0 ? f.foundBy : [tester] })));
+    rawFindings.push(
+      ...toList(result.findings).map((f) => ({
+        ...f,
+        foundBy: toList(f.foundBy).length > 0 ? f.foundBy : [tester],
+      })),
+    );
     proposals.push(...toList(result.proposals));
   }
 
-  const unique = dedupeFindings(rawFindings);
+  return { failedTesters, rawFindings, uniqueFindings: dedupeFindings(rawFindings), proposals };
+}
+
+/**
+ * Folds every tester's `{ tester, result }` into one QaResult. `verdicts[i]` aligns by index with
+ * `collectFindings(results).uniqueFindings`'s order -- the runtime must verify in that same order.
+ */
+function summarizeQa(results, verdicts) {
+  const { failedTesters, rawFindings, uniqueFindings, proposals } = collectFindings(results);
   const verdictList = toList(verdicts);
   const confirmed = [];
   let refuted = 0;
-  unique.forEach((finding, index) => {
+  uniqueFindings.forEach((finding, index) => {
     const verdict = index < verdictList.length ? verdictList[index] : null;
     if (applyVerifierPolicy(finding, verdict) === 'confirmed') {
       confirmed.push(finding);
@@ -580,13 +597,43 @@ function summarizeQa(results, verdicts) {
     proposals,
     failedTesters,
     counts: {
-      testers: list.length,
+      testers: toList(results).length,
       raw: rawFindings.length,
-      unique: unique.length,
+      unique: uniqueFindings.length,
       confirmed: confirmed.length,
       refuted,
     },
   };
+}
+
+/**
+ * The finding-verifier brief for one finding: the full finding (id, severity, category, file,
+ * line, title, detail, evidence, proof), fenced with `wrapUntrusted` since every field but `id`
+ * can carry text a reviewer copied from untrusted diff/PR content (Review Focus #5 -- every
+ * reviewer and verifier prompt wraps untrusted text with `wrapUntrusted`), plus the diff itself.
+ */
+function verifierPrompt(finding, diffText) {
+  const findingText = JSON.stringify(
+    {
+      id: finding.id,
+      severity: finding.severity,
+      category: finding.category,
+      file: finding.file,
+      line: finding.line ?? null,
+      title: finding.title,
+      detail: finding.detail,
+      evidence: finding.evidence,
+      proof: finding.proof ?? null,
+    },
+    null,
+    2,
+  );
+  return [
+    'You are finding-verifier. Verify exactly this one finding against the evidence below.',
+    wrapUntrusted('FINDING', findingText),
+    '',
+    wrapUntrusted('DIFF', diffText ?? ''),
+  ].join('\n');
 }
 // </pure>
 
@@ -596,9 +643,12 @@ function summarizeQa(results, verdicts) {
 // fail closed on anything that could not run.
 //
 // Caller contract -- pass `args`:
-//   { scope: string, changedFiles?: string[], diff?: string, criteria?: string[] }
-// changedFiles/diff are optional: when absent, gate-checker's `MODE: diff` supplies them
-// (feature-build always passes them itself, from the same gate-checker call it already makes).
+//   { scope: string, base?: string, head?: string, changedFiles?: string[], diff?: string, criteria?: string[] }
+// base/head/changedFiles/diff are each optional *independently*: whichever of the four is
+// missing, gate-checker's `MODE: diff` supplies all four (it's cheap and idempotent to call even
+// when only one is missing). `feature-build` always passes all four itself, from the same
+// `gate-checker MODE: diff` call it already makes; a bare `/qa <scope>` from the command line
+// computes them with plain git per `qa.md`.
 //
 // Returns: QaResult -- see the `summarizeQa` doc comment in the pure block above.
 
@@ -626,7 +676,10 @@ function testerSchema(tester) {
   if (tester === 'security-reviewer') return envelopeSchema({}, []);
   // api-tester, ui-tester, integration-tester don't exist yet (W3-2); this is their declared
   // shape once they land, matching functional-tester's today.
-  return envelopeSchema({ proposals: PROPOSAL_LIST_SCHEMA, notCovered: NOT_COVERED_LIST_SCHEMA }, []);
+  return envelopeSchema(
+    { proposals: PROPOSAL_LIST_SCHEMA, notCovered: NOT_COVERED_LIST_SCHEMA },
+    [],
+  );
 }
 
 function testerPrompt(tester, scope, base, head, diff, criteria) {
@@ -660,17 +713,6 @@ async function runTester(tester, scope, base, head, diff, criteria) {
   }
 }
 
-function verifierPrompt(finding, diff) {
-  return [
-    'You are finding-verifier. Verify exactly this one finding against the diff below.',
-    `Finding (${finding.severity}/${finding.category}) in ${finding.file}: ${finding.title}`,
-    `Evidence: ${finding.evidence}`,
-    finding.proof ? `Proof: ${finding.proof}` : '(no proof given)',
-    '',
-    wrapUntrusted('DIFF', diff ?? ''),
-  ].join('\n');
-}
-
 // `args` arrives verbatim; a JSON-encoded string is also accepted. Fail CLOSED on invalid
 // input -- a test gate must never silently run nothing and report success.
 let input;
@@ -691,22 +733,29 @@ if (input.changedFiles != null && !Array.isArray(input.changedFiles)) {
 if (input.criteria != null && !Array.isArray(input.criteria)) {
   throw new Error('qa: args.criteria must be an array');
 }
+if (input.base != null && typeof input.base !== 'string') {
+  throw new Error('qa: args.base must be a string');
+}
+if (input.head != null && typeof input.head !== 'string') {
+  throw new Error('qa: args.head must be a string');
+}
 
-let base = null;
-let head = null;
+let base = typeof input.base === 'string' ? input.base : null;
+let head = typeof input.head === 'string' ? input.head : null;
 let changedFiles = input.changedFiles ?? null;
 let diff = typeof input.diff === 'string' ? input.diff : null;
 
-// gate-checker's MODE: diff supplies base/head/changedFiles/diff whenever the caller did not
-// already compute them. feature-build always passes them (it needs the same call anyway); a
-// bare `/qa <scope>` from the command line usually will not.
-if (changedFiles === null || diff === null) {
+// gate-checker's MODE: diff supplies base/head/changedFiles/diff for whichever of the four the
+// caller didn't already compute -- checked independently, not just "changedFiles or diff", so a
+// caller that passes changedFiles/diff but not base/head (every real caller, before this fix)
+// still gets base/head from this call instead of silently staying null.
+if (base === null || head === null || changedFiles === null || diff === null) {
   const gate = await agent('MODE: diff', { agentType: 'gate-checker', schema: GATE_DIFF_SCHEMA });
   if (gate == null || gate.status !== 'done') {
     throw new Error('qa: gate-checker MODE: diff did not return usable facts');
   }
-  base = gate.facts.base ?? null;
-  head = gate.facts.head ?? null;
+  base = base ?? gate.facts.base ?? null;
+  head = head ?? gate.facts.head ?? null;
   changedFiles = changedFiles ?? gate.facts.changedFiles ?? [];
   diff = diff ?? gate.diff ?? '';
 }
@@ -726,9 +775,7 @@ if (criteria.length === 0 && testers.includes('functional-tester')) {
 const { parallel: parallelTesters, serial: serialTesters } = splitDeviceBound(testers);
 
 const parallelResults = await parallel(
-  parallelTesters.map(
-    (tester) => () => runTester(tester, input.scope, base, head, diff, criteria),
-  ),
+  parallelTesters.map((tester) => () => runTester(tester, input.scope, base, head, diff, criteria)),
 );
 
 // The emulator is shared: device-bound testers (ui-tester, integration-tester) run one after
@@ -744,18 +791,10 @@ const results = [
   ...skipped.map((tester) => ({ tester, result: null })),
 ];
 
-// Pre-compute the same dedupe the pure `summarizeQa` will do internally, so verdicts[] can be
-// gathered in exactly dedupeFindings' output order before summarizeQa aligns them back up.
-const doneResults = results.filter(
-  (entry) => entry.result != null && entry.result.status === 'done',
-);
-const rawFindings = doneResults.flatMap((entry) =>
-  toList(entry.result.findings).map((f) => ({
-    ...f,
-    foundBy: toList(f.foundBy).length > 0 ? f.foundBy : [entry.tester],
-  })),
-);
-const uniqueFindings = dedupeFindings(rawFindings);
+// `collectFindings` is the one dedupe call -- `summarizeQa` below calls it again internally over
+// the same `results`, so it always sees exactly this `uniqueFindings` array, in this order,
+// never a second independent dedupe that could drift from this one.
+const { uniqueFindings } = collectFindings(results);
 
 const verdicts = await parallel(
   uniqueFindings.map((finding) => async () => {
