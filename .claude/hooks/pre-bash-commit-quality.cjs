@@ -327,11 +327,22 @@ function recordGitConfigEnv(words, unwrap, context) {
   }
 }
 
-// git global options that take a separate value word (`-c key=value`,
-// `-C <dir>`, …), so the real subcommand word is found correctly.
+// git's global options (git 2.54), so the real subcommand word is found
+// correctly. `-c`/`--config-env` are handled separately (their settings are
+// checked). Any other option before the subcommand is unrecognized: the walk
+// gives up rather than misread its value word as the subcommand.
 const GIT_GLOBAL_OPTIONS_WITH_SEPARATE_VALUE = new Set([
-  '-c', '-C', '--config-env', '--work-tree', '--git-dir', '--namespace', '--super-prefix'
+  '-C', '--work-tree', '--git-dir', '--namespace', '--super-prefix', '--attr-source'
 ]);
+const GIT_GLOBAL_FLAGS = new Set([
+  '-p', '--paginate', '-P', '--no-pager', '--no-replace-objects', '--no-lazy-fetch',
+  '--no-optional-locks', '--no-advice', '--bare', '--literal-pathspecs', '--glob-pathspecs',
+  '--noglob-pathspecs', '--icase-pathspecs', '--exec-path', '--html-path', '--man-path',
+  '--info-path', '--version', '-v', '--help', '-h'
+]);
+const GIT_GLOBAL_OPTION_WITH_INLINE_VALUE =
+  /^--(?:work-tree|git-dir|namespace|super-prefix|attr-source|exec-path|list-cmds)=/;
+const UNRECOGNIZED_GLOBAL_OPTION = -2;
 
 // A `-c`/`--config-env` setting is unsafe when its KEY is in a sensitive
 // namespace (trailers can be aliased into attribution text; `include`/
@@ -353,7 +364,8 @@ function checkConfigSetting(unsafeConfigs, settingText, word) {
 }
 
 // Returns the word index of the subcommand after `git` and its global
-// options, or -1 when there is none. Every `-c`/`--config-env` setting
+// options, -1 when there is none, or UNRECOGNIZED_GLOBAL_OPTION when an
+// option before it is not one git is known to take. Every `-c`/`--config-env` setting
 // walked past is checked into `unsafeConfigs` (mutated in place); the caller
 // only reads it once `commit` is confirmed.
 function findGitSubcommandIndex(words, start, unsafeConfigs) {
@@ -379,7 +391,11 @@ function findGitSubcommandIndex(words, start, unsafeConfigs) {
       continue;
     }
     if (GIT_GLOBAL_OPTIONS_WITH_SEPARATE_VALUE.has(value)) { index += 2; continue; }
-    index++;
+    if (GIT_GLOBAL_FLAGS.has(value) || GIT_GLOBAL_OPTION_WITH_INLINE_VALUE.test(value)) {
+      index++;
+      continue;
+    }
+    return UNRECOGNIZED_GLOBAL_OPTION;
   }
   return index < words.length ? index : -1;
 }
@@ -404,13 +420,19 @@ function pushUnreadable(context, reason) {
 // Tier 1, git: a literal `commit` subcommand becomes a segment to validate.
 // Any other literal subcommand is not a candidate (no fallthrough to Tier
 // 2/3); a non-literal subcommand word (`co{mmit,}`, `$SUB`) is unreadable.
+// Returns false only for an unrecognized global option, so the caller falls
+// through to Tier 2/3 instead.
 function addGitCommitSegment(words, unwrap, text, context) {
   const unsafeConfigs = [];
   const subcommandIndex = findGitSubcommandIndex(words, unwrap.start, unsafeConfigs);
-  if (subcommandIndex === -1) return;
+  if (subcommandIndex === UNRECOGNIZED_GLOBAL_OPTION) return false;
+  if (subcommandIndex === -1) return true;
   const subcommand = words[subcommandIndex];
-  if (!isLiteralWord(subcommand)) { pushUnreadable(context, NON_LITERAL_SUBCOMMAND_REASON); return; }
-  if (subcommand.value !== 'commit') return;
+  if (!isLiteralWord(subcommand)) {
+    pushUnreadable(context, NON_LITERAL_SUBCOMMAND_REASON);
+    return true;
+  }
+  if (subcommand.value !== 'commit') return true;
   context.segments.push({
     words,
     commandStart: unwrap.start,
@@ -421,6 +443,7 @@ function addGitCommitSegment(words, unwrap, text, context) {
     unsafeConfigs,
     hasDynamicAssignment: unwrap.assignments.some((word) => word.dynamic)
   });
+  return true;
 }
 
 // Tier 1, shells. Every POSIX shell (git-bash included) runs a `-c` script
@@ -490,8 +513,14 @@ function recurseIntoLiteralShellScript(words, start, budget, context) {
 const DATA_ONLY_COMMANDS = new Set([
   'echo', 'printf', 'cat', 'grep', 'egrep', 'fgrep', 'head', 'tail', 'wc', 'tee', 'gh'
 ]);
-// gh subcommands that define or run shell aliases and extensions.
-const GH_EXECUTING_SUBCOMMANDS = new Set(['alias', 'extension', 'ext']);
+// gh can run a browser, editor or pager command from its environment or
+// config, and runs aliases and extensions, so only these subcommands (the
+// ones this project's workflow uses to post text) are data-only. Every
+// other gh subcommand (`browse`, `config`, `alias`, `extension(s)`, `repo`,
+// none at all) falls through to Tier 2/3 like any other command.
+const GH_DATA_SUBCOMMANDS = new Set([
+  'pr', 'issue', 'api', 'release', 'run', 'workflow', 'label', 'search', 'status'
+]);
 
 // A `>(…)` process substitution among a command's words or redirect targets
 // runs its output through another command, so that output is no longer
@@ -501,14 +530,21 @@ function feedsProcessSubstitution(cmd) {
   return words.some((word) => String(word.raw || '').includes('>('));
 }
 
+// A data-only command loses its exemption when it feeds a process
+// substitution, or when an assignment prefix or `env` operand in front of it
+// carries `git … commit` text (`GH_BROWSER="sh -c '…'" gh pr view --web`:
+// the program may run that value as a command).
 function isDataOnlyCommand(name, cmd, unwrap) {
   if (!DATA_ONLY_COMMANDS.has(name) || feedsProcessSubstitution(cmd)) return false;
+  if (unwrap.assignments.some((word) => GIT_COMMIT_TEXT.test(word.value))) return false;
   if (name !== 'gh') return true;
   const subcommand = cmd.words.slice(unwrap.start + 1).find((word) => !word.value.startsWith('-'));
-  return !(subcommand && GH_EXECUTING_SUBCOMMANDS.has(subcommand.value));
+  return Boolean(subcommand) && GH_DATA_SUBCOMMANDS.has(subcommand.value);
 }
 
-const GIT_COMMIT_TEXT = /\bgit\b[\s\S]*\bcommit\b/i;
+// `git` as a word, but not the `.git` directory name (`.git/hooks/pre-commit`
+// is a path, not a command), followed anywhere later by `commit`.
+const GIT_COMMIT_TEXT = /(?<!\.)\bgit\b[\s\S]*\bcommit\b/i;
 
 function commandRawText(words, text) {
   if (!words.length) return '';
@@ -568,7 +604,7 @@ function processCommandForCommitSegments(cmd, text, budget, context) {
   const word = words[unwrap.start];
   if (!word) return;
   const name = !unwrap.opaque && isLiteralWord(word) ? commandName(word.value) : null;
-  if (name === 'git') { addGitCommitSegment(words, unwrap, text, context); return; }
+  if (name === 'git' && addGitCommitSegment(words, unwrap, text, context)) return;
   if (isDataOnlyCommand(name, cmd, unwrap)) return;
   if (SHELL_NAMES.has(name) && recurseIntoLiteralShellScript(words, unwrap.start, budget, context)) {
     if (stdinLooksLikeCommit(cmd, text)) pushUnreadable(context, OPAQUE_STRING_REASON);

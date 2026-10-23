@@ -1053,6 +1053,29 @@ const MUST_NOT_BLOCK = [
   ['echo of separate git and commit words', 'echo git commit -m x'],
   // F4: a quoted, space-containing env operand is still a literal assignment
   ['env with a whole-word-quoted assignment operand', 'env "A=b c" git commit -m \'feat: ok\''],
+  // Fix round 5, Fix 3: `.git` and hook names like pre-commit/commit-msg are
+  // path text, not a `git … commit` command.
+  ['ls of a .git hook file', 'ls -la .git/hooks/pre-commit'],
+  ['chmod of a .git hook file', 'chmod +x .git/hooks/commit-msg'],
+  [
+    'test -f of an absolute .git hook path',
+    'test -f C:/Users/55/credit-coach/.git/hooks/commit-msg',
+  ],
+  // Fix round 5, Fix 1: the gh subcommands this project's workflow uses keep
+  // their data-only exemption.
+  [
+    'gh pr create with a body mentioning git commit',
+    'gh pr create --body "see also: git commit -m foo"',
+  ],
+  [
+    'gh issue comment with a body mentioning git commit',
+    "gh issue comment 12 --body 'the git commit hook blocks it'",
+  ],
+  ['gh api on a commits endpoint', "gh api repos/o/r/commits --jq '.[].commit.message'"],
+  [
+    'gh pr create behind a harmless GH_TOKEN prefix',
+    "GH_TOKEN=x gh pr create --title t --body 'mentions git commit'",
+  ],
 ];
 
 describe('commit-hook: fix round 4 - legitimate literal commands must not block', () => {
@@ -1117,6 +1140,29 @@ describe('commit-hook: fix round 4, Tier 1 - recognized shapes are parsed', () =
     },
   );
 
+  // Fix round 5, Fix 2: --attr-source takes a separate value, so HEAD is its
+  // argument, not the subcommand.
+  it.each([
+    ['--attr-source HEAD', "git --attr-source HEAD commit -m 'bad subject'"],
+    ['--attr-source=HEAD', "git --attr-source=HEAD commit -m 'bad subject'"],
+  ])('parses past the global option: %s', async (_label, command) => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage(command);
+    expect(hasIssue(result, 'commit-format'), JSON.stringify(result?.issues)).toBe(true);
+  });
+
+  // An unrecognized global option is never allowed to make its value word
+  // look like the subcommand: the segment falls through to Tier 2/3.
+  it('blocks a commit behind an unrecognized git global option', async () => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage(
+      "git --some-future-option HEAD commit -m 'feat: ok'",
+    );
+    expect(hasIssue(result, 'commit-message-unreadable'), JSON.stringify(result?.issues)).toBe(
+      true,
+    );
+  });
+
   // F4: a quoted, space-containing assignment operand of env is dequoted and
   // walked past like any other literal assignment.
   it('walks past a quoted env assignment operand to validate the commit', async () => {
@@ -1158,6 +1204,32 @@ describe('commit-hook: fix round 4, Tier 2 - an opaque string mentioning git com
       "git log -1 --format='git commit -m bad' | xargs -I{} sh -c '{}'",
     ],
     ['gh alias set --shell', "gh alias set --shell ci 'git commit -m bad' && gh ci"],
+    // Fix round 5, Fix 1: gh runs a browser, editor or pager command from the
+    // environment or its config, and runs extensions; only a short list of
+    // gh subcommands stays data-only, and never with such a prefix.
+    ['a GH_BROWSER prefix on gh browse', `GH_BROWSER="sh -c 'git commit -m bad; :'" gh browse`],
+    [
+      'a BROWSER prefix on gh pr view --web',
+      `BROWSER="sh -c 'git commit -m bad; :'" gh pr view 1 --web`,
+    ],
+    ['an env GH_BROWSER operand', `env GH_BROWSER="sh -c 'git commit -m bad; :'" gh browse`],
+    ['a GH_PAGER prefix on gh pr list', `GH_PAGER="sh -c 'git commit -m bad'" gh pr list`],
+    ['a GH_EDITOR prefix on gh pr create', `GH_EDITOR="sh -c 'git commit -m bad'" gh pr create`],
+    [
+      'gh config set browser, then gh browse',
+      `gh config set browser "sh -c 'git commit -m bad; :'" && gh browse`,
+    ],
+    ['gh extensions exec (plural)', "gh extensions exec foo 'git commit -m bad'"],
+    ['gh extension install', "gh extension install 'owner/gh-git-commit'"],
+    [
+      'gh repo clone passing a git -c to clone',
+      `gh repo clone o/r -- -c core.sshCommand="sh -c 'git commit -m bad'"`,
+    ],
+    // Fix round 5, Fix 3: the `.git` lookbehind must not reopen these.
+    ['eval of git-core/git-commit', "eval '/usr/lib/git-core/git-commit -m bad'"],
+    ['eval of /usr/bin/git commit', "eval '/usr/bin/git commit -m bad'"],
+    ['eval of ./git commit', "eval './git commit -m bad'"],
+    ['eval of cd x.git && git commit', `eval "cd x.git && git commit -m bad"`],
   ])('blocks: %s', async (_label, command) => {
     const { validateCommitMessage } = await hook();
     const result = await validateCommitMessage(command);
@@ -1167,9 +1239,10 @@ describe('commit-hook: fix round 4, Tier 2 - an opaque string mentioning git com
   });
 });
 
-describe('commit-hook: fix round 4, Tier 3 - an unrecognized wrapper in front of git commit blocks', () => {
-  // F2/F3/F7: no list of wrapper spellings; any word naming git (by
-  // basename, dequoted) followed later by a literal `commit` word blocks.
+describe('commit-hook: fix round 4, Tiers 2/3 - an unrecognized wrapper in front of git commit blocks', () => {
+  // F2/F3/F7: no list of wrapper spellings. A literal `git` word behind an
+  // unparsed wrapper is caught by Tier 2's text pattern; Tier 3 adds only the
+  // non-literal cases (`$G commit`, an ANSI-C or locale-quoted command word).
   it.each([
     ['setsid', "setsid git commit -m 'feat: ok'"],
     ['stdbuf', "stdbuf -oL git commit -m 'feat: ok'"],
