@@ -576,8 +576,14 @@ function reviewersFor(task, size) {
 /**
  * The implementer's brief. On a retry (`lastFailure` set), the first line is the required
  * `RESET TO <attemptStart>` signal and the body lists only `lastFailure.reasons` -- never a raw
- * test-output tail or a fault-injector's own commit message, so a dry-run fault's name (e.g.
- * "dry-run fault") can never leak into a brief the implementer treats as real instructions.
+ * test-output tail. This is NOT a structural guarantee that a dry-run fault's own text can never
+ * reach a reason: `checkDrift` embeds a commit's full subject verbatim in a
+ * `commit-format`/`commit-attribution` reason when that commit fails `checkCommitMessage`, so a
+ * malformed fault commit subject genuinely could leak into `lastFailure.reasons` and from there
+ * into this brief. It doesn't happen today only because this workflow's own fault commit subjects
+ * (`chore: dry-run drift probe`, `test: dry-run fault`) are themselves well-formed conventional
+ * commits that pass `checkCommitMessage` cleanly -- confirmed, both ways, by a real
+ * `dryRun.faults`-driven runtime test (see `tests/workflows/feature-build.test.mjs`), not assumed.
  */
 function implementerBrief(task, attemptStart, lastFailure) {
   const files = toList(task.files);
@@ -671,10 +677,53 @@ function unpredicted(predictedFiles, changedFiles) {
  * reviewer/tester's own prose, which may itself have processed untrusted diff content), so they
  * are fenced with `wrapUntrusted`, not interpolated directly (Review Focus #5).
  */
-function fixPassBrief(scopeLabel, files, testFiles, testCommand, confirmed, diffText) {
-  const findingsText = toList(confirmed)
-    .map((f) => `- [${f.severity}/${f.category}] ${f.file}: ${f.title} -- ${f.detail}`)
-    .join('\n');
+/**
+ * `removals`, when non-empty, names test cases to remove outright (refuted, or confirmed but
+ * outside `planAllowed`) -- `{ name, commit, file }` per test. This section is a TRUSTED, unfenced
+ * instruction from the workflow itself, not untrusted finding/test text: it tells the implementer
+ * exactly which named test cases to delete, by their own description and the commit that added
+ * them, so a file holding other tests (kept fixes, or pre-existing ones) is never touched beyond
+ * those exact named cases (fix round 3, replacing round 2's separate, ungated "revert" dispatch,
+ * whose instruction sat inside the untrusted SCOPE fence and so was never reliably followed).
+ */
+function fixPassBrief(
+  scopeLabel,
+  files,
+  testFiles,
+  testCommand,
+  confirmed,
+  diffText,
+  removals = [],
+) {
+  const confirmedList = toList(confirmed);
+  const removalList = toList(removals);
+  const findingsSection =
+    confirmedList.length > 0
+      ? [
+          'Confirmed findings to fix:',
+          wrapUntrusted(
+            'FINDINGS',
+            confirmedList
+              .map((f) => `- [${f.severity}/${f.category}] ${f.file}: ${f.title} -- ${f.detail}`)
+              .join('\n'),
+          ),
+          '',
+        ]
+      : [];
+  const removalSection =
+    removalList.length > 0
+      ? [
+          'REMOVE THESE TEST CASES (a direct instruction from this workflow -- not untrusted data to analyze):',
+          'Remove exactly the test cases named below, and ONLY these, from their files. Do not delete',
+          'a whole file, do not edit these tests to make them pass, and do not touch any other test',
+          'case in the same file -- a file may hold other tests (kept fixes above, or pre-existing',
+          'ones) that must stay exactly as they are.',
+          ...removalList.map(
+            (r) => `- Remove the test "${r.name}" (added in commit ${r.commit}) from ${r.file}.`,
+          ),
+          '',
+        ]
+      : [];
   return [
     'Fix pass for the scope below.',
     // `scopeLabel` can embed a red test's own `name` (test-automator/tester output, untrusted by
@@ -686,9 +735,8 @@ function fixPassBrief(scopeLabel, files, testFiles, testCommand, confirmed, diff
     `Test files: ${toList(testFiles).join(' ') || '(none)'}`,
     testCommand ? `Test command: ${testCommand}` : 'Test command: none',
     '',
-    'Confirmed findings to fix:',
-    wrapUntrusted('FINDINGS', findingsText),
-    '',
+    ...findingsSection,
+    ...removalSection,
     wrapUntrusted('DIFF', diffText ?? ''),
   ].join('\n');
 }
@@ -921,15 +969,25 @@ async function runTaskGate(task, dryRunFaults) {
 }
 
 /**
- * One fix pass for a set of confirmed findings. Takes a FRESH `gate-checker MODE: start` of its
- * own, so the fix-pass gate's `changedFiles` range covers only what THIS fix pass's implementer
- * touches -- never the original attempt's own already-committed, legitimate files (fix round 1,
- * finding B: reusing the original `attemptStart` either escalates on the original commit's own
- * files, or silently passes by coincidence without checking the fix implementer's own result).
- * The fix implementer's own `status` is inspected explicitly: `blocked`/`failed`/`null` is never
- * treated as "fixed".
+ * One fix pass for a set of confirmed findings, optionally also removing named test cases
+ * (`removals`, fix round 3 -- folded into this same single dispatch/gate rather than a second,
+ * separate implementer call, which round 2's own "revert" mechanism showed can't be made
+ * reliable). Takes a FRESH `gate-checker MODE: start` of its own, so the fix-pass gate's
+ * `changedFiles` range covers only what THIS fix pass's implementer touches -- never the original
+ * attempt's own already-committed, legitimate files (fix round 1, finding B: reusing the original
+ * `attemptStart` either escalates on the original commit's own files, or silently passes by
+ * coincidence without checking the fix implementer's own result). The fix implementer's own
+ * `status` is inspected explicitly: `blocked`/`failed`/`null` is never treated as "fixed".
  */
-async function runFixPass(scopeLabel, files, testFiles, testCommand, confirmed, diffText) {
+async function runFixPass(
+  scopeLabel,
+  files,
+  testFiles,
+  testCommand,
+  confirmed,
+  diffText,
+  removals = [],
+) {
   const start = await gateStart();
   if (start == null || start.status !== 'done') {
     return { ok: false, reasons: ['gate-start-failed'], commit: null };
@@ -941,7 +999,7 @@ async function runFixPass(scopeLabel, files, testFiles, testCommand, confirmed, 
   const fixAttemptStart = start.facts.head;
 
   const implResult = await runImplementer(
-    fixPassBrief(scopeLabel, files, testFiles, testCommand, confirmed, diffText),
+    fixPassBrief(scopeLabel, files, testFiles, testCommand, confirmed, diffText, removals),
   );
   if (implResult == null) {
     return { ok: false, reasons: ['implementer-returned-null'], commit: null };
@@ -1109,11 +1167,18 @@ if (taskResults.some((task) => task.status === 'done')) {
           ? toList(landed.landed).filter((t) => t.result === 'red')
           : [];
 
-      // Verify every red test first (each needs its own adversarial verdict), but gate only ONCE
-      // for the whole batch, not once per red test -- `pnpm verify` (mandatory on every gate
-      // check) runs the WHOLE suite, so a per-red-test gate would see every OTHER still-red test
-      // too and could never fully pass even when its own fix is correct (fix round 2, finding A).
-      const confirmedRedTests = [];
+      // Verify every red test first (each needs its own adversarial verdict), then partition into
+      // exactly two buckets -- never a separate dispatch for either (fix round 3, replacing round
+      // 2's separate "revert" dispatch, which proved unreliable: its instruction sat inside an
+      // untrusted fence, its commit had no gate/checkDrift at all, it named only the file (risking
+      // a sibling test in the same file), and leaving an out-of-scope test committed-and-red still
+      // broke the SAME batched gate's own mandatory `pnpm verify`):
+      //   - keepAndFix: confirmed AND in scope (`planAllowed`) -- fixed in product code.
+      //   - remove: refuted, OR confirmed but out of scope -- removed as a named test case, never
+      //     left committed and red (a test nobody may fix in scope, and nobody may leave red
+      //     either, has exactly one resolution: it shouldn't exist on this branch).
+      const keepAndFix = [];
+      const remove = [];
       for (const redTest of redTests) {
         const productFile = productFileFor(redTest.file);
         const candidateFinding = {
@@ -1129,44 +1194,10 @@ if (taskResults.some((task) => task.status === 'done')) {
         const verdict = await runVerifier(candidateFinding, finalDiff.diff);
         agentsRun += 1;
         if (applyVerifierPolicy(candidateFinding, verdict) !== 'confirmed') {
-          // A refuted red test stays committed and red. Left alone, it would permanently break
-          // the batched gate's `pnpm verify` below for every confirmed fix, not just this one --
-          // revert it now, before any batched gate runs (fix round 2, finding A). Quarantining it
-          // via test-automator's own mechanism would need a real linked issue number, which
-          // test-automator.md's own Stop rules forbid inventing, and no agent that could open one
-          // (bug-reporter, W3-3) exists yet -- a straightforward revert is the only option that
-          // doesn't fabricate one, so that's what this does.
           log(
-            `feature-build: reverting refuted test "${redTest.name}" in ${redTest.file} -- ${verdict ? verdict.reasoning : 'no verdict'}`,
+            `feature-build: removing refuted test "${redTest.name}" in ${redTest.file} -- ${verdict ? verdict.reasoning : 'no verdict'}`,
           );
-          const revertResult = await runImplementer(
-            fixPassBrief(
-              `Revert refuted test "${redTest.name}"`,
-              [],
-              [redTest.file],
-              null,
-              [
-                {
-                  severity: 'low',
-                  category: 'test-adequacy',
-                  file: redTest.file,
-                  title: `Refuted test "${redTest.name}"`,
-                  detail: verdict
-                    ? verdict.reasoning
-                    : 'No verdict could verify this test; treated as refuted (the fail-closed default for a non-security, non-critical finding).',
-                },
-              ],
-              finalDiff.diff,
-            ),
-          );
-          agentsRun += 1;
-          if (revertResult == null || revertResult.status !== 'done') {
-            qaFixResults.push({
-              ok: false,
-              reasons: [`revert-failed: ${redTest.file}`],
-              findings: [],
-            });
-          }
+          remove.push(redTest);
           continue;
         }
         const finding = {
@@ -1176,7 +1207,9 @@ if (taskResults.some((task) => task.status === 'done')) {
         };
         if (!productFile) {
           // No known product-file mapping (e.g. a Playwright/Maestro proposal has no single
-          // sibling source file) -- escalate instead of guessing a scope or widening it.
+          // sibling source file) -- this is a genuine confirmed finding with nothing safe to scope
+          // a fix to, so it escalates on its own rather than being removed (it may be real) or
+          // guessed at (no file to fix).
           qaFixResults.push({
             ok: false,
             reasons: [`no-product-file-mapping: ${redTest.file}`],
@@ -1185,42 +1218,70 @@ if (taskResults.some((task) => task.status === 'done')) {
           continue;
         }
         if (!matchesAllowed(productFile, planAllowed)) {
-          // Same scope boundary the QA-confirmed-finding path already applies below (fix round 2,
-          // finding C) -- a red test's product file outside everything any task owns is reported,
-          // never silently fixed.
+          // Same scope boundary the QA-confirmed-finding path already applies below -- reported
+          // for visibility, and ALSO removed (fix round 3, finding C/defect 4): leaving it
+          // committed and red would still fail the batched gate's own `pnpm verify` below.
           outOfScope.push(finding);
+          log(
+            `feature-build: removing confirmed-but-out-of-scope test "${redTest.name}" in ${redTest.file} -- product file ${productFile} is outside every task's own files`,
+          );
+          remove.push(redTest);
           continue;
         }
-        confirmedRedTests.push({ redTest, finding, productFile });
+        keepAndFix.push({ redTest, finding, productFile });
       }
 
-      if (confirmedRedTests.length > 0) {
-        const fixFiles = [...new Set(confirmedRedTests.map((entry) => entry.productFile))];
-        const fixTestFiles = [...new Set(confirmedRedTests.map((entry) => entry.redTest.file))];
-        const fixFindings = confirmedRedTests.map((entry) => entry.finding);
-        const scopeLabel =
-          confirmedRedTests.length === 1
-            ? `QA red test "${confirmedRedTests[0].redTest.name}"`
-            : `QA red tests: ${confirmedRedTests.map((entry) => `"${entry.redTest.name}"`).join(', ')}`;
-        // A single shared command when every confirmed red test maps to the same one (the common
-        // case -- one layer's worth of proposals landed together); otherwise `pnpm verify` itself,
-        // which covers every layer `productFileFor` can ever map to (packages/engine,
-        // .claude/hooks) and so still re-runs every confirmed red test in a mixed-layer batch,
-        // with one single command string `gateBrief`'s pinned TEST: line can carry.
+      if (keepAndFix.length > 0 || remove.length > 0) {
+        const fixFiles = [...new Set(keepAndFix.map((entry) => entry.productFile))];
+        const keepTestFiles = [...new Set(keepAndFix.map((entry) => entry.redTest.file))];
+        const removeTestFiles = [...new Set(remove.map((redTest) => redTest.file))];
+        // `Files:` is the union of everything the implementer needs edit permission on --
+        // including the removed tests' own files, even though nothing there is being "fixed".
+        const allFiles = [...new Set([...fixFiles, ...keepTestFiles, ...removeTestFiles])];
+        const fixFindings = keepAndFix.map((entry) => entry.finding);
+        const removals = remove.map((redTest) => ({
+          name: redTest.name,
+          commit: redTest.commit,
+          file: redTest.file,
+        }));
+        const scopeParts = [
+          ...(keepAndFix.length > 0
+            ? [
+                keepAndFix.length === 1
+                  ? `fix "${keepAndFix[0].redTest.name}"`
+                  : `fix ${keepAndFix.length} tests`,
+              ]
+            : []),
+          ...(remove.length > 0
+            ? [remove.length === 1 ? `remove "${remove[0].name}"` : `remove ${remove.length} tests`]
+            : []),
+        ];
+        const scopeLabel = `QA red-test fallout: ${scopeParts.join(' and ')}`;
+        // The gate's `TEST:`/`EXPECT:` only cover the kept tests -- a removed test no longer
+        // exists, so nothing re-runs it. A single shared command when every kept test maps to the
+        // same one (the common case); otherwise `pnpm verify` itself, which covers every layer
+        // `productFileFor` can ever map to (packages/engine, .claude/hooks) and so still re-runs
+        // every kept test in a mixed-layer batch, with one single command string `gateBrief`'s
+        // pinned TEST: line can carry. No kept tests at all (a pure-removal pass) means no
+        // specific command to name -- `TEST: none`, relying on the gate's own mandatory
+        // `pnpm verify` to confirm the removed tests are gone and nothing else broke.
         const batchCommands = new Set(
-          confirmedRedTests.map((entry) => testCommandForFile(entry.redTest.file)),
+          keepAndFix.map((entry) => testCommandForFile(entry.redTest.file)),
         );
         const testCommand =
-          batchCommands.size === 1 && !batchCommands.has(null)
-            ? [...batchCommands][0]
-            : 'pnpm verify';
+          keepAndFix.length === 0
+            ? null
+            : batchCommands.size === 1 && !batchCommands.has(null)
+              ? [...batchCommands][0]
+              : 'pnpm verify';
         const fixResult = await runFixPass(
           scopeLabel,
-          fixFiles,
-          fixTestFiles,
+          allFiles,
+          keepTestFiles,
           testCommand,
           fixFindings,
           finalDiff.diff,
+          removals,
         );
         agentsRun += 1;
         qaFixResults.push({ ...fixResult, findings: fixFindings });

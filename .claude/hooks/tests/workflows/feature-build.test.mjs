@@ -761,12 +761,16 @@ describe('runtime: QA phase (fix round 1, findings A/D)', () => {
       }),
     });
 
-    // Low-confidence isReal:true must be refuted -- no fix pass against the PRODUCT file ever
-    // runs for this red test (it is reverted instead, per fix round 2, finding A's own revert
-    // step; a successful revert needs no gate, so `qaFix` stays null).
-    const productFixBriefs = fixPassBriefs.filter((brief) => !brief.includes('Files: (none)'));
-    expect(productFixBriefs).toEqual([]);
-    expect(result.qaFix).toBeNull();
+    // Low-confidence isReal:true must be refuted by applyVerifierPolicy -- the red test is folded
+    // into the Remove bucket of the ONE unified dispatch (fix round 3), never given a "fix this"
+    // instruction against the product file.
+    expect(fixPassBriefs).toHaveLength(1);
+    expect(fixPassBriefs[0]).not.toContain('Confirmed findings to fix:');
+    expect(fixPassBriefs[0]).toContain('REMOVE THESE TEST CASES');
+    expect(fixPassBriefs[0]).toContain(
+      'Remove the test "covers the zero-amount boundary" (added in commit d4) from packages/engine/src/format.test.ts.',
+    );
+    expect(result.qaFix).not.toBeNull();
   });
 
   it('scopes a confirmed red-test fix pass to the product file and re-runs exactly that test (finding C)', async () => {
@@ -833,12 +837,17 @@ describe('runtime: QA phase (fix round 1, findings A/D)', () => {
 
     expect(fixPassBriefs).toHaveLength(1);
     const brief = fixPassBriefs[0];
-    // Scoped to the product file, not the test file.
-    expect(brief).toContain('Files: packages/engine/src/format.ts');
-    expect(brief).not.toMatch(/^Files:.*format\.test\.ts/m);
+    // Files: is the union of everything touched (product file + its own test file, fix round 3,
+    // point 3) -- the implementer needs edit permission on both, even with nothing to remove here.
+    expect(brief).toMatch(
+      /^Files: packages\/engine\/src\/format\.ts packages\/engine\/src\/format\.test\.ts$/m,
+    );
+    // The fix itself is scoped to the product file's own finding (not the test file).
+    expect(brief).toContain('packages/engine/src/format.ts: New test');
     // Re-runs exactly the failing test.
     expect(brief).toContain('Test files: packages/engine/src/format.test.ts');
     expect(brief).toContain('Test command: pnpm --filter @credit-coach/engine test');
+    expect(brief).not.toContain('REMOVE THESE TEST CASES');
     expect(result.qaFix).not.toBeNull();
     expect(result.qaFix.ok).toBe(true);
   });
@@ -997,8 +1006,11 @@ describe('runtime: QA red-test batching (fix round 2, findings A/B/C)', () => {
         return { status: 'done', findings: [], filesTouched: [], evidence: [], summary: '' };
       }
       if (options.agentType === 'finding-verifier') {
-        const file = prompt.match(/"file": "([^"]+)"/)?.[1];
-        return verdicts[file] ?? { isReal: true, confidence: 0.9, reasoning: 'confirmed' };
+        // Keyed by the finding's `evidence` (the red test's own `name`), not `file` -- two
+        // different red tests can share the same product file (fix round 3, scenario 2), which
+        // would otherwise collide on a single `file`-keyed verdict.
+        const evidence = prompt.match(/"evidence": "([^"]+)"/)?.[1];
+        return verdicts[evidence] ?? { isReal: true, confidence: 0.9, reasoning: 'confirmed' };
       }
       throw new Error(`unexpected agentType in test: ${options.agentType}`);
     };
@@ -1056,8 +1068,18 @@ describe('runtime: QA red-test batching (fix round 2, findings A/B/C)', () => {
     expect(result.qaFix.reasons).toEqual([]);
   });
 
-  it('reverts a refuted red test so it never poisons the batched gate for a confirmed one (finding A)', async () => {
-    const confirmedTest = {
+  // --- fix round 3: one unified dispatch replaces round 2's separate "revert" call -------------
+  // Helper to find the single implementer call that addresses the QA red-test fallout (there must
+  // be exactly one, never a second separate call for removal).
+  function fixPassPrompts(calls) {
+    return calls
+      .filter((call) => call.kind === 'agent' && call.agentType === 'implementer')
+      .map((call) => call.prompt)
+      .filter((prompt) => prompt.includes('Fix pass'));
+  }
+
+  it('scenario 1: one dispatch carries both the fix instructions and a trusted removal instruction for a mixed keep+refuted run', async () => {
+    const keptTest = {
       name: 'covers zero-amount',
       layer: 'vitest',
       file: 'packages/engine/src/format.test.ts',
@@ -1071,30 +1093,24 @@ describe('runtime: QA red-test batching (fix round 2, findings A/B/C)', () => {
       commit: 'd2',
       result: 'red',
     };
-    const gateChecker = scriptedGateChecker([confirmedTest.file, refutedTest.file]);
+    // Only the KEPT test needs to be "addressed" for verify to go green -- the refuted one is
+    // removed, not fixed, so it stops existing rather than needing to be marked addressed.
+    const gateChecker = scriptedGateChecker([keptTest.file]);
     const verdicts = {
-      'packages/engine/src/format.ts': {
-        isReal: true,
-        confidence: 0.9,
-        reasoning: 'matches the PRD',
-      },
-      'packages/engine/src/other.ts': {
-        isReal: false,
-        confidence: 0.85,
-        reasoning: 'the test itself asserts the wrong thing',
-      },
+      [keptTest.name]: { isReal: true, confidence: 0.9, reasoning: 'matches the PRD' },
+      [refutedTest.name]: { isReal: false, confidence: 0.85, reasoning: 'asserts the wrong thing' },
     };
-    const { result } = await runWorkflow(workflowPath, {
+    const { result, calls } = await runWorkflow(workflowPath, {
       args: planArgs,
-      dispatch: dispatchFor(gateChecker, { verdicts, landed: [confirmedTest, refutedTest] }),
+      dispatch: dispatchFor(gateChecker, { verdicts, landed: [keptTest, refutedTest] }),
       workflowDispatch: async () => ({
         confirmed: [],
         refuted: 0,
         proposals: [
           {
-            name: confirmedTest.name,
+            name: keptTest.name,
             layer: 'vitest',
-            file: confirmedTest.file,
+            file: keptTest.file,
             assertion: 'x',
             criterion: 'boundary:zero-amount',
           },
@@ -1111,6 +1127,193 @@ describe('runtime: QA red-test batching (fix round 2, findings A/B/C)', () => {
       }),
     });
 
+    const prompts = fixPassPrompts(calls);
+    expect(prompts).toHaveLength(1); // exactly one dispatch for the whole red-test fallout
+    const brief = prompts[0];
+    expect(brief).toContain('packages/engine/src/format.ts'); // kept product file
+    expect(brief).toMatch(/Test files: packages\/engine\/src\/format\.test\.ts$/m);
+    expect(brief).toContain('REMOVE THESE TEST CASES');
+    expect(brief).toContain(
+      'Remove the test "flaky unrelated assertion" (added in commit d2) from packages/engine/src/other.test.ts.',
+    );
+    expect(result.qaFix).not.toBeNull();
+    expect(result.qaFix.ok).toBe(true);
+  });
+
+  it('scenario 2: names the specific refuted test, not the whole shared file, when two tests share one file', async () => {
+    const sharedFile = 'packages/engine/src/format.test.ts';
+    const keptTest = {
+      name: 'covers zero-amount',
+      layer: 'vitest',
+      file: sharedFile,
+      commit: 'd1',
+      result: 'red',
+    };
+    const refutedTest = {
+      name: 'flaky duplicate check',
+      layer: 'vitest',
+      file: sharedFile,
+      commit: 'd2',
+      result: 'red',
+    };
+    const gateChecker = scriptedGateChecker([keptTest.file]);
+    const verdicts = {
+      [keptTest.name]: { isReal: true, confidence: 0.9, reasoning: 'matches the PRD' },
+      [refutedTest.name]: {
+        isReal: false,
+        confidence: 0.85,
+        reasoning: 'duplicate, wrong assertion',
+      },
+    };
+    const { result, calls } = await runWorkflow(workflowPath, {
+      args: planArgs,
+      dispatch: dispatchFor(gateChecker, { verdicts, landed: [keptTest, refutedTest] }),
+      workflowDispatch: async () => ({
+        confirmed: [],
+        refuted: 0,
+        proposals: [
+          {
+            name: keptTest.name,
+            layer: 'vitest',
+            file: keptTest.file,
+            assertion: 'x',
+            criterion: 'boundary:zero-amount',
+          },
+          {
+            name: refutedTest.name,
+            layer: 'vitest',
+            file: refutedTest.file,
+            assertion: 'x',
+            criterion: 'boundary:none',
+          },
+        ],
+        failedTesters: [],
+        counts: { testers: 0, raw: 0, unique: 0, confirmed: 0, refuted: 0 },
+      }),
+    });
+
+    const prompts = fixPassPrompts(calls);
+    expect(prompts).toHaveLength(1);
+    const brief = prompts[0];
+    // Names the specific test by description, never a bare "remove this file" instruction.
+    expect(brief).toContain(
+      `Remove the test "flaky duplicate check" (added in commit d2) from ${sharedFile}.`,
+    );
+    expect(brief).not.toMatch(
+      new RegExp(`Remove ${sharedFile.replace(/[.\\/]/g, '\\$&')}\\.(?!\\s*from)`),
+    );
+    expect(brief).not.toContain(`Remove the file ${sharedFile}`);
+    expect(result.qaFix).not.toBeNull();
+    expect(result.qaFix.ok).toBe(true);
+  });
+
+  it('scenario 3: a pure-removal pass (no confirmed-in-scope test) succeeds with no specific testFiles to re-run', async () => {
+    const refutedTest = {
+      name: 'flaky unrelated assertion',
+      layer: 'vitest',
+      file: 'packages/engine/src/other.test.ts',
+      commit: 'd2',
+      result: 'red',
+    };
+    const outOfScopeTest = {
+      name: 'covers an unrelated module',
+      layer: 'vitest',
+      file: 'packages/engine/src/unrelated.test.ts',
+      commit: 'd3',
+      result: 'red',
+    };
+    // Nothing needs to be "addressed" -- both red tests are removed, not fixed.
+    const gateChecker = scriptedGateChecker([]);
+    const verdicts = {
+      [refutedTest.name]: { isReal: false, confidence: 0.85, reasoning: 'wrong assertion' },
+      [outOfScopeTest.name]: {
+        isReal: true,
+        confidence: 0.9,
+        reasoning: "real gap, but not in any task's own files",
+      },
+    };
+    const { result, calls } = await runWorkflow(workflowPath, {
+      args: planArgs,
+      dispatch: dispatchFor(gateChecker, { verdicts, landed: [refutedTest, outOfScopeTest] }),
+      workflowDispatch: async () => ({
+        confirmed: [],
+        refuted: 0,
+        proposals: [
+          {
+            name: refutedTest.name,
+            layer: 'vitest',
+            file: refutedTest.file,
+            assertion: 'x',
+            criterion: 'boundary:none',
+          },
+          {
+            name: outOfScopeTest.name,
+            layer: 'vitest',
+            file: outOfScopeTest.file,
+            assertion: 'x',
+            criterion: 'boundary:none',
+          },
+        ],
+        failedTesters: [],
+        counts: { testers: 0, raw: 0, unique: 0, confirmed: 0, refuted: 0 },
+      }),
+    });
+
+    const prompts = fixPassPrompts(calls);
+    expect(prompts).toHaveLength(1);
+    const brief = prompts[0];
+    expect(brief).toMatch(/^Test files: \(none\)$/m);
+    expect(brief).toMatch(/^Test command: none$/m);
+    expect(brief).not.toContain('Confirmed findings to fix:');
+    expect(brief).toContain('REMOVE THESE TEST CASES');
+    expect(brief).toContain('flaky unrelated assertion');
+    expect(brief).toContain('covers an unrelated module');
+    expect(result.qaFix).not.toBeNull();
+    expect(result.qaFix.ok).toBe(true);
+  });
+
+  it('scenario 4: outOfScope[] still reports the out-of-scope test for visibility, even though it is also removed', async () => {
+    const outOfScopeTest = {
+      name: 'covers an unrelated module',
+      layer: 'vitest',
+      file: 'packages/engine/src/unrelated.test.ts',
+      commit: 'd3',
+      result: 'red',
+    };
+    const gateChecker = scriptedGateChecker([]);
+    const verdicts = {
+      [outOfScopeTest.name]: {
+        isReal: true,
+        confidence: 0.9,
+        reasoning: "real gap, but not in any task's own files",
+      },
+    };
+    const { result, calls } = await runWorkflow(workflowPath, {
+      args: planArgs,
+      dispatch: dispatchFor(gateChecker, { verdicts, landed: [outOfScopeTest] }),
+      workflowDispatch: async () => ({
+        confirmed: [],
+        refuted: 0,
+        proposals: [
+          {
+            name: outOfScopeTest.name,
+            layer: 'vitest',
+            file: outOfScopeTest.file,
+            assertion: 'x',
+            criterion: 'boundary:none',
+          },
+        ],
+        failedTesters: [],
+        counts: { testers: 0, raw: 0, unique: 0, confirmed: 0, refuted: 0 },
+      }),
+    });
+
+    expect(result.outOfScope.map((finding) => finding.evidence)).toContain(outOfScopeTest.name);
+    const prompts = fixPassPrompts(calls);
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toContain(
+      `Remove the test "${outOfScopeTest.name}" (added in commit d3) from ${outOfScopeTest.file}.`,
+    );
     expect(result.qaFix).not.toBeNull();
     expect(result.qaFix.ok).toBe(true);
   });
