@@ -1072,6 +1072,8 @@ const MUST_NOT_BLOCK = [
     "gh issue comment 12 --body 'the git commit hook blocks it'",
   ],
   ['gh api on a commits endpoint', "gh api repos/o/r/commits --jq '.[].commit.message'"],
+  // Final cleanup: --no-literal-pathspecs is a real git global flag.
+  ['git --no-literal-pathspecs commit', "git --no-literal-pathspecs commit -m 'feat: ok'"],
   [
     'gh pr create behind a harmless GH_TOKEN prefix',
     "GH_TOKEN=x gh pr create --title t --body 'mentions git commit'",
@@ -1145,6 +1147,8 @@ describe('commit-hook: fix round 4, Tier 1 - recognized shapes are parsed', () =
   it.each([
     ['--attr-source HEAD', "git --attr-source HEAD commit -m 'bad subject'"],
     ['--attr-source=HEAD', "git --attr-source=HEAD commit -m 'bad subject'"],
+    // Final cleanup: --shallow-file also takes a separate value.
+    ['--shallow-file x', "git --shallow-file x commit -m 'bad subject'"],
   ])('parses past the global option: %s', async (_label, command) => {
     const { validateCommitMessage } = await hook();
     const result = await validateCommitMessage(command);
@@ -1153,6 +1157,14 @@ describe('commit-hook: fix round 4, Tier 1 - recognized shapes are parsed', () =
 
   // An unrecognized global option is never allowed to make its value word
   // look like the subcommand: the segment falls through to Tier 2/3.
+  it('blocks a non-literal subcommand behind --shallow-file', async () => {
+    const { validateCommitMessage } = await hook();
+    const result = await validateCommitMessage("git --shallow-file x co{mmit,} -m 'bad'");
+    expect(hasIssue(result, 'commit-message-unreadable'), JSON.stringify(result?.issues)).toBe(
+      true,
+    );
+  });
+
   it('blocks a commit behind an unrecognized git global option', async () => {
     const { validateCommitMessage } = await hook();
     const result = await validateCommitMessage(
@@ -1230,6 +1242,30 @@ describe('commit-hook: fix round 4, Tier 2 - an opaque string mentioning git com
     ['eval of /usr/bin/git commit', "eval '/usr/bin/git commit -m bad'"],
     ['eval of ./git commit', "eval './git commit -m bad'"],
     ['eval of cd x.git && git commit', `eval "cd x.git && git commit -m bad"`],
+    // Final cleanup (NF-1/NF-2): quote-splitting inside an opaque string
+    // (`g''it`, `g\it`) still runs git, so the text is also tested with
+    // quotes and backslashes stripped; and an assignment-only segment
+    // (`set -a; X=…`, `X=…; export X`) is checked too.
+    ["eval of a quote-split g''it", `eval "g''it commit -m 'bad subject'"`],
+    ['eval of a backslash-split g\\it', `eval "g\\it commit -m 'bad subject'"`],
+    ["env -S of a quote-split g''it", `env -S "g''it commit -m bad"`],
+    ["powershell -Command of a quote-split g''it", `powershell -Command "g''it commit -m bad"`],
+    [
+      'a quote-split GH_BROWSER prefix on gh pr view --web',
+      `GH_BROWSER="sh -c 'g''it commit -m bad; :'" gh pr view 1 --web`,
+    ],
+    [
+      'a quote-split GH_BROWSER prefix on gh browse',
+      `GH_BROWSER="sh -c 'g''it commit -m bad; :'" gh browse`,
+    ],
+    [
+      'set -a then a GH_BROWSER assignment-only segment',
+      `set -a; GH_BROWSER="sh -c 'git commit -m bad; :'"; gh pr view 1 --web`,
+    ],
+    [
+      'a GH_BROWSER assignment-only segment then export',
+      `GH_BROWSER="sh -c 'git commit -m bad; :'"; export GH_BROWSER; gh pr view 1 --web`,
+    ],
   ])('blocks: %s', async (_label, command) => {
     const { validateCommitMessage } = await hook();
     const result = await validateCommitMessage(command);

@@ -332,11 +332,13 @@ function recordGitConfigEnv(words, unwrap, context) {
 // checked). Any other option before the subcommand is unrecognized: the walk
 // gives up rather than misread its value word as the subcommand.
 const GIT_GLOBAL_OPTIONS_WITH_SEPARATE_VALUE = new Set([
-  '-C', '--work-tree', '--git-dir', '--namespace', '--super-prefix', '--attr-source'
+  '-C', '--work-tree', '--git-dir', '--namespace', '--super-prefix', '--attr-source',
+  '--shallow-file'
 ]);
 const GIT_GLOBAL_FLAGS = new Set([
   '-p', '--paginate', '-P', '--no-pager', '--no-replace-objects', '--no-lazy-fetch',
-  '--no-optional-locks', '--no-advice', '--bare', '--literal-pathspecs', '--glob-pathspecs',
+  '--no-optional-locks', '--no-advice', '--bare', '--literal-pathspecs', '--no-literal-pathspecs',
+  '--glob-pathspecs',
   '--noglob-pathspecs', '--icase-pathspecs', '--exec-path', '--html-path', '--man-path',
   '--info-path', '--version', '-v', '--help', '-h'
 ]);
@@ -543,8 +545,15 @@ function isDataOnlyCommand(name, cmd, unwrap) {
 }
 
 // `git` as a word, but not the `.git` directory name (`.git/hooks/pre-commit`
-// is a path, not a command), followed anywhere later by `commit`.
-const GIT_COMMIT_TEXT = /(?<!\.)\bgit\b[\s\S]*\bcommit\b/i;
+// is a path, not a command), followed anywhere later by `commit`. Tested
+// twice: on the text as written, and again with every quote and backslash
+// stripped, since quote-splitting inside an opaque string (`g''it commit`,
+// `g\it commit`) still runs git once a shell evaluates it.
+const GIT_COMMIT_TEXT_RE = /(?<!\.)\bgit\b[\s\S]*\bcommit\b/i;
+const GIT_COMMIT_TEXT = {
+  test: (text) =>
+    GIT_COMMIT_TEXT_RE.test(text) || GIT_COMMIT_TEXT_RE.test(String(text).replace(/['"\\]/g, ''))
+};
 
 function commandRawText(words, text) {
   if (!words.length) return '';
@@ -602,7 +611,14 @@ function processCommandForCommitSegments(cmd, text, budget, context) {
   const unwrap = unwrapCommandStart(words);
   recordGitConfigEnv(words, unwrap, context);
   const word = words[unwrap.start];
-  if (!word) return;
+  // An assignment-only segment (`set -a; X=…`, `X=…; export X`) can hand a
+  // later command an executable value, so its values are checked too.
+  if (!word) {
+    if (unwrap.assignments.some((assignment) => GIT_COMMIT_TEXT.test(assignment.value))) {
+      pushUnreadable(context, OPAQUE_STRING_REASON);
+    }
+    return;
+  }
   const name = !unwrap.opaque && isLiteralWord(word) ? commandName(word.value) : null;
   if (name === 'git' && addGitCommitSegment(words, unwrap, text, context)) return;
   if (isDataOnlyCommand(name, cmd, unwrap)) return;
