@@ -179,6 +179,20 @@ describe('parsePlanTasks on inline markdown', () => {
     expect(task.files).toEqual(['src/a.ts']);
   });
 
+  it('rejects the leading-character-check bypass strings (W2-1 fix round 1 / finding F)', () => {
+    const [task] = parsePlanTasks(
+      [
+        '### Task 1: Bypass attempt',
+        '',
+        '**Files:**',
+        '- Modify: `src/a.ts`, `.*/**`, `s*/**`, `/**`, `../**`',
+        '',
+        '- [ ] **Step 1:** Do it.',
+      ].join('\n'),
+    );
+    expect(task.files).toEqual(['src/a.ts']);
+  });
+
   it('keeps a scoped (non-root-anchored) glob in files but never in createFiles/testFiles (W2-1)', () => {
     const [task] = parsePlanTasks(
       [

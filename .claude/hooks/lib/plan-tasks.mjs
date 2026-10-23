@@ -28,7 +28,6 @@ const PNPM_COMMAND = /`(pnpm [^`]+)`/;
 const PASS_WORD = /\bPASS\b/;
 const CONSUMES_LINE = /^\s*(?:[-*]\s+)?(?:\*\*)?Consumes\b/;
 const FILE_EXTENSION = /\.[A-Za-z0-9]+$/;
-const ROOT_ANCHORED_GLOB = /^(\.\/)*\*/;
 const MAX_RANGE_SPAN = 100;
 
 // "Task 1", "Tasks 1–10", "Tasks 1, 2 and 3", or a prefixed id such as "W0-5" / "W4-1…4".
@@ -51,12 +50,20 @@ function isGlob(token) {
 }
 
 /**
- * A glob whose `*`/`**` sits at the very start of the pattern (after any leading `./`), so it
- * matches from the repo root -- e.g. `**\/*`, `*.ts`. Rejected outright: nothing stops a future
- * plan from widening a task's allowed `files` to the whole repo by mistake.
+ * A glob that would match far more than one scoped subtree, the same defensive shape
+ * `isDirectory` already applies to directory tokens above: absolute (an all-star first segment
+ * is not required -- a bare leading slash is enough), one that climbs out of the repo via `..`,
+ * or one whose very first path segment itself contains a star -- that segment could match any
+ * top-level file or directory, so the glob is root-anchored regardless of what a narrower
+ * leading-character check would catch. Rejected outright: nothing stops a future plan from
+ * widening a task's allowed `files` to the whole repo by mistake.
  */
 function isRootAnchoredGlob(token) {
-  return isGlob(token) && ROOT_ANCHORED_GLOB.test(token);
+  if (!isGlob(token)) return false;
+  const bare = token.replace(/^(\.\/)+/, '');
+  if (bare.startsWith('/') || bare.startsWith('../')) return true;
+  const [firstSegment] = bare.split('/');
+  return firstSegment.includes('*');
 }
 
 /**
