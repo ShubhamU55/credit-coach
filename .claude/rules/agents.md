@@ -15,25 +15,34 @@ Invoked through the Agent tool with `subagent_type: "<name>"`.
 | **security-reviewer**     | Security vulnerabilities, OWASP Top 10                                 |
 | **silent-failure-hunter** | Swallowed errors, bad fallbacks, missing error propagation             |
 
-## Planned roster (Plan 1c)
+## Built roster (Plan 1c Wave 0-1, already in `.claude/agents/`)
 
-The rest of this roster is planned, not yet built. Until an agent exists, use the closest kept reviewer above or do the step inline; don't claim one of these runs today.
+These are built and resolve today; the agent-lint check (W0-7) enforces they stay registered.
 
-Purposes follow spec §5 (`docs/superpowers/specs/2026-10-21-agentic-dev-system-design.md`); `build-error-resolver` and `pr-test-analyzer` come from the §14.1 ECC reuse map.
+| Agent                | Purpose                                                                                                                                                                                                                                                 |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| implementer          | Implements **one plan task** test-first (superpowers TDD), runs the task's tests and commits; writes only the task's `Files:` list                                                                                                                      |
+| gate-checker         | Runs commands and reports facts only: `MODE: start` (head, dirtyFiles), `MODE: check` (full `GATE_FACTS`), `MODE: diff` (merge-base changed files + diff). **No opinions, no lint/Sonar summary**                                                       |
+| build-error-resolver | Retry-pass fixer when `gate-checker` reports tsc or ESLint failures (§14.1)                                                                                                                                                                             |
+| test-automator       | Owns the test automation infrastructure: turns criteria and tester proposals into durable tests in the right layer, wires them into `pnpm verify` and CI; quarantines a pre-identified flaky test from an explicit `flaky[]` input, never a silent skip |
+| finding-verifier     | Adversarial: tries to **refute** one finding with evidence, defaulting to refuted when unsure; only confirmed findings are fixed                                                                                                                        |
+| consistency-reviewer | Compares the diff to `docs/standards.md` **and** to the golden example of the same kind (§7); flags pattern drift                                                                                                                                       |
+| functional-tester    | Checks that every acceptance criterion has a test that would fail without the feature; proposes missing ones                                                                                                                                            |
+| edge-case-hunter     | Boundaries only (zero, negative and huge amounts, empty lists, month-end and leap days, time zones, Unicode, 200% font, offline); proposes fast-check property tests for the engine                                                                     |
+
+`tdd-guide` is retired (superseded by `implementer` + superpowers `test-driven-development`).
+
+## Planned roster (Plan 1c, Waves 2+)
+
+The rest of this roster is planned, not yet built. Until an agent exists, use the closest built or kept reviewer above or do the step inline; don't claim one of these runs today.
+
+Purposes follow spec §5 (`docs/superpowers/specs/2026-10-21-agentic-dev-system-design.md`); `pr-test-analyzer` comes from the §14.1 ECC reuse map.
 
 | Agent                | Purpose                                                                                                                                                                                        |
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| implementer          | Implements **one plan task** test-first (superpowers TDD), runs the task's tests and commits; writes only the task's `Files:` list                                                             |
-| gate-checker         | Runs commands and reports facts only (`git diff --name-only`, test output, `pnpm verify` exit code, lint and Sonar summary). **No opinions**                                                   |
-| build-error-resolver | Retry-pass fixer when `gate-checker` reports tsc or ESLint failures (§14.1)                                                                                                                    |
-| test-automator       | Owns the test automation infrastructure: turns criteria and tester proposals into durable tests in the right layer, wires them into `pnpm verify` and CI, triages flaky tests                  |
-| finding-verifier     | Adversarial: tries to **refute** one finding with evidence, defaulting to refuted when unsure; only confirmed findings are fixed                                                               |
-| consistency-reviewer | Compares the diff to `docs/standards.md` **and** to the golden example of the same kind (§7); flags pattern drift                                                                              |
 | requirements-analyst | PRD section → numbered acceptance criteria (given/when/then), open questions and an out-of-scope list                                                                                          |
 | domain-checker       | Checks the criteria and plan against `credit-domain` facts F1–F7, the planner order and the anti-goals                                                                                         |
 | design-checker       | UI work only: checks against `docs/design.md` tokens, components, copy and accessibility; names the kit components to use                                                                      |
-| functional-tester    | Checks that every acceptance criterion has a test that would fail without the feature; proposes missing ones                                                                                   |
-| edge-case-hunter     | Boundaries only (zero, negative and huge amounts, empty lists, month-end and leap days, time zones, Unicode, 200% font, offline); proposes fast-check property tests for the engine            |
 | api-tester           | Supabase: Zod contract tests for tables, RPCs and Edge Functions; RLS isolation; error codes; LLM timeout fallback (proposals)                                                                 |
 | ui-tester            | Maestro flows and screenshots vs `docs/design-mockups/v3`: touch targets ≥ 48, ranges never wrap, colour never the only signal, reduce-motion                                                  |
 | integration-tester   | Cross-component: app ↔ Supabase ↔ admin, and the demo path end to end (try sample → plan within 60 s) (proposals)                                                                              |

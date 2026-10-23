@@ -26,7 +26,7 @@ MANDATORY workflow:
 
 ## Troubleshooting Test Failures
 
-1. Use the **implementer** agent (superpowers TDD, test-first) or **test-automator** (test infrastructure, flaky-test triage)
+1. Use the **implementer** agent (superpowers TDD, test-first) or **test-automator** (test infrastructure; quarantines a pre-identified flaky test from an explicit `flaky[]` input, never a silent skip)
 2. Check test isolation
 3. Verify mocks are correct
 4. Fix implementation, not tests (unless tests are wrong)

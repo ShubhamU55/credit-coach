@@ -2,6 +2,32 @@
 
 > Read this first when starting a new session. Update it at the end of every session (newest entry on top).
 
+## 2026-10-23 (Wave 1 complete)
+
+### Where things stand
+
+- `main` = `0f05010`. **Wave 0 and Wave 1 are both done and merged.** The 4 Wave 1 worktrees and branches are cleaned up.
+- **W1-4** (security docs + ECC guard hooks) took **6 fix rounds** (5 numbered + one breaker-ruling cleanup) chasing increasingly narrow commit-hook bypasses, each independently re-reviewed on Opus. It converged: a 3-tier command-detection model, a word-level `GIT_CONFIG_*` check, a positive `gh`-subcommand allowlist, and `config-protection.cjs` with real-file-identity comparison. Full history: `docs/agent-runs/2026-10-23-plan-1c-wave-1.md`.
+- **Post-Wave-1 integration fix landed on `main` first** (rulings W1-b/W1-c, commit `8d9f8ae`): `apps/admin` `typecheck` = `next typegen && tsc --noEmit` (fixes a fresh-checkout failure — `.next/types` is gitignored); `eslint-rules.test.mjs`'s test timeout raised to 30s (CPU-load flakiness).
+- **Two unrelated commits** (`dc7c00d`, `3e1dc76`) removed `LICENSE`/`THIRD_PARTY_NOTICES.md` — an owner decision, not part of Plan 1c.
+- **The Wave 1 final whole-wave review (opus) found real, non-blocking gaps**, now fixed where cheap (doc wording in `.claude/rules/agents.md`, `development-workflow.md`, `testing.md`, this entry) or carried forward below:
+  - **Not fixed, carried forward — locked files, needs config-protection toggled off to touch:**
+    - `eslint.shared.cjs` (holds the actual ESLint rules all 3 flat configs import, including the engine-purity rules) is **not** protected by `config-protection.cjs` — its pattern only matches `eslint.config.*`, not `eslint.shared.cjs`. `consistency-reviewer.md` names it as a lint source of truth.
+    - `config-protection.cjs`'s guard-script/settings protection resolves against the hook's own `__dirname` and (for the identity fallback) inode — so it only protects **the checkout the running hook lives in**, not a sibling worktree's copy. Waves 3-4 run one session per worktree; a worktree session can edit the main checkout's `settings.json`/guard scripts, or vice versa, and an ff-merge would carry it to `main`. Backstop: the W2-1 drift guard, only for implementer-path edits.
+    - Both Wave 1 hooks (`pre-bash-commit-quality.cjs`, `block-no-verify.cjs`, and pre-existing `protect-env.mjs`) register with relative `node .claude/hooks/...` paths and **fail open (exit 1, non-blocking) when the session's cwd isn't the repo root** — confirmed live from a subdirectory. Should use `${CLAUDE_PROJECT_DIR}` and/or `"onFailure": "block"`.
+    - **Only the `Bash` tool is hooked — the `PowerShell` tool is not.** On this host (Windows, PowerShell primary), `git commit --no-verify` with an attribution line through the PowerShell tool passes every Wave 1 guard undetected. Not disclosed in the security docs; no ruling covers it.
+    - `pre-bash-commit-quality.cjs` (1739 lines) is missing the plan's required `Vendored from ECC; exempt from the 800-line ceiling` header that `block-no-verify.cjs` has.
+  - **Carried into the W2-1 brief (not yet in this file before now):**
+    - W1-3's testers (`functional-tester`, `edge-case-hunter`) will block on every `/qa` run as currently specified — they require a `<base>..<head>` and (for `functional-tester`) acceptance criteria, but the plan's `qa` workflow args (`{ scope, changedFiles, diff, criteria? }`) don't guarantee either. W2-1 must pass `gate-checker`'s `MODE: diff` `base`/`head` into every tester brief, and either require `criteria` or skip `functional-tester` when none are given (logged as not-applicable, not a block).
+    - `implementer`/`build-error-resolver`'s output schema requires `commit` even on `status: blocked`, which has no commit — a blocked result currently fails schema validation and silently loses its `blockedReason`. Make `commit` nullable, or required only when `status: done`.
+    - No rule yet covers the commit hook (W1-4) rejecting the `implementer`'s brief-mandated exact commit message (over 72 chars, a stray backtick/`$`, "generated with" appearing innocently in a body). `implementerBrief` should pre-check with `checkCommitMessage` before committing.
+  - **Noted, not load-bearing:** `test-automator`'s allowed paths include the files that hold its own gates (`packages/engine/vitest.config.ts`'s coverage threshold, `.github/workflows/**`, `.claude/hooks/tests/**`) — nothing but a prompt line stops it weakening them; worth a pinned test asserting the threshold stays ≥ 90 at some point.
+
+### Next step
+
+- **Wave 2** (W2-1, then W2-2) — fresh session. W2-1 must incorporate the carry-forwards above (testers' base/head + criteria handling, nullable `commit` on blocked, commit-message pre-check) in addition to the existing "Residuals for W2-1" list below (unchanged, still open).
+- **Owner, when convenient** (not blocking Wave 2): toggle `config-protection` off briefly to fix the 5 locked-file items above (`eslint.shared.cjs` protection, worktree-scope decision, `${CLAUDE_PROJECT_DIR}`/`onFailure:block`, PowerShell hook coverage, the 800-line header) as one batch, then re-enable.
+
 ## 2026-10-22 (session stopped mid-Wave 1: handoff)
 
 ### Where things stand

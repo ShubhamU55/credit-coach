@@ -16,7 +16,7 @@
 
 ## Planned pipeline (Plan 1c)
 
-The commands, workflows and agents below are planned, not yet built. Until they land, use the current workflow above.
+The slash commands and workflows below are planned, not yet built — even though some of the agents they name (`implementer`, `test-automator`, `build-error-resolver`, `gate-checker`, `functional-tester`, `edge-case-hunter`, `finding-verifier`; see [agents.md](./agents.md)'s Built roster) already exist as of Plan 1c Wave 1. The other named agents (`requirements-analyst`, `api-tester`, `ui-tester`, `integration-tester`, `domain-checker`, `design-checker`, `pr-reviewer`, `pr-test-analyzer`, `bug-analyst`, `bug-reporter`, `pm-sync`, `journal-writer`) are not built yet either. Until the orchestrating workflow lands, use the current workflow above and dispatch a built agent directly where one fits.
 
 - **`/feature`** (workflow `feature-analyze` → `feature-build`) — **requirements-analyst** scopes the ticket, **planner** plans it, **implementer**/**test-automator** build it test-first, **build-error-resolver** fixes failing builds, **gate-checker** runs the quality gates before handoff.
 - **`/build`** — the build step of the pipeline above, gated by **gate-checker**.
