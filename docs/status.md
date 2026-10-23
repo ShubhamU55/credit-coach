@@ -2,6 +2,59 @@
 
 > Read this first when starting a new session. Update it at the end of every session (newest entry on top).
 
+## 2026-10-23 (session stopped: context filled, mid-Wave-2 W2-1 handoff)
+
+### Read this before touching anything — a live collision risk, same shape as the one this session already hit once
+
+This session (its name is `credit-coach-d3`, if your harness exposes peer-session names) is stopping because its context filled up, **not because the work finished**. At the moment this entry was written, an implementer subagent dispatched by this session was **still actively running** inside the worktree `../cc-1c-w2-1`, mid-edit on `feature-build.workflow.js` (uncommitted). This session may or may not still be alive and reachable by the time you read this.
+
+**Before you dispatch anything into `../cc-1c-w2-1` or edit any file there yourself:**
+
+1. Run `ListAgents`. If a session named `credit-coach-d3` appears as a peer (not idle, or even if idle), **send it a message first** asking whether its implementer subagent is done and what state the worktree is in. Do not assume it's gone just because this conversation has ended from the user's point of view.
+2. Regardless of what `ListAgents` shows, run `git -C ../cc-1c-w2-1 log --oneline main..HEAD` and `git -C ../cc-1c-w2-1 status --porcelain` yourself. **Git state is the only fully reliable source of truth here, not this writeup** — the implementer may have finished and committed after this entry was written, or it may still be mid-edit, or (if its session died mid-tool-call) its edit may be abandoned uncommitted.
+   - If `HEAD` is a commit **after** `2af292b` (see below for what that means): fix round 3 completed and committed. Skip straight to "Resume steps," step 2.
+   - If `HEAD` is still `2af292b` and the tree is **clean**: the round-3 implementer either never started or was cleanly stopped before editing. Treat round 3 as not yet dispatched; see "Resume steps," step 1.
+   - If `HEAD` is still `2af292b` and the tree is **dirty**: an implementer was (or still is) mid-edit. This is exactly the situation a prior session in this same project hit with ticket W1-4 (see the 2026-10-22 entry below, and `docs/agent-runs/2026-10-23-plan-1c-wave-1.md`'s "Session resume" section for the full story of how that collision was resolved) — **do not reset, discard, or blindly build on top of it.** First rule out a live writer (step 1 above). If none is found, read the diff (`git -C ../cc-1c-w2-1 diff`) against `task-W2-1-fix3-findings.md` (path below) to judge whether it's safe, in-progress, legitimate work to finish, and proceed the way the 2026-10-22 entry's resolution did: inspect, don't guess, and keep whatever real work is there rather than discarding it.
+
+### What Plan 1c is and where it stands
+
+Plan 1c (`docs/superpowers/plans/2026-10-21-plan-1c-agentic-system.md`) builds this repo's own agentic dev system — custom Claude Code agents, hooks, and now Workflow-tool orchestration scripts — in 6 waves (0–5). This is itself the subject of the plan; it is infrastructure for building the actual Credit Coach product faster and more reliably afterward, not the product.
+
+- **Waves 0 and 1 are done and merged to `main`** (`main` = `aee5462` as of this entry). Wave 1 took 6 fix rounds on one ticket (W1-4, the security commit-hook) — see `docs/agent-runs/2026-10-23-plan-1c-wave-1.md` for the full ledger if you need that history; you shouldn't need it for Wave 2 work.
+- **Wave 2, ticket W2-1** (`feature-build`/`qa` core orchestration workflows) is **in progress, not merged**, in worktree `../cc-1c-w2-1` on branch `feat/1c-w2-1-core-workflows`. This is the big one: it's the actual build/QA loop every later ticket's `/build`/`/qa` commands will run through.
+- **W2-1 has gone through an initial implementation + task review + 2 complete fix rounds, and fix round 3 was just dispatched** (see "A live collision risk" above for its exact status as of writing). This is **round 3 of a 5-round cap** per the `subagent-driven-development` skill's fix-loop rule — if round 3's own re-review still finds something open, the next session needs to make a judgment call (continue to round 4, or adjudicate/park per the skill's "breaker" rule) rather than assuming an automatic round 4.
+
+### W2-1's history, in one paragraph, for orientation (full detail is in the files listed under "Key files")
+
+Implementation (`97602dc`, `7a7f037`) built the contracts extensions, `plan-tasks.mjs` glob-safety fix, both workflow files, and both slash commands. Task review (opus) found the contracts/schema work solid but 5 Important runtime bugs in the orchestration bodies (testers never received `base`/`head` on real paths, both fix-passes used the wrong gate range causing spurious escalation or silent-pass bugs, QA's confirmed findings were dropped entirely, untrusted finding text wasn't fenced before a verifier prompt, and a glob-rejection had a real bypass). **Fix round 1** (`d9e710f`, `797b41f`) fixed all of those correctly, confirmed by re-review — but its own restructuring of the QA-confirmed-red-test fix pass (one pass per red test) introduced a new bug: each pass's gate includes the mandatory `pnpm verify`, which still covers every _other_ unfixed red test, so the first pass's gate could never fully pass with ≥2 confirmed red tests. **Fix round 2** (`2af292b`) batched the red-test fixes into one dispatch correctly, but the mechanism it added for _removing_ refuted/out-of-scope red tests (a separate "revert" dispatch) was broken 4 ways, all reintroducing some version of the same "poisoned batch" symptom (the revert instruction gets swallowed by an untrusted-text fence; the revert commit is never gated; it can delete the wrong test in a shared file; out-of-scope routing still leaves a red test committed to poison the shared `pnpm verify`). **Fix round 3** (dispatched, status per above) unifies this: fold test removal into the _same_ single batched dispatch and gate the confirmed fixes already use, with a trusted (unfenced) instruction naming exactly which test cases to remove.
+
+### Resume steps (next session)
+
+1. **If round 3 was never dispatched, or was cleanly abandoned with a clean tree:** resume the same implementer agent if your harness can still reach it by the agent ID `a12ada87322d0244a` (unlikely to resolve in a new session — agent IDs are typically scoped to the session that spawned them). More likely you'll need to **dispatch a fresh implementer** into `../cc-1c-w2-1` (branch `feat/1c-w2-1-core-workflows`, currently at `2af292b`) using the findings in `task-W2-1-fix3-findings.md` (full path below) as its brief — that file is a complete, self-contained fix-round brief; it doesn't assume the reader has this session's context. Use the `subagent-driven-development` skill's fix-loop guidance (rounds 1-3 resume the same implementer when possible; since you likely can't resume the same agent across sessions, dispatching fresh here is fine and expected — just give it the findings file and tell it the worktree is already on the right branch at the right commit).
+2. **Once round 3 has a commit:** generate the review package (`bash <superpowers-plugin-path>/skills/subagent-driven-development/scripts/review-package docs/superpowers/plans/2026-10-21-plan-1c-agentic-system.md 2af292b <round-3-head-sha>`) and dispatch a scoped Opus re-review, same pattern as the prior 2 rounds (see the ledger for the exact dispatch-prompt shape used each time — they're all substantively similar, just update the findings-under-verification list to match `task-W2-1-fix3-findings.md`'s 4 test scenarios).
+3. **At the cap:** this is round 3 of 5. If round 3's re-review comes back clean, proceed to merge (rebase the worktree onto current `main`, `pnpm verify` green, `git merge --ff-only` from `main`, matching exactly how every Wave 1 ticket merged). If it finds more, decide per the SDD skill whether round 4 is warranted (a narrow bugfix in round 3's own new code) or whether to adjudicate/park what's left — you have more context fresh from reading round 3's re-review than this entry can give you, so this is your call to make at that point, not a decision to defer back further.
+4. **After W2-1 merges:** remove the worktree (`git worktree remove ../cc-1c-w2-1`) and branch (`git branch -d feat/1c-w2-1-core-workflows`), same cleanup pattern as Wave 1. Then **W2-2** (the dry run on Plan 4a Task 2, plan lines ~759-780) is next — it's the first real exercise of the `/build` command this ticket builds, and its own plan text expects W2-1's loop to actually work correctly on a real task, which is exactly what all 3 fix rounds have been chasing.
+5. **Update this file again** when you stop, per the standing rule — newest entry on top, same as this one.
+
+### Key files (all paths relative to repo root `C:\Users\55\credit-coach`, except the worktree itself)
+
+- Plan text: `docs/superpowers/plans/2026-10-21-plan-1c-agentic-system.md` (Task W2-1 is lines ~663-758; Global Constraints lines 32-74; Review Focus lines 59-74)
+- W2-1's original brief (plan text extracted): `.superpowers/sdd/2026-10-21-plan-1c-agentic-system/task-W2-1-brief.md`
+- Carry-forwards given to the original implementer (contracts/schema requirements, the spike's allOf-at-schema-root constraint, Wave-1-review carry-forwards): `.superpowers/sdd/2026-10-21-plan-1c-agentic-system/task-W2-1-carry-forwards.md`
+- Fix round findings: `task-W2-1-fix1-findings.md`, `task-W2-1-fix2-findings.md`, `task-W2-1-fix3-findings.md` (same directory)
+- Implementer's full report, every round appended: `task-W2-1-report.md` (same directory, ~520 lines as of this entry)
+- Full session ledger with every ruling, review verdict, and the exact dispatch history: `.superpowers/sdd/2026-10-21-plan-1c-agentic-system/progress.md` — search for `## Wave 2` near the end; everything after that heading is this session's W2-1 work, in order
+- The worktree itself: `C:\Users\55\cc-1c-w2-1` (branch `feat/1c-w2-1-core-workflows`)
+
+### Owner actions still open (unchanged from the 2026-10-23 Wave-1-complete entry below; not blocking Wave 2)
+
+- `gh auth refresh -h github.com -u ShubhamU55 -s workflow,project` — token still has only `repo`.
+- SonarQube Cloud org/import/`SONAR_TOKEN`/`SONAR_REQUIRED` (W5-1).
+- `npx supabase login` + create the project.
+- Docker Desktop (needed by `api-tester`, Plan 3 — not yet built).
+- When convenient: toggle `config-protection` off briefly to fix the 5 locked-file security gaps listed in the Wave-1-complete entry below (`eslint.shared.cjs` protection, worktree-scope decision, `${CLAUDE_PROJECT_DIR}`/`onFailure:block`, PowerShell hook coverage, the 800-line header on `pre-bash-commit-quality.cjs`).
+- Decide whether to commit or `.gitignore` `.design/` (still untracked on `main`; harmless but has shown up as noise in every `git status` this whole project).
+
 ## 2026-10-23 (Wave 1 complete)
 
 ### Where things stand
