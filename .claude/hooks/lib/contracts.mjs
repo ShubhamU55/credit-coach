@@ -51,6 +51,13 @@ const STRING_LIST = deepFreeze({ type: 'array', items: { type: 'string' } });
 
 // A reviewer finding. Blocking findings (critical/high) must carry a `proof`, enforced in the
 // schema rather than only in the prompt, so a blocker can't slip in unsupported.
+//
+// NEVER pass this schema directly as a Workflow agent()'s top-level `schema` option: its own
+// `allOf` (below) would then sit at the schema ROOT, and the Claude API rejects a tool
+// input_schema with a root-level allOf/oneOf/anyOf outright (400, before the agent even runs;
+// confirmed in the W2-1 spike, 2026-10-23). Always nest it under a wrapper object or array
+// property instead -- exactly what envelopeSchema() already does via
+// `findings: { type: 'array', items: FINDING_SCHEMA }`.
 const FINDING_SCHEMA = deepFreeze({
   type: 'object',
   additionalProperties: false,
