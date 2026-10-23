@@ -676,7 +676,11 @@ function fixPassBrief(scopeLabel, files, testFiles, testCommand, confirmed, diff
     .map((f) => `- [${f.severity}/${f.category}] ${f.file}: ${f.title} -- ${f.detail}`)
     .join('\n');
   return [
-    `Fix pass: ${scopeLabel}.`,
+    'Fix pass for the scope below.',
+    // `scopeLabel` can embed a red test's own `name` (test-automator/tester output, untrusted by
+    // the same reasoning as a finding's text -- fix round 2, finding B), so it is fenced too, not
+    // interpolated into a plain header line.
+    wrapUntrusted('SCOPE', String(scopeLabel ?? '')),
     '',
     `Files: ${toList(files).join(' ') || '(none)'}`,
     `Test files: ${toList(testFiles).join(' ') || '(none)'}`,
@@ -1042,7 +1046,12 @@ for (const task of input.tasks) {
     agentsRun += 1;
     attempts = [
       ...attempts,
-      { n: attempts.length + 1, ok: fixResult.ok, reasons: fixResult.reasons, commit: fixResult.commit },
+      {
+        n: attempts.length + 1,
+        ok: fixResult.ok,
+        reasons: fixResult.reasons,
+        commit: fixResult.commit,
+      },
     ];
     if (!fixResult.ok) status = 'escalated';
   }
@@ -1099,6 +1108,12 @@ if (taskResults.some((task) => task.status === 'done')) {
         landed != null && landed.status === 'done'
           ? toList(landed.landed).filter((t) => t.result === 'red')
           : [];
+
+      // Verify every red test first (each needs its own adversarial verdict), but gate only ONCE
+      // for the whole batch, not once per red test -- `pnpm verify` (mandatory on every gate
+      // check) runs the WHOLE suite, so a per-red-test gate would see every OTHER still-red test
+      // too and could never fully pass even when its own fix is correct (fix round 2, finding A).
+      const confirmedRedTests = [];
       for (const redTest of redTests) {
         const productFile = productFileFor(redTest.file);
         const candidateFinding = {
@@ -1114,29 +1129,101 @@ if (taskResults.some((task) => task.status === 'done')) {
         const verdict = await runVerifier(candidateFinding, finalDiff.diff);
         agentsRun += 1;
         if (applyVerifierPolicy(candidateFinding, verdict) !== 'confirmed') {
+          // A refuted red test stays committed and red. Left alone, it would permanently break
+          // the batched gate's `pnpm verify` below for every confirmed fix, not just this one --
+          // revert it now, before any batched gate runs (fix round 2, finding A). Quarantining it
+          // via test-automator's own mechanism would need a real linked issue number, which
+          // test-automator.md's own Stop rules forbid inventing, and no agent that could open one
+          // (bug-reporter, W3-3) exists yet -- a straightforward revert is the only option that
+          // doesn't fabricate one, so that's what this does.
           log(
-            `feature-build: dropping newly landed test "${redTest.name}" in ${redTest.file} -- ${verdict ? verdict.reasoning : 'no verdict'}`,
+            `feature-build: reverting refuted test "${redTest.name}" in ${redTest.file} -- ${verdict ? verdict.reasoning : 'no verdict'}`,
           );
+          const revertResult = await runImplementer(
+            fixPassBrief(
+              `Revert refuted test "${redTest.name}"`,
+              [],
+              [redTest.file],
+              null,
+              [
+                {
+                  severity: 'low',
+                  category: 'test-adequacy',
+                  file: redTest.file,
+                  title: `Refuted test "${redTest.name}"`,
+                  detail: verdict
+                    ? verdict.reasoning
+                    : 'No verdict could verify this test; treated as refuted (the fail-closed default for a non-security, non-critical finding).',
+                },
+              ],
+              finalDiff.diff,
+            ),
+          );
+          agentsRun += 1;
+          if (revertResult == null || revertResult.status !== 'done') {
+            qaFixResults.push({
+              ok: false,
+              reasons: [`revert-failed: ${redTest.file}`],
+              findings: [],
+            });
+          }
           continue;
         }
-        const finding = { ...candidateFinding, detail: verdict.reasoning, proof: verdict.reasoning };
+        const finding = {
+          ...candidateFinding,
+          detail: verdict.reasoning,
+          proof: verdict.reasoning,
+        };
         if (!productFile) {
           // No known product-file mapping (e.g. a Playwright/Maestro proposal has no single
           // sibling source file) -- escalate instead of guessing a scope or widening it.
-          qaFixResults.push({ ok: false, reasons: [`no-product-file-mapping: ${redTest.file}`], findings: [finding] });
+          qaFixResults.push({
+            ok: false,
+            reasons: [`no-product-file-mapping: ${redTest.file}`],
+            findings: [finding],
+          });
           continue;
         }
-        const testCommand = testCommandForFile(redTest.file);
+        if (!matchesAllowed(productFile, planAllowed)) {
+          // Same scope boundary the QA-confirmed-finding path already applies below (fix round 2,
+          // finding C) -- a red test's product file outside everything any task owns is reported,
+          // never silently fixed.
+          outOfScope.push(finding);
+          continue;
+        }
+        confirmedRedTests.push({ redTest, finding, productFile });
+      }
+
+      if (confirmedRedTests.length > 0) {
+        const fixFiles = [...new Set(confirmedRedTests.map((entry) => entry.productFile))];
+        const fixTestFiles = [...new Set(confirmedRedTests.map((entry) => entry.redTest.file))];
+        const fixFindings = confirmedRedTests.map((entry) => entry.finding);
+        const scopeLabel =
+          confirmedRedTests.length === 1
+            ? `QA red test "${confirmedRedTests[0].redTest.name}"`
+            : `QA red tests: ${confirmedRedTests.map((entry) => `"${entry.redTest.name}"`).join(', ')}`;
+        // A single shared command when every confirmed red test maps to the same one (the common
+        // case -- one layer's worth of proposals landed together); otherwise `pnpm verify` itself,
+        // which covers every layer `productFileFor` can ever map to (packages/engine,
+        // .claude/hooks) and so still re-runs every confirmed red test in a mixed-layer batch,
+        // with one single command string `gateBrief`'s pinned TEST: line can carry.
+        const batchCommands = new Set(
+          confirmedRedTests.map((entry) => testCommandForFile(entry.redTest.file)),
+        );
+        const testCommand =
+          batchCommands.size === 1 && !batchCommands.has(null)
+            ? [...batchCommands][0]
+            : 'pnpm verify';
         const fixResult = await runFixPass(
-          `QA red test "${redTest.name}"`,
-          [productFile],
-          [redTest.file],
+          scopeLabel,
+          fixFiles,
+          fixTestFiles,
           testCommand,
-          [finding],
+          fixFindings,
           finalDiff.diff,
         );
         agentsRun += 1;
-        qaFixResults.push({ ...fixResult, findings: [finding] });
+        qaFixResults.push({ ...fixResult, findings: fixFindings });
       }
     }
 

@@ -130,12 +130,18 @@ describe('implementerBrief', () => {
 
   it('never contains "dry-run" on a fresh attempt or a realistic retry (fix round 1, finding G5)', () => {
     const fresh = implementerBrief(TASK_2, 'abc', null);
-    // A realistic lastFailure carries only the reason strings the runtime ever actually produces
-    // for `reasons` -- checkDrift's own vocabulary, 'implementer-returned-null', or
-    // 'blocked: <reason>' -- never a fault's own commit text or a raw test-output tail. The
-    // runtime never feeds a fault's brief/commit message into `lastFailure.reasons` (traced in
-    // runTaskGate: `reasons` is built only from `implementer-returned-null`, `blocked: ...` and
-    // `drift.reasons`), which is why this holds for every retry brief the real loop ever builds.
+    // A realistic lastFailure carries only reason strings `checkDrift` itself can produce for a
+    // clean drift/test failure. This is NOT a structural guarantee that "dry-run" can never reach
+    // a reason: `checkDrift` embeds a commit's own full subject verbatim in a
+    // `commit-format: <subject>`/`commit-attribution: <subject>` reason when that commit's
+    // message fails `checkCommitMessage` -- so a malformed fault commit subject genuinely could
+    // leak its own "dry-run" text that way. It doesn't happen in practice today only because
+    // both fault commit subjects this workflow issues (`chore: dry-run drift probe`,
+    // `test: dry-run fault`) are themselves well-formed conventional commits that pass
+    // `checkCommitMessage` cleanly, producing zero reasons from that commit. See the runtime-level
+    // test below ("a drift-fault retry brief never leaks...") for the real, end-to-end version of
+    // this check, driven through an actual `dryRun.faults` scenario rather than hand-picked
+    // reason strings.
     const retry = implementerBrief(TASK_2, 'abc', {
       reasons: ['drift: x', 'tests-failed: exit 1', 'blocked: scope question'],
     });
@@ -548,7 +554,9 @@ describe('runtime: QA phase (fix round 1, findings A/D)', () => {
       {
         id: '1',
         title: 'T',
-        files: ['a.ts'],
+        // Includes the red-test fixtures' own product file (packages/engine/src/format.ts) so
+        // the fix round 2, finding C scope check doesn't route them to outOfScope by surprise.
+        files: ['a.ts', 'packages/engine/src/format.ts'],
         testFiles: [],
         createFiles: [],
         dependsOn: [],
@@ -753,8 +761,11 @@ describe('runtime: QA phase (fix round 1, findings A/D)', () => {
       }),
     });
 
-    // Low-confidence isReal:true must be refuted, so no fix pass ever runs for this red test.
-    expect(fixPassBriefs).toEqual([]);
+    // Low-confidence isReal:true must be refuted -- no fix pass against the PRODUCT file ever
+    // runs for this red test (it is reverted instead, per fix round 2, finding A's own revert
+    // step; a successful revert needs no gate, so `qaFix` stays null).
+    const productFixBriefs = fixPassBriefs.filter((brief) => !brief.includes('Files: (none)'));
+    expect(productFixBriefs).toEqual([]);
     expect(result.qaFix).toBeNull();
   });
 
@@ -830,5 +841,409 @@ describe('runtime: QA phase (fix round 1, findings A/D)', () => {
     expect(brief).toContain('Test command: pnpm --filter @credit-coach/engine test');
     expect(result.qaFix).not.toBeNull();
     expect(result.qaFix.ok).toBe(true);
+  });
+});
+
+describe('runtime: QA red-test batching (fix round 2, findings A/B/C)', () => {
+  const planArgs = {
+    planPath: 'p.md',
+    tasks: [
+      {
+        id: '1',
+        title: 'T',
+        files: ['packages/engine/src/format.ts', 'packages/engine/src/other.ts'],
+        testFiles: ['packages/engine/src/format.test.ts', 'packages/engine/src/other.test.ts'],
+        createFiles: [],
+        dependsOn: [],
+        testCommand: 'pnpm --filter @credit-coach/engine test',
+      },
+    ],
+  };
+
+  /**
+   * Models `pnpm verify` honestly: once the red tests exist (every `MODE: start` after the
+   * task's own first one), it fails (`verifyExitCode: 1`) as long as ANY of `redTestFiles` is
+   * still red, and only passes once every one of them has been "addressed" (an implementer brief
+   * named it in a `Test files:` line, whether fixing or reverting it). This is exactly the
+   * reviewer's reported mechanism -- a per-red-test loop's first gate can never pass while the
+   * suite still has another red test the implementer hasn't touched yet. The task's own build
+   * gate (the very first `MODE: start`/`MODE: check` pair) is unaffected -- the red tests don't
+   * exist until `test-automator` lands them, after every task is already done.
+   */
+  function scriptedGateChecker(redTestFiles) {
+    const addressed = new Set();
+    let startCalls = 0;
+    return {
+      dispatch(prompt) {
+        if (prompt === 'MODE: start') {
+          startCalls += 1;
+          return {
+            status: 'done',
+            findings: [],
+            filesTouched: [],
+            evidence: [],
+            summary: '',
+            facts: { head: `s${startCalls}`, dirtyFiles: [] },
+          };
+        }
+        if (prompt.startsWith('MODE: check')) {
+          const lines = prompt.split('\n');
+          const testLine = lines.find((line) => line.startsWith('TEST: '));
+          const expectLine = lines.find((line) => line.startsWith('EXPECT: '));
+          const testCommand =
+            testLine && testLine !== 'TEST: none' ? testLine.slice('TEST: '.length) : null;
+          const expectFiles =
+            expectLine && expectLine !== 'EXPECT: none'
+              ? expectLine.slice('EXPECT: '.length).split(' ')
+              : [];
+          const isTaskOwnBuildGate = startCalls === 1;
+          const allRed = redTestFiles.every((file) => addressed.has(file));
+          return {
+            status: 'done',
+            findings: [],
+            filesTouched: [],
+            evidence: [],
+            summary: '',
+            facts: {
+              head: `c${startCalls}`,
+              attemptStart: `s${startCalls}`,
+              dirtyFiles: [],
+              changedFiles: expectFiles,
+              missingFiles: [],
+              commits: [{ sha: `c${startCalls}`, message: 'fix(engine): address QA findings' }],
+              testCommand,
+              testExitCode: testCommand ? 0 : null,
+              // pnpm verify itself: fails while any red test is unaddressed, exactly like a real
+              // project-wide `vitest run` would -- but only once the red tests exist at all.
+              verifyExitCode: isTaskOwnBuildGate ? 0 : allRed ? 0 : 1,
+            },
+          };
+        }
+        throw new Error(`unexpected gate-checker brief: ${prompt}`);
+      },
+      markAddressed(testFiles) {
+        for (const file of testFiles) addressed.add(file);
+      },
+    };
+  }
+
+  function dispatchFor(gateChecker, { verdicts, landed }) {
+    return (prompt, options) => {
+      if (options.agentType === 'test-automator') {
+        return {
+          status: 'done',
+          landed,
+          quarantined: [],
+          filesTouched: [],
+          evidence: [],
+          summary: '',
+          findings: [],
+        };
+      }
+      if (options.agentType === 'gate-checker') {
+        if (prompt === 'MODE: diff') {
+          return {
+            status: 'done',
+            findings: [],
+            filesTouched: [],
+            evidence: [],
+            summary: '',
+            facts: {
+              head: 'z1',
+              base: 'z0',
+              dirtyFiles: [],
+              changedFiles: ['packages/engine/src/format.ts', 'packages/engine/src/other.ts'],
+            },
+            diff: 'full diff',
+          };
+        }
+        return gateChecker.dispatch(prompt);
+      }
+      if (options.agentType === 'implementer') {
+        // Only a fix-pass/revert brief (identified the same way the rest of this suite does, by
+        // `prompt.includes('Fix pass')`) addresses a red test -- the task's OWN initial
+        // implementation brief also names both test files in its `Test files:` line (it's
+        // building them in the first place), and must never be mistaken for "fixing" a red test.
+        if (prompt.includes('Fix pass')) {
+          const testFilesLine = prompt.split('\n').find((line) => line.startsWith('Test files: '));
+          const testFiles = testFilesLine
+            ? testFilesLine
+                .slice('Test files: '.length)
+                .split(' ')
+                .filter((f) => f !== '(none)')
+            : [];
+          gateChecker.markAddressed(testFiles);
+          return {
+            status: 'done',
+            commit: 'f1',
+            predictedFiles: testFiles,
+            filesTouched: [],
+            evidence: [],
+            summary: '',
+            findings: [],
+          };
+        }
+        return {
+          status: 'done',
+          commit: 'b1',
+          predictedFiles: [...planArgs.tasks[0].files, ...planArgs.tasks[0].testFiles],
+          filesTouched: [],
+          evidence: [],
+          summary: '',
+          findings: [],
+        };
+      }
+      if (options.agentType === 'code-reviewer' || options.agentType === 'consistency-reviewer') {
+        return { status: 'done', findings: [], filesTouched: [], evidence: [], summary: '' };
+      }
+      if (options.agentType === 'finding-verifier') {
+        const file = prompt.match(/"file": "([^"]+)"/)?.[1];
+        return verdicts[file] ?? { isReal: true, confidence: 0.9, reasoning: 'confirmed' };
+      }
+      throw new Error(`unexpected agentType in test: ${options.agentType}`);
+    };
+  }
+
+  it('reproduces: a per-red-test loop escalates even though each fix is individually correct (finding A)', async () => {
+    // This test pins the DESIRED end-to-end behavior (batched gate => done) using the real
+    // verify-aware gate-checker mock above. Against the pre-fix per-red-test loop this fails with
+    // `result.qaFix.ok === false` and a `verify-failed` reason on the first of the two passes --
+    // confirmed separately against the pre-fix code outside this suite (see the fix-round report).
+    const redTest1 = {
+      name: 'covers zero-amount',
+      layer: 'vitest',
+      file: 'packages/engine/src/format.test.ts',
+      commit: 'd1',
+      result: 'red',
+    };
+    const redTest2 = {
+      name: 'covers empty-list',
+      layer: 'vitest',
+      file: 'packages/engine/src/other.test.ts',
+      commit: 'd2',
+      result: 'red',
+    };
+    const gateChecker = scriptedGateChecker([redTest1.file, redTest2.file]);
+    const { result } = await runWorkflow(workflowPath, {
+      args: planArgs,
+      dispatch: dispatchFor(gateChecker, { verdicts: {}, landed: [redTest1, redTest2] }),
+      workflowDispatch: async () => ({
+        confirmed: [],
+        refuted: 0,
+        proposals: [
+          {
+            name: redTest1.name,
+            layer: 'vitest',
+            file: redTest1.file,
+            assertion: 'x',
+            criterion: 'boundary:zero-amount',
+          },
+          {
+            name: redTest2.name,
+            layer: 'vitest',
+            file: redTest2.file,
+            assertion: 'x',
+            criterion: 'boundary:empty-list',
+          },
+        ],
+        failedTesters: [],
+        counts: { testers: 0, raw: 0, unique: 0, confirmed: 0, refuted: 0 },
+      }),
+    });
+
+    expect(result.qaFix).not.toBeNull();
+    expect(result.qaFix.ok).toBe(true);
+    expect(result.qaFix.reasons).toEqual([]);
+  });
+
+  it('reverts a refuted red test so it never poisons the batched gate for a confirmed one (finding A)', async () => {
+    const confirmedTest = {
+      name: 'covers zero-amount',
+      layer: 'vitest',
+      file: 'packages/engine/src/format.test.ts',
+      commit: 'd1',
+      result: 'red',
+    };
+    const refutedTest = {
+      name: 'flaky unrelated assertion',
+      layer: 'vitest',
+      file: 'packages/engine/src/other.test.ts',
+      commit: 'd2',
+      result: 'red',
+    };
+    const gateChecker = scriptedGateChecker([confirmedTest.file, refutedTest.file]);
+    const verdicts = {
+      'packages/engine/src/format.ts': {
+        isReal: true,
+        confidence: 0.9,
+        reasoning: 'matches the PRD',
+      },
+      'packages/engine/src/other.ts': {
+        isReal: false,
+        confidence: 0.85,
+        reasoning: 'the test itself asserts the wrong thing',
+      },
+    };
+    const { result } = await runWorkflow(workflowPath, {
+      args: planArgs,
+      dispatch: dispatchFor(gateChecker, { verdicts, landed: [confirmedTest, refutedTest] }),
+      workflowDispatch: async () => ({
+        confirmed: [],
+        refuted: 0,
+        proposals: [
+          {
+            name: confirmedTest.name,
+            layer: 'vitest',
+            file: confirmedTest.file,
+            assertion: 'x',
+            criterion: 'boundary:zero-amount',
+          },
+          {
+            name: refutedTest.name,
+            layer: 'vitest',
+            file: refutedTest.file,
+            assertion: 'x',
+            criterion: 'boundary:none',
+          },
+        ],
+        failedTesters: [],
+        counts: { testers: 0, raw: 0, unique: 0, confirmed: 0, refuted: 0 },
+      }),
+    });
+
+    expect(result.qaFix).not.toBeNull();
+    expect(result.qaFix.ok).toBe(true);
+  });
+});
+
+describe('runtime: dry-run fault leakage (fix round 2, finding E / G5 finished)', () => {
+  it('a drift-fault retry brief never leaks "dry-run" text, even though the fault\'s own commit does', async () => {
+    const faultInjectorCalls = [];
+    const implementerCalls = [];
+
+    const dispatch = (prompt, options) => {
+      if (options.agentType === 'gate-checker') {
+        if (prompt === 'MODE: start') {
+          return {
+            status: 'done',
+            findings: [],
+            filesTouched: [],
+            evidence: [],
+            summary: '',
+            facts: { head: 'a1', dirtyFiles: [] },
+          };
+        }
+        if (prompt.startsWith('MODE: check')) {
+          if (implementerCalls.length === 1) {
+            // Attempt 1: the implementer's own commit (b2) is legitimate; the dry-run drift
+            // fault's own commit (f1) touches utilization.ts -- outside TASK_2.files -- and its
+            // subject literally contains "dry-run" (`chore: dry-run drift probe`), but that
+            // subject is itself a well-formed conventional commit, so checkCommitMessage reports
+            // nothing from it; the only reason comes from checkDrift's changedFiles check.
+            return {
+              status: 'done',
+              findings: [],
+              filesTouched: [],
+              evidence: [],
+              summary: '',
+              facts: {
+                head: 'f1',
+                attemptStart: 'a1',
+                dirtyFiles: [],
+                changedFiles: [...TASK_2.files, 'packages/engine/src/utilization.ts'],
+                missingFiles: [],
+                commits: [
+                  { sha: 'b2', message: 'feat(engine): add formatters' },
+                  { sha: 'f1', message: 'chore: dry-run drift probe' },
+                ],
+                testCommand: TASK_2.testCommand,
+                testExitCode: 0,
+                verifyExitCode: 0,
+              },
+            };
+          }
+          // Attempt 2 (the reset retry, no fault this time): a clean commit.
+          return {
+            status: 'done',
+            findings: [],
+            filesTouched: [],
+            evidence: [],
+            summary: '',
+            facts: {
+              head: 'g2',
+              attemptStart: 'a1',
+              dirtyFiles: [],
+              changedFiles: TASK_2.files,
+              missingFiles: [],
+              commits: [{ sha: 'g2', message: 'feat(engine): add formatters' }],
+              testCommand: TASK_2.testCommand,
+              testExitCode: 0,
+              verifyExitCode: 0,
+            },
+          };
+        }
+        if (prompt === 'MODE: diff') {
+          return {
+            status: 'done',
+            findings: [],
+            filesTouched: [],
+            evidence: [],
+            summary: '',
+            facts: { head: 'g2', base: 'z0', dirtyFiles: [], changedFiles: TASK_2.files },
+            diff: 'diff',
+          };
+        }
+        throw new Error(`unexpected gate-checker brief: ${prompt}`);
+      }
+      if (options.agentType === 'general-purpose') {
+        faultInjectorCalls.push(prompt);
+        return { status: 'done', findings: [], filesTouched: [], evidence: [], summary: '' };
+      }
+      if (options.agentType === 'implementer') {
+        implementerCalls.push(prompt);
+        return {
+          status: 'done',
+          commit: implementerCalls.length === 1 ? 'b2' : 'g2',
+          predictedFiles: TASK_2.files,
+          filesTouched: [],
+          evidence: [],
+          summary: '',
+          findings: [],
+        };
+      }
+      if (options.agentType === 'code-reviewer' || options.agentType === 'consistency-reviewer') {
+        return { status: 'done', findings: [], filesTouched: [], evidence: [], summary: '' };
+      }
+      throw new Error(`unexpected agentType in test: ${options.agentType}`);
+    };
+
+    const { result } = await runWorkflow(workflowPath, {
+      args: { planPath: 'plan.md', tasks: [TASK_2], dryRun: { faults: ['drift'] } },
+      dispatch,
+      workflowDispatch: async () => ({
+        confirmed: [],
+        refuted: 0,
+        proposals: [],
+        failedTesters: [],
+        counts: { testers: 0, raw: 0, unique: 0, confirmed: 0, refuted: 0 },
+      }),
+    });
+
+    expect(faultInjectorCalls).toHaveLength(1);
+    expect(faultInjectorCalls[0]).toContain('dry-run drift probe');
+    expect(implementerCalls).toHaveLength(2);
+    // Attempt 1 genuinely failed because of the injected fault's own drift.
+    expect(result.tasks[0].attempts[0].ok).toBe(false);
+    expect(result.tasks[0].attempts[0].reasons).toContain(
+      'drift: packages/engine/src/utilization.ts',
+    );
+    // The real invariant: attempt 2's retry brief, built from that genuine failure, never leaks
+    // "dry-run" -- not because the inputs happened to contain none, but because checkDrift's own
+    // reason for THIS failure is a file path, never the fault's commit subject.
+    expect(implementerCalls[1].toLowerCase()).not.toContain('dry-run');
+    expect(implementerCalls[1]).toContain('RESET TO a1');
+    expect(implementerCalls[1]).toContain('drift: packages/engine/src/utilization.ts');
+    expect(result.tasks[0].attempts[1].ok).toBe(true);
+    expect(result.tasks[0].status).toBe('done');
   });
 });
