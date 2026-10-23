@@ -110,13 +110,15 @@ const VERDICT_SCHEMA = deepFreeze({
 });
 
 // gate-checker facts. `MODE: start` returns only head + dirtyFiles, so only those are required;
-// checkDrift fails closed when any check-mode fact is absent.
+// checkDrift fails closed when any check-mode fact is absent. `base` is `MODE: diff`'s merge-base
+// sha; never set by `MODE: start`/`MODE: check`, so it stays optional.
 const GATE_FACTS_SCHEMA = deepFreeze({
   type: 'object',
   additionalProperties: false,
   required: ['head', 'dirtyFiles'],
   properties: {
     head: { type: 'string' },
+    base: { type: 'string' },
     attemptStart: { type: 'string' },
     changedFiles: STRING_LIST,
     dirtyFiles: STRING_LIST,
@@ -136,6 +138,98 @@ const GATE_FACTS_SCHEMA = deepFreeze({
     verifyExitCode: { type: ['integer', 'null'] },
   },
 });
+
+// gate-checker `MODE: diff`'s own envelope: `facts` (head, base, dirtyFiles, changedFiles) plus
+// the raw diff text as a top-level field. Never capped at OUTPUT_MAX_CHARS like `evidence[].output`
+// -- it is a tester's input, not this agent's evidence of its own claims.
+const GATE_DIFF_SCHEMA = deepFreeze(
+  envelopeSchema({ facts: GATE_FACTS_SCHEMA, diff: { type: 'string' } }, ['facts', 'diff']),
+);
+
+// Test-authoring proposal: the identical shape returned by functional-tester, edge-case-hunter
+// and test-automator (`layer` is the only distinguishing axis per tester).
+const PROPOSAL_LAYERS = deepFreeze(['vitest', 'property', 'maestro', 'playwright', 'api']);
+const PROPOSAL_SCHEMA = deepFreeze({
+  type: 'object',
+  additionalProperties: false,
+  required: ['name', 'layer', 'file', 'assertion', 'criterion'],
+  properties: {
+    name: { type: 'string', minLength: 1 },
+    layer: { type: 'string', enum: [...PROPOSAL_LAYERS] },
+    file: { type: 'string', minLength: 1 },
+    assertion: { type: 'string', minLength: 1 },
+    criterion: { type: 'string', minLength: 1 },
+  },
+});
+const PROPOSAL_LIST_SCHEMA = deepFreeze({ type: 'array', items: PROPOSAL_SCHEMA });
+
+// test-automator's record of a proposal it actually landed.
+const LANDED_SCHEMA = deepFreeze({
+  type: 'object',
+  additionalProperties: false,
+  required: ['name', 'layer', 'file', 'commit', 'result'],
+  properties: {
+    name: { type: 'string', minLength: 1 },
+    layer: { type: 'string', enum: [...PROPOSAL_LAYERS] },
+    file: { type: 'string', minLength: 1 },
+    commit: { type: 'string', minLength: 1 },
+    result: { type: 'string', enum: ['red', 'green'] },
+  },
+});
+const LANDED_LIST_SCHEMA = deepFreeze({ type: 'array', items: LANDED_SCHEMA });
+
+// test-automator's record of a flaky test it quarantined. Maestro/api flaky entries never reach
+// this shape -- test-automator stops per its own Stop rules instead of quarantining those layers.
+const QUARANTINE_LAYERS = deepFreeze(['vitest', 'property', 'playwright']);
+const QUARANTINED_SCHEMA = deepFreeze({
+  type: 'object',
+  additionalProperties: false,
+  required: ['file', 'test', 'layer', 'issue'],
+  properties: {
+    file: { type: 'string', minLength: 1 },
+    test: { type: 'string', minLength: 1 },
+    layer: { type: 'string', enum: [...QUARANTINE_LAYERS] },
+    issue: { type: 'integer', minimum: 1 },
+  },
+});
+const QUARANTINED_LIST_SCHEMA = deepFreeze({ type: 'array', items: QUARANTINED_SCHEMA });
+
+// A criterion or boundary a tester could not propose a test for, and why.
+const NOT_COVERED_SCHEMA = deepFreeze({
+  type: 'object',
+  additionalProperties: false,
+  required: ['item', 'reason'],
+  properties: {
+    item: { type: 'string', minLength: 1 },
+    reason: { type: 'string', minLength: 1 },
+  },
+});
+const NOT_COVERED_LIST_SCHEMA = deepFreeze({ type: 'array', items: NOT_COVERED_SCHEMA });
+
+// edge-case-hunter's fixed ten-row boundary scorecard (spec §5). Never add, remove or rename a
+// token -- every run reports a verdict for all ten.
+const BOUNDARY_CATEGORIES = deepFreeze([
+  'zero-amount',
+  'negative-amount',
+  'huge-amount',
+  'empty-list',
+  'month-end',
+  'leap-day',
+  'time-zone',
+  'unicode',
+  'font-scale-200',
+  'offline',
+]);
+const BOUNDARY_SCHEMA = deepFreeze({
+  type: 'object',
+  additionalProperties: false,
+  required: ['category', 'verdict'],
+  properties: {
+    category: { type: 'string', enum: [...BOUNDARY_CATEGORIES] },
+    verdict: { type: 'string', enum: ['covered', 'missing', 'not-applicable'] },
+  },
+});
+const BOUNDARY_LIST_SCHEMA = deepFreeze({ type: 'array', items: BOUNDARY_SCHEMA });
 
 function hasOwn(object, key) {
   return Object.prototype.hasOwnProperty.call(object, key);
@@ -328,6 +422,9 @@ function testReasons(f, task) {
  * dirtyFiles list (always), or changedFiles/missingFiles list (once commits exist), is
  * `incomplete-facts`, never "clean". The reported head must be one of the reported commits,
  * and, when the caller passes the attempt start it recorded, the facts must be for that range.
+ * A missing `head` fails closed on its own -- `headInCommits` never treats an absent `head`
+ * as matching a commit that also has no `sha` (this function may be called directly, outside
+ * the schema that would otherwise guarantee `head` is present).
  */
 function checkDrift(facts, task, expectedAttemptStart) {
   const f = facts || {};
@@ -336,7 +433,8 @@ function checkDrift(facts, task, expectedAttemptStart) {
   const listsToCheck =
     commits.length > 0 ? ['dirtyFiles', 'changedFiles', 'missingFiles'] : ['dirtyFiles'];
   const absentLists = listsToCheck.filter((name) => !Array.isArray(f[name]));
-  const headInCommits = commits.some((commit) => (commit || {}).sha === f.head);
+  const headMissing = typeof f.head !== 'string';
+  const headInCommits = !headMissing && commits.some((commit) => (commit || {}).sha === f.head);
   const startMismatch =
     expectedAttemptStart !== undefined && f.attemptStart !== expectedAttemptStart;
   const reasons = [
@@ -347,6 +445,7 @@ function checkDrift(facts, task, expectedAttemptStart) {
       .filter((file) => !matchesAllowed(file, allowed))
       .map((file) => `drift: ${normalizePath(file)}`),
     ...absentLists.map((name) => `incomplete-facts: ${name}`),
+    ...(headMissing ? ['incomplete-facts: head'] : []),
     ...(commits.length > 0 && !headInCommits ? ['head-not-in-commits'] : []),
     ...(startMismatch ? ['attempt-start-mismatch'] : []),
     ...testReasons(f, task),
@@ -385,4 +484,4 @@ function wrapUntrusted(label, text) {
 }
 // </contracts>
 // prettier-ignore
-export { SEVERITIES, CATEGORIES, COMMIT_TYPES, MAX_RETRIES, CONFIDENT, FINDING_SCHEMA, VERDICT_SCHEMA, GATE_FACTS_SCHEMA, envelopeSchema, normalizePath, matchesAllowed, isBlocking, dedupeFindings, applyVerifierPolicy, checkCommitMessage, checkStart, checkDrift, nextStep, wrapUntrusted };
+export { SEVERITIES, CATEGORIES, COMMIT_TYPES, MAX_RETRIES, CONFIDENT, FINDING_SCHEMA, VERDICT_SCHEMA, GATE_FACTS_SCHEMA, GATE_DIFF_SCHEMA, PROPOSAL_LIST_SCHEMA, LANDED_LIST_SCHEMA, QUARANTINED_LIST_SCHEMA, NOT_COVERED_LIST_SCHEMA, BOUNDARY_LIST_SCHEMA, envelopeSchema, normalizePath, matchesAllowed, isBlocking, dedupeFindings, applyVerifierPolicy, checkCommitMessage, checkStart, checkDrift, nextStep, wrapUntrusted };

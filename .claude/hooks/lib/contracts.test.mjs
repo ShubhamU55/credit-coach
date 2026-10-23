@@ -8,6 +8,12 @@ import {
   FINDING_SCHEMA,
   VERDICT_SCHEMA,
   GATE_FACTS_SCHEMA,
+  GATE_DIFF_SCHEMA,
+  PROPOSAL_LIST_SCHEMA,
+  LANDED_LIST_SCHEMA,
+  QUARANTINED_LIST_SCHEMA,
+  NOT_COVERED_LIST_SCHEMA,
+  BOUNDARY_LIST_SCHEMA,
   envelopeSchema,
   normalizePath,
   matchesAllowed,
@@ -496,6 +502,20 @@ describe('checkDrift', () => {
       'verify-failed: exit undefined',
     ]);
   });
+
+  it('fails closed when head is absent, even if a commit has no sha (W2-1)', () => {
+    const facts = {
+      ...CLEAN_FACTS,
+      commits: [
+        { message: 'feat(engine): add INR, percent, date, score-range and PAN formatters\n' },
+      ],
+    };
+    delete facts.head;
+    const result = checkDrift(facts, TASK);
+    expect(result.ok).toBe(false);
+    expect(result.reasons).toContain('incomplete-facts: head');
+    expect(result.reasons).toContain('head-not-in-commits');
+  });
 });
 
 describe('nextStep', () => {
@@ -567,6 +587,7 @@ describe('schemas', () => {
     FINDING_SCHEMA,
     VERDICT_SCHEMA,
     GATE_FACTS_SCHEMA,
+    GATE_DIFF_SCHEMA,
     envelope: envelopeSchema(),
     envelopeWithExtras: envelopeSchema({ commit: { type: 'string' } }, ['commit']),
   };
@@ -633,6 +654,7 @@ describe('schemas', () => {
     expect(VERDICT_SCHEMA.properties.confidence).toMatchObject({ minimum: 0, maximum: 1 });
     expect(Object.keys(GATE_FACTS_SCHEMA.properties)).toEqual([
       'head',
+      'base',
       'attemptStart',
       'changedFiles',
       'dirtyFiles',
@@ -645,6 +667,97 @@ describe('schemas', () => {
     ]);
     expect(GATE_FACTS_SCHEMA.required).toEqual(['head', 'dirtyFiles']);
     expect(GATE_FACTS_SCHEMA.properties.commits.items.required).toEqual(['sha', 'message']);
+  });
+
+  it('GATE_DIFF_SCHEMA requires facts and an uncapped top-level diff string', () => {
+    expect(GATE_DIFF_SCHEMA.required).toEqual([
+      'status',
+      'summary',
+      'filesTouched',
+      'evidence',
+      'findings',
+      'facts',
+      'diff',
+    ]);
+    expect(GATE_DIFF_SCHEMA.properties.facts).toBe(GATE_FACTS_SCHEMA);
+    expect(GATE_DIFF_SCHEMA.properties.diff).toEqual({ type: 'string' });
+  });
+
+  it('PROPOSAL_LIST_SCHEMA, LANDED_LIST_SCHEMA, QUARANTINED_LIST_SCHEMA, NOT_COVERED_LIST_SCHEMA and BOUNDARY_LIST_SCHEMA are array schemas with required ⊆ properties', () => {
+    const listSchemas = {
+      PROPOSAL_LIST_SCHEMA,
+      LANDED_LIST_SCHEMA,
+      QUARANTINED_LIST_SCHEMA,
+      NOT_COVERED_LIST_SCHEMA,
+      BOUNDARY_LIST_SCHEMA,
+    };
+    for (const [name, schema] of Object.entries(listSchemas)) {
+      expect(schema.type, name).toBe('array');
+      expect(requiredViolations(schema), name).toEqual([]);
+    }
+  });
+
+  it('PROPOSAL_LIST_SCHEMA items carry the shared tester-proposal shape', () => {
+    expect(PROPOSAL_LIST_SCHEMA.items.required).toEqual([
+      'name',
+      'layer',
+      'file',
+      'assertion',
+      'criterion',
+    ]);
+    expect(PROPOSAL_LIST_SCHEMA.items.properties.layer.enum).toEqual([
+      'vitest',
+      'property',
+      'maestro',
+      'playwright',
+      'api',
+    ]);
+  });
+
+  it('LANDED_LIST_SCHEMA items require a commit and a red|green result', () => {
+    expect(LANDED_LIST_SCHEMA.items.required).toEqual([
+      'name',
+      'layer',
+      'file',
+      'commit',
+      'result',
+    ]);
+    expect(LANDED_LIST_SCHEMA.items.properties.result.enum).toEqual(['red', 'green']);
+  });
+
+  it('QUARANTINED_LIST_SCHEMA items only allow a quarantinable layer and a bare integer issue', () => {
+    expect(QUARANTINED_LIST_SCHEMA.items.required).toEqual(['file', 'test', 'layer', 'issue']);
+    expect(QUARANTINED_LIST_SCHEMA.items.properties.layer.enum).toEqual([
+      'vitest',
+      'property',
+      'playwright',
+    ]);
+    expect(QUARANTINED_LIST_SCHEMA.items.properties.issue.type).toBe('integer');
+  });
+
+  it('NOT_COVERED_LIST_SCHEMA items are item/reason pairs', () => {
+    expect(NOT_COVERED_LIST_SCHEMA.items.required).toEqual(['item', 'reason']);
+  });
+
+  it('BOUNDARY_LIST_SCHEMA items are the fixed ten-token scorecard', () => {
+    expect(BOUNDARY_LIST_SCHEMA.items.required).toEqual(['category', 'verdict']);
+    expect(BOUNDARY_LIST_SCHEMA.items.properties.category.enum).toEqual([
+      'zero-amount',
+      'negative-amount',
+      'huge-amount',
+      'empty-list',
+      'month-end',
+      'leap-day',
+      'time-zone',
+      'unicode',
+      'font-scale-200',
+      'offline',
+    ]);
+    expect(BOUNDARY_LIST_SCHEMA.items.properties.verdict.enum).toEqual([
+      'covered',
+      'missing',
+      'not-applicable',
+    ]);
   });
 });
 
@@ -661,6 +774,20 @@ describe('shared constants and schemas are deep-frozen', () => {
     ['VERDICT_SCHEMA confidence', () => (VERDICT_SCHEMA.properties.confidence.minimum = -1)],
     ['GATE_FACTS_SCHEMA.required', () => GATE_FACTS_SCHEMA.required.push('x')],
     ['GATE_FACTS_SCHEMA commits', () => GATE_FACTS_SCHEMA.properties.commits.items.required.pop()],
+    ['GATE_DIFF_SCHEMA.required', () => GATE_DIFF_SCHEMA.required.push('x')],
+    ['PROPOSAL_LIST_SCHEMA.items', () => PROPOSAL_LIST_SCHEMA.items.required.pop()],
+    [
+      'PROPOSAL_LIST_SCHEMA layer enum',
+      () => PROPOSAL_LIST_SCHEMA.items.properties.layer.enum.push('x'),
+    ],
+    ['LANDED_LIST_SCHEMA.items', () => LANDED_LIST_SCHEMA.items.required.pop()],
+    ['QUARANTINED_LIST_SCHEMA.items', () => QUARANTINED_LIST_SCHEMA.items.required.pop()],
+    ['NOT_COVERED_LIST_SCHEMA.items', () => NOT_COVERED_LIST_SCHEMA.items.required.pop()],
+    ['BOUNDARY_LIST_SCHEMA.items', () => BOUNDARY_LIST_SCHEMA.items.required.pop()],
+    [
+      'BOUNDARY_LIST_SCHEMA category enum',
+      () => BOUNDARY_LIST_SCHEMA.items.properties.category.enum.push('x'),
+    ],
     ['shared STRING_LIST', () => (envelopeSchema().properties.filesTouched.items.type = 'x')],
   ])('%s cannot be mutated', (_, mutate) => {
     expect(mutate).toThrow(TypeError);

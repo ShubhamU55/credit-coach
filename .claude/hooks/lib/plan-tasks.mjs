@@ -28,6 +28,7 @@ const PNPM_COMMAND = /`(pnpm [^`]+)`/;
 const PASS_WORD = /\bPASS\b/;
 const CONSUMES_LINE = /^\s*(?:[-*]\s+)?(?:\*\*)?Consumes\b/;
 const FILE_EXTENSION = /\.[A-Za-z0-9]+$/;
+const ROOT_ANCHORED_GLOB = /^(\.\/)*\*/;
 const MAX_RANGE_SPAN = 100;
 
 // "Task 1", "Tasks 1–10", "Tasks 1, 2 and 3", or a prefixed id such as "W0-5" / "W4-1…4".
@@ -45,6 +46,19 @@ function isPath(token) {
   return token.includes('/') || FILE_EXTENSION.test(token);
 }
 
+function isGlob(token) {
+  return token.includes('*');
+}
+
+/**
+ * A glob whose `*`/`**` sits at the very start of the pattern (after any leading `./`), so it
+ * matches from the repo root -- e.g. `**\/*`, `*.ts`. Rejected outright: nothing stops a future
+ * plan from widening a task's allowed `files` to the whole repo by mistake.
+ */
+function isRootAnchoredGlob(token) {
+  return isGlob(token) && ROOT_ANCHORED_GLOB.test(token);
+}
+
 /**
  * A directory token (`dir/`): it can't exist as a blob at HEAD, so it only widens `files`.
  * Fails closed on tokens whose `dir/**` would match far more than one directory: a glob, the
@@ -60,12 +74,16 @@ function unique(values) {
   return [...new Set(values)];
 }
 
-/** `{ path, isDir }` per backticked path; a directory becomes the glob `dir/**`. */
+/**
+ * `{ path, isDir, isGlob }` per backticked path; a directory becomes the glob `dir/**`. A
+ * root-anchored glob (`isRootAnchoredGlob`) is dropped entirely -- it never widens `files`.
+ */
 function backtickedPaths(line) {
   return [...line.matchAll(BACKTICKED)].flatMap((match) => {
     const token = match[1];
     if (isDirectory(token)) return [{ path: `${token}**`, isDir: true }];
-    return isPath(token) ? [{ path: token, isDir: false }] : [];
+    if (isRootAnchoredGlob(token)) return [];
+    return isPath(token) ? [{ path: token, isDir: false, isGlob: isGlob(token) }] : [];
   });
 }
 
@@ -129,13 +147,14 @@ function parseFiles(lines) {
     entries.push(...backtickedPaths(body).map((entry) => ({ label, ...entry })));
   }
 
-  // Directories (`dir/**`) widen the allowed `files` under any label, but never enter
-  // createFiles or testFiles: those form the gate's EXPECT list of blobs that must exist.
+  // Directories (`dir/**`) and scoped globs widen the allowed `files` under any label, but never
+  // enter createFiles or testFiles: those form the gate's EXPECT list of concrete blobs that must
+  // exist, where a glob would make the existence check meaningless.
   const pathsWhere = (predicate) => unique(entries.filter(predicate).map((entry) => entry.path));
   return {
-    files: pathsWhere((e) => e.isDir || e.label !== 'test'),
-    createFiles: pathsWhere((e) => !e.isDir && e.label === 'create'),
-    testFiles: pathsWhere((e) => !e.isDir && e.label === 'test'),
+    files: pathsWhere((e) => e.isDir || e.isGlob || e.label !== 'test'),
+    createFiles: pathsWhere((e) => !e.isDir && !e.isGlob && e.label === 'create'),
+    testFiles: pathsWhere((e) => !e.isDir && !e.isGlob && e.label === 'test'),
   };
 }
 

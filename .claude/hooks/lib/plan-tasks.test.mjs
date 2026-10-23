@@ -165,6 +165,37 @@ describe('parsePlanTasks on inline markdown', () => {
     expect(task.files).toEqual(['src/a.ts', './docs/**']);
   });
 
+  it('rejects a root-anchored glob entirely, never widening files (W2-1)', () => {
+    const [task] = parsePlanTasks(
+      [
+        '### Task 1: Wide glob',
+        '',
+        '**Files:**',
+        '- Modify: `src/a.ts`, `**/*`, `**/*.ts`, `*.ts`, `./**/*.ts`',
+        '',
+        '- [ ] **Step 1:** Do it.',
+      ].join('\n'),
+    );
+    expect(task.files).toEqual(['src/a.ts']);
+  });
+
+  it('keeps a scoped (non-root-anchored) glob in files but never in createFiles/testFiles (W2-1)', () => {
+    const [task] = parsePlanTasks(
+      [
+        '### Task 1: Scoped glob',
+        '',
+        '**Files:**',
+        '- Create: `src/a.ts`',
+        '- Test: `src/*.test.ts`, `apps/mobile/**/*.tsx`',
+        '',
+        '- [ ] **Step 1:** Do it.',
+      ].join('\n'),
+    );
+    expect(task.files).toEqual(['src/a.ts', 'src/*.test.ts', 'apps/mobile/**/*.tsx']);
+    expect(task.createFiles).toEqual(['src/a.ts']);
+    expect(task.testFiles).toEqual([]);
+  });
+
   it('reproduces: a stray ~~~ inside a ``` fence does not expose a fenced task heading', () => {
     const tasks = parsePlanTasks(
       [
