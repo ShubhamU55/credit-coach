@@ -105,13 +105,13 @@ export function formatScoreRange(low: number, high: number): string {
 
 /**
  * Masks a PAN to its first 2 and last 3 characters, e.g. `ABXXXXX34F`.
- * Trims and uppercases first. Throws `RangeError` (without echoing the
- * input, per PRD non-negotiable 5) unless it matches `^[A-Z]{5}[0-9]{4}[A-Z]$`.
+ * Trims and uppercases first. Returns null (without echoing the input,
+ * per PRD non-negotiable 5) unless it matches `^[A-Z]{5}[0-9]{4}[A-Z]$`.
  */
-export function maskPan(pan: string): string {
+export function maskPan(pan: string): string | null {
   const normalized = pan.trim().toUpperCase();
   if (!PAN_PATTERN.test(normalized)) {
-    throw new RangeError('Invalid PAN format');
+    return null;
   }
   return `${normalized.slice(0, 2)}XXXXX${normalized.slice(-3)}`;
 }
