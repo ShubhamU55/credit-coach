@@ -1737,6 +1737,60 @@ describe('runtime: QA red-test batching (fix round 2, findings A/B/C)', () => {
     }
   });
 
+  // --- fix round 5: the exact-match rule depends on test-automator's title contract ----------
+  // The removal directive matches `landed[].name` against the literal it(...)/test(...) title,
+  // and no workflow code joins `landed[].name` back to anything git can check -- it is
+  // test-automator's self-report. So the rule is only safe and non-blocking if test-automator.md
+  // pins title === name. The scenario below documents what an out-of-contract run (title drifted
+  // from `name`, e.g. criterion text appended) does: it blocks the whole batch, fail-closed.
+
+  it('title drift (out of contract): a removal whose landed name differs from its title blocks the whole batch, changing nothing', async () => {
+    const driftedTest = {
+      ...loneRefutedTest,
+      name: 'flaky unrelated assertion',
+      title: 'flaky unrelated assertion (boundary:none)',
+    };
+    const { result, calls, model } = await runStateful({
+      landed: [keptTest, driftedTest],
+      verdicts: { [driftedTest.name]: REFUTED },
+    });
+
+    expect(fixPassPrompts(calls)).toHaveLength(1);
+    expect(result.qaFix.ok).toBe(false);
+    expect(result.qaFix.reasons).toEqual([
+      `blocked: 0 test cases match ${JSON.stringify(driftedTest.name)}`,
+    ]);
+    // Nothing was removed, deleted or fixed: the kept test's correct fix rode the same blocked
+    // dispatch, so it is still red -- the "poisoned batch" this round's contract edit prevents.
+    expect(model.isDeleted(driftedTest.file)).toBe(false);
+    expect(model.file(driftedTest.file).tests).toEqual([
+      { title: driftedTest.title, red: true, fixable: false },
+    ]);
+    expect(model.file(keptTest.file).tests).toEqual([
+      { title: keptTest.name, red: true, fixable: true },
+    ]);
+  });
+
+  it("test-automator.md pins a test's title to its proposal name, and landed[].name to that title", () => {
+    // Pinned text: the removal directive's exact-match rule above is only correct while these
+    // sentences hold, so dropping one must fail a test, not drift silently. Whitespace is
+    // collapsed so re-wrapping the Markdown doesn't break the check.
+    const text = fs
+      .readFileSync(path.join(repoRoot, '.claude/agents/test-automator.md'), 'utf8')
+      .replace(/\s+/g, ' ');
+    expect(text).toContain(
+      "The test's `it(...)`/`test(...)` title must be a plain string literal exactly equal to the proposal's `name`: no `.each`, no template interpolation, no appended criterion text.",
+    );
+    expect(text).toContain(
+      'Link back to `criterion` in a comment above or alongside the test, never inside the title string.',
+    );
+    expect(text).toContain(
+      '"name": "string: the exact it(...)/test(...) title string this test was written with, which must equal the proposal\'s name verbatim (Procedure step 2) -- a report of what was written, not a repeat of the input"',
+    );
+    expect(text).not.toContain('add a test named after `name`');
+    expect(text).not.toContain("the proposal's test name");
+  });
+
   it('outOfScope[] still reports the out-of-scope test for visibility, even though it is also removed', async () => {
     const outOfScopeTest = {
       name: 'covers an unrelated module',

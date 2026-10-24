@@ -50,8 +50,10 @@ failing proposal is never "fixed" by editing the implementation; that goes throu
 1. Group the accepted proposals by `layer`. You will make one commit per layer that has at least
    one proposal.
 2. For each proposal, open its target `file` (create it if it doesn't exist, following
-   `docs/standards.md` layout for that layer) and add a test named after `name`, asserting
-   `assertion`, with a comment or test description linking back to `criterion`. Follow the
+   `docs/standards.md` layout for that layer) and add a test asserting `assertion`. The test's
+   `it(...)`/`test(...)` title must be a plain string literal exactly equal to the proposal's
+   `name`: no `.each`, no template interpolation, no appended criterion text. Link back to
+   `criterion` in a comment above or alongside the test, never inside the title string. Follow the
    Arrange-Act-Assert structure and the descriptive-naming convention in `docs/standards.md` /
    `.claude/rules/testing.md`.
 3. Match the proposal's `layer` to its real command and location from `docs/testing.md`:
@@ -123,7 +125,7 @@ Your own output is one `landed` entry per proposal you land, carrying the same `
 {
   "landed": [
     {
-      "name": "string: the proposal's test name",
+      "name": "string: the exact it(...)/test(...) title string this test was written with, which must equal the proposal's name verbatim (Procedure step 2) -- a report of what was written, not a repeat of the input",
       "layer": "vitest | property | maestro | playwright | api",
       "file": "string: the test file it was written into",
       "commit": "string: the commit sha or subject it landed in",
