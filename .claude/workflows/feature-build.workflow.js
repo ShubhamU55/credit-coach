@@ -670,8 +670,18 @@ function unpredicted(predictedFiles, changedFiles) {
 }
 
 const SHA_PATTERN = /^[0-9a-f]{7,40}$/;
-/** Whitespace (incl. newlines, U+2028/U+2029) or any control/format character: never in a real test path. */
-const UNSAFE_PATH_CHARS = /[\s\p{C}]/u;
+const SAFE_TEST_PATH = /^[A-Za-z0-9._/@+-]+$/;
+
+/**
+ * A red test's (normalized) file path lands unfenced in the fix pass's own `Files:`/`Test files:`
+ * lines, and fills `<file>` in the trusted `git cat-file` instruction the implementer runs. So it
+ * is allow-listed, not deny-listed: plain path characters only (every prefix `testCommandForFile`
+ * maps fits), no whitespace/newline, no shell metacharacter (`;`, `$`, `` ` ``, `|`, quotes), and
+ * no `..` segment. Anything else escalates -- a fail-closed edge, never a real test path.
+ */
+function isSafeTestPath(file) {
+  return SAFE_TEST_PATH.test(file) && !file.split('/').includes('..');
+}
 
 /**
  * One REMOVALS fence entry. `JSON.stringify` escapes quotes and `\n`/`\r`, but NOT U+2028/U+2029,
@@ -705,7 +715,7 @@ function emptyFileRule(removalBase) {
   return [
     "If removing a file's listed case(s) would leave it with zero test cases, check whether that file existed at this QA run's base commit, " +
       `${removalBase}: first \`git rev-parse --verify ${removalBase}^{commit}\` (if that fails, delete nothing and report \`blocked\`), ` +
-      `then \`git cat-file -e ${removalBase}:<file>\`.`,
+      `then \`git cat-file -e '${removalBase}:<file>'\`.`,
     '- If `git cat-file` FAILS (the file did not exist at the base, so this branch created it), delete the whole file instead of leaving an empty one.',
     '- If it SUCCEEDS (the file predates this work), do not delete it and do not leave it empty: stop and report `blocked`, naming the file.',
     'Never delete a file for any other reason.',
@@ -1228,14 +1238,13 @@ if (taskResults.some((task) => task.status === 'done')) {
       //     either, has exactly one resolution: it shouldn't exist on this branch).
       const keepAndFix = [];
       const remove = [];
-      for (const redTest of redTests) {
-        if (UNSAFE_PATH_CHARS.test(redTest.file)) {
-          // The file path lands unfenced in the fix pass's own `Files:`/`Test files:` lines, so a
-          // path with a newline (or any whitespace/control/format character) could forge a
-          // trusted line there. No real test path needs one: escalate it, never splice it in.
+      for (const landedTest of redTests) {
+        const redTest = { ...landedTest, file: normalizePath(landedTest.file) };
+        if (!isSafeTestPath(redTest.file)) {
+          // See isSafeTestPath: never splice such a path into a brief's trusted lines.
           qaFixResults.push({
             ok: false,
-            reasons: [`unsafe-test-path: ${JSON.stringify(redTest.file)}`],
+            reasons: [`unsafe-test-path: ${JSON.stringify(landedTest.file)}`],
             findings: [],
           });
           continue;
