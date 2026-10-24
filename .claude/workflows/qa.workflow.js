@@ -9,6 +9,14 @@ export const meta = {
   ],
 };
 
+/* global agent, log, parallel, args -- injected by the Workflow tool's vm runtime; not real JS
+   globals, so ESLint's static no-undef check can't see them without this declaration. */
+
+/* eslint-disable @typescript-eslint/no-unused-vars -- the pasted block below must stay
+   byte-identical to contracts.mjs's canonical copy (workflows-sync.test.mjs) and to every other
+   workflow file's copy, so it can't be edited per file. contracts.mjs re-exports every name after
+   its own copy of this block, which is what makes it "used" there; a pasted copy with no export
+   list legitimately leaves some shared schemas/helpers unused in a given workflow. */
 // <contracts>
 // Adapted from affaan-m/ECC (MIT) @ 90606c8
 
@@ -485,6 +493,7 @@ function wrapUntrusted(label, text) {
   ].join('\n');
 }
 // </contracts>
+/* eslint-enable @typescript-eslint/no-unused-vars */
 
 // <pure>
 // qa workflow: picks testers by changed path (spec §8.1's table), splits the emulator-bound ones
