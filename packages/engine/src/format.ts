@@ -29,8 +29,18 @@ const MONTH_NAMES = [
 
 /** `ABCDE1234F`-shaped PAN: 5 letters, 4 digits, 1 letter. */
 const PAN_PATTERN = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
+/** ASCII-only shape check, run before `toUpperCase()` so a non-ASCII letter that
+ * case-folds into two ASCII letters (e.g. `ß` -> `SS`) can never pass as a PAN. */
+const ASCII_PAN_SHAPE = /^[A-Za-z]{5}[0-9]{4}[A-Za-z]$/;
 
 const clampScore = (score: number): number => Math.min(SCORE_MAX, Math.max(SCORE_MIN, score));
+
+/** Throws a `RangeError` unless `value` is finite, so callers never silently render `NaN`/`Infinity`. */
+const assertFinite = (value: number, label: string): void => {
+  if (!Number.isFinite(value)) {
+    throw new RangeError(`${label} must be a finite number, got ${value}`);
+  }
+};
 
 /** Groups digits Indian-style: last 3 together, then pairs (e.g. `1,23,45,678`). */
 const groupIndianDigits = (digits: string): string => {
@@ -51,26 +61,54 @@ const groupIndianDigits = (digits: string): string => {
  * Formats integer rupees with Indian digit grouping and a `₹` prefix.
  * Rounds to the nearest rupee first, then negates only when the rounded
  * magnitude is non-zero, so `-0.4` renders as `₹0`, not `−₹0`.
+ * @throws {RangeError} if `rupees` is not finite or rounds outside the safe integer range.
  */
 export function formatINR(rupees: number): string {
+  assertFinite(rupees, 'rupees');
   const rounded = Math.round(Math.abs(rupees));
+  if (!Number.isSafeInteger(rounded)) {
+    throw new RangeError(`rupees must round to a safe integer, got ${rupees}`);
+  }
   const grouped = groupIndianDigits(String(rounded));
   const sign = rupees < 0 && rounded !== 0 ? '−' : '';
   return `${sign}₹${grouped}`;
 }
 
-/** Formats a ratio-style number as a percentage to 1 decimal place, e.g. `45.0%`. */
+/**
+ * Formats a ratio-style number as a percentage to 1 decimal place, e.g. `45.0%`.
+ * Uses the typographic minus sign (U+2212), matching `formatINR`.
+ * @throws {RangeError} if `value` is not finite.
+ */
 export function formatPercent(value: number): string {
-  return `${value.toFixed(1)}%`;
+  assertFinite(value, 'value');
+  const fixed = Math.abs(value).toFixed(1);
+  const sign = value < 0 && Number(fixed) !== 0 ? '−' : '';
+  return `${sign}${fixed}%`;
 }
 
-/** Parses a `YYYY-MM-DD` string into a UTC calendar date with no time-zone shift. */
+/** `YYYY-MM-DD` with a 4-digit year, strictly (no 2-digit year rollover). */
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Parses a `YYYY-MM-DD` string into a UTC calendar date with no time-zone shift.
+ * @throws {RangeError} if `isoDate` is malformed or names a day that doesn't exist
+ * (e.g. 29 February on a non-leap year, or 31 April).
+ */
 const parseIsoDate = (isoDate: string): Date => {
+  if (!ISO_DATE_PATTERN.test(isoDate)) {
+    throw new RangeError(`isoDate must be YYYY-MM-DD, got ${isoDate}`);
+  }
   const parts = isoDate.split('-');
   const year = Number(parts[0]);
   const month = Number(parts[1]);
   const day = Number(parts[2]);
-  return new Date(Date.UTC(year, month - 1, day));
+  const date = new Date(Date.UTC(year, month - 1, day));
+  const roundTrips =
+    date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+  if (!roundTrips) {
+    throw new RangeError(`isoDate does not name a real calendar date, got ${isoDate}`);
+  }
+  return date;
 };
 
 /** Formats a `YYYY-MM-DD` calendar date as e.g. `Thu, 22 Oct`. */
@@ -95,8 +133,13 @@ export function formatRelativeDate(isoDate: string, todayIso: string): string {
   return formatShortDate(isoDate);
 }
 
-/** Clamps both bounds to 300-900, orders them low <= high, and joins with an en dash. */
+/**
+ * Clamps both bounds to 300-900, orders them low <= high, and joins with an en dash.
+ * @throws {RangeError} if `low` or `high` is not finite.
+ */
 export function formatScoreRange(low: number, high: number): string {
+  assertFinite(low, 'low');
+  assertFinite(high, 'high');
   const clampedLow = clampScore(low);
   const clampedHigh = clampScore(high);
   const ordered = [Math.min(clampedLow, clampedHigh), Math.max(clampedLow, clampedHigh)];
@@ -105,11 +148,18 @@ export function formatScoreRange(low: number, high: number): string {
 
 /**
  * Masks a PAN to its first 2 and last 3 characters, e.g. `ABXXXXX34F`.
- * Trims and uppercases first. Returns null (without echoing the input,
- * per PRD non-negotiable 5) unless it matches `^[A-Z]{5}[0-9]{4}[A-Z]$`.
+ * Trims first, then checks the shape is ASCII letters/digits only -- before
+ * uppercasing -- so a non-ASCII letter that `toUpperCase()` case-folds into
+ * two ASCII letters (e.g. `ß` -> `SS`) can never be mistaken for a PAN.
+ * Returns null (without echoing the input, per PRD non-negotiable 5) unless
+ * it matches `^[A-Z]{5}[0-9]{4}[A-Z]$` after uppercasing.
  */
 export function maskPan(pan: string): string | null {
-  const normalized = pan.trim().toUpperCase();
+  const trimmed = pan.trim();
+  if (!ASCII_PAN_SHAPE.test(trimmed)) {
+    return null;
+  }
+  const normalized = trimmed.toUpperCase();
   if (!PAN_PATTERN.test(normalized)) {
     return null;
   }
