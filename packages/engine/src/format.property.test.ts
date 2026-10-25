@@ -12,7 +12,7 @@ const INDIAN_GROUPING_PATTERN = /^(\d{1,3}|\d{1,2}(,\d{2})*,\d{3})$/;
 
 describe('formatINR', () => {
   // criterion: boundary:huge-amount
-  it('renders a validly-signed, Indian-grouped integer string for any safe-integer rupee amount', () => {
+  it('formatINR renders a validly-signed, Indian-grouped integer string for any safe-integer rupee amount', () => {
     fc.assert(
       fc.property(
         fc.integer({ min: Number.MIN_SAFE_INTEGER, max: Number.MAX_SAFE_INTEGER }),
