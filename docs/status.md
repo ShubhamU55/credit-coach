@@ -2,6 +2,30 @@
 
 > Read this first when starting a new session. Update it at the end of every session (newest entry on top).
 
+## 2026-10-26 (W2-2 done and merged — Wave 2 complete; a real pipeline defect was found and fixed)
+
+### State at handoff — clean, nothing running
+
+`main` is at `56b65c4`. `pnpm verify` is green (970/970 hooks tests, 30/30 engine at 98.76% line coverage, lint/typecheck clean across all workspaces). No worktree besides the main checkout; no agent running.
+
+### What Plan 1c is and where it stands
+
+- **Waves 0, 1 and 2 are all done and merged.** Wave 2 (W2-1 core workflows + W2-2 dry run) is Wave 2's last ticket — **Wave 3 is next** (the 4 remaining-agents tickets: W3-1 analyze agents, W3-2 API/UI/integration testers, plus whatever else Wave 3 names — read the plan's own Wave 3 section before starting).
+- **W2-2 (dry run on Plan 4a Task 2) is done.** This was the first real exercise of `/build` on an actual task with injected faults, and it did its job: the fault-injection/retry mechanics worked exactly as designed, but the task-level review+fix-pass loop was caught silently overriding an approved plan's own explicit requirement, with zero human visibility, before this dry run looked closely at a small, low-risk task. Full history, every finding, and what's still deferred: `docs/agent-runs/2026-10-26-dry-run-plan-4a-task-2.md` and `docs/journal/001-agentic-system-dry-run.md`.
+
+### The headline finding, so the next session doesn't have to re-derive it
+
+Plan 4a Task 2's own acceptance test requires `maskPan('ABC')` to throw `RangeError`. The implementer built it correctly. `consistency-reviewer` then flagged the throw as "drift" from an unrelated golden example, two `finding-verifier` calls confirmed it **without ever seeing the plan's own text** (`reviewerPrompt`/`verifierPrompt` only ever carried a diff and a task title), and a fix pass changed the behavior to return `null` and **silently rewrote the plan's own acceptance test to match**. This is the exact "if code and the approved spec disagree, raise the conflict, don't silently pick one" failure CLAUDE.md's non-negotiables exist to prevent — except the pipeline itself did the silent picking. Caught, not shipped: surfaced to the owner via `AskUserQuestion` before any merge decision, reverted to the plan's throw, and — the actual fix — `reviewerPrompt`/`verifierPrompt` for task-level findings now carry the plan's own task text (trusted, unfenced, same status `implementerBrief` already gives it) with an explicit instruction not to confirm a finding that would override an explicit plan requirement. Two more real but smaller issues were found and fixed in the same pass: a QA-driven behavior change that shipped with zero test coverage (engine coverage had silently dropped 100%→93.8%), and a tester-accounting bug where a correctly-skipped `functional-tester` was counted as a failure (contradicting an explicit W1→W2-1 carry-forward). Commits: `33db799`, `6316f15`, `ae9c8fc` on the now-merged, now-deleted `feat/plan4a-t2-formatters` branch.
+
+### Deferred, flagged for whoever picks up Wave 3 — read this before building new testers
+
+**The identical plan-text gap still exists in `qa.workflow.js`'s `testerPrompt`/`verifierPrompt` and in `feature-build.workflow.js`'s QA-confirmed-findings fix pass.** No QA-phase tester has actually contradicted a plan yet (this run's `edge-case-hunter`/`security-reviewer` findings were all genuine gaps the plan never addressed), so this was explicitly deferred rather than fixed now — but it is the same structural risk, and Wave 3 adds more testers (`api-tester`, `ui-tester`, `integration-tester`) that will exercise this exact path. Worth fixing before or early in Wave 3, not after a second incident proves it necessary. Also minor and deferred: `stats.agents` undercounts (misses gate-checker/fault-injector calls), `stats.tokens` is hardcoded `null`, and one out-of-scope finding (a commit subject that deviated from the plan's exact wording — no bug-reporter exists yet to file it as a ticket, logged in the run ledger instead).
+
+### Key files
+
+- Full W2-2 run ledger and journal: `docs/agent-runs/2026-10-26-dry-run-plan-4a-task-2.md`, `docs/journal/001-agentic-system-dry-run.md`
+- Plan text: `docs/superpowers/plans/2026-10-21-plan-1c-agentic-system.md` (W2-2 ~lines 759-787; Wave 3 starts ~line 790)
+
 ## 2026-10-24 (W2-1 merged, qa.proposals fencing gap fixed — W2-2 unblocked)
 
 ### State at handoff — clean, nothing running
