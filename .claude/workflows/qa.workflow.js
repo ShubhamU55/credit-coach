@@ -719,8 +719,17 @@ function testerSchema(tester) {
     );
   }
   if (tester === 'security-reviewer') return envelopeSchema({}, []);
-  // api-tester, ui-tester, integration-tester don't exist yet (W3-2); this is their declared
-  // shape once they land, matching functional-tester's today.
+  if (tester === 'ui-tester') {
+    return envelopeSchema(
+      {
+        proposals: PROPOSAL_LIST_SCHEMA,
+        notCovered: NOT_COVERED_LIST_SCHEMA,
+        screenshots: STRING_LIST,
+      },
+      [],
+    );
+  }
+  // api-tester and integration-tester match functional-tester's shape: proposals/notCovered only.
   return envelopeSchema(
     { proposals: PROPOSAL_LIST_SCHEMA, notCovered: NOT_COVERED_LIST_SCHEMA },
     [],

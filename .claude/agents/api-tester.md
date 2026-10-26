@@ -58,21 +58,26 @@ Nothing. This agent never writes or edits a file; it returns proposals and findi
    non-local URL, stop per **Stop rules** — never run `supabase start`/`supabase init` yourself
    (either can write files under `supabase/`, outside your allowed paths) and never point any
    query at the hosted project.
-4. For each changed table/RPC/Edge Function, check the RLS checklist (Inputs) by reading the
+4. Before any RLS or isolation check below, run `supabase migration list --local` (read-only) and
+   confirm every migration file the diff touches under `supabase/migrations/**` is already applied
+   to the local instance. If any is missing, stop per **Stop rules** — never run `supabase db
+reset`/`migration up` yourself to apply it. Skipping this check risks a false isolation PASS
+   against the old schema, which is worse than no check at all on a security-relevant path.
+5. For each changed table/RPC/Edge Function, check the RLS checklist (Inputs) by reading the
    migration SQL and, where useful, querying `pg_policies`/`pg_indexes` on the local instance.
-5. Run the **user A / user B / anonymous** RLS isolation trio live against the local instance for
+6. Run the **user A / user B / anonymous** RLS isolation trio live against the local instance for
    every changed table: create a throwaway user A and user B (and use the anonymous/no-auth role),
    assert A cannot read or write B's rows and the anonymous role gets none, then delete the
    throwaway users and rows you created. Record only the pass/fail verdict and row counts as
    evidence — never the keys or tokens `supabase status` printed.
-6. Check Edge Function changes for a request/response shape with Zod validation, correct error
+7. Check Edge Function changes for a request/response shape with Zod validation, correct error
    codes on invalid input, a timeout and rate limiting, and a template fallback the app can use if
    the LLM call fails — the LLM never computes an amount, date or score itself (CLAUDE.md
    non-negotiable 2) — per `docs/security/checklist.md`'s "LLM Edge Function" section.
-7. For every checklist item or isolation case you cannot verify today because `supabase/tests/**`
+8. For every checklist item or isolation case you cannot verify today because `supabase/tests/**`
    or the migration it needs doesn't exist yet (pre-Plan-3), record a `notCovered[]` entry naming
    it — this is normal and does not block the run (see Stop rules).
-8. For every gap you can verify is missing a durable test, write a proposal: `layer: 'api'`,
+9. For every gap you can verify is missing a durable test, write a proposal: `layer: 'api'`,
    `file` under `supabase/tests/**`, naming the exact assertion (e.g. "user B's select on
    `accounts` returns zero rows for user A's id").
 
@@ -124,6 +129,10 @@ isn't usable:
   `blockedReason` naming the missing owner/CI step (`supabase start`) — never start it yourself.
 - `supabase status`'s API URL isn't `127.0.0.1`/`localhost` → `status: "blocked"`; never query a
   non-local instance, even read-only.
+- `supabase migration list --local` shows the diff's own `supabase/migrations/**` files aren't all
+  applied locally → `status: "blocked"`, `blockedReason` naming the owner step needed (`supabase
+db reset` / `supabase migration up`) — never apply them yourself, and never report an isolation
+  check as passing against a schema missing the diff's migrations.
 
 Nothing else blocks this agent. In particular:
 
@@ -135,8 +144,9 @@ Nothing else blocks this agent. In particular:
 
 - Do not propose refactors, renames, or "improvements" to migrations or functions you read.
 - Do not touch `.env*` files or read their contents; local keys come only from `supabase status`.
-- Never run `supabase start`/`supabase init`/`supabase db reset` yourself — each can write files
-  under `supabase/`, outside your allowed paths, or destroy local state another agent needs.
+- Never run `supabase start`/`supabase init`/`supabase db reset`/`supabase migration up` yourself
+  — each can write files under `supabase/`, outside your allowed paths, or destroy local state
+  another agent needs. `supabase migration list --local` is the only migration command you run.
 - Never write test data to, or query, the hosted Supabase project — local only (§8.7).
 - Never echo a key, JWT, or `service_role` value into evidence, findings or summary.
 - Do not run `--no-verify` on any command, or any command that changes a tracked file.
