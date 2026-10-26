@@ -1,0 +1,126 @@
+name: Bug report
+description: Report a bug found by a tester, CI, the PR reviewer or the owner (spec §8.1a).
+title: '[bug]: '
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Fields up to and including "Suspected area" are filled when the bug is reported.
+        "RCA" through "Regression test" are filled by `bug-analyst` during root-cause analysis.
+        "Verification on main" is filled by `bug-reporter` right before the ticket is closed.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One or two sentences describing the bug.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - critical
+        - high
+        - medium
+        - low
+    validations:
+      required: true
+
+  - type: input
+    id: found-by
+    attributes:
+      label: Found by
+      description: The agent, tester or person who found this (e.g. `functional-tester`, `edge-case-hunter`, a person's name).
+    validations:
+      required: true
+
+  - type: input
+    id: commit
+    attributes:
+      label: Build / commit
+      description: The commit sha or build/version the bug was observed on.
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Emulator or device, OS version, app version, browser (whatever applies).
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Exact, numbered steps.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: GitHub blob links to screenshots, logs, failing test output or Maestro/Playwright artifacts committed under `docs/test-reports/bugs/<issue#>/`.
+    validations:
+      required: true
+
+  - type: input
+    id: suspected-area
+    attributes:
+      label: Suspected area
+      description: The package or path most likely responsible (e.g. `packages/engine/src/planner`).
+    validations:
+      required: true
+
+  - type: textarea
+    id: rca
+    attributes:
+      label: Root cause analysis
+      description: 'Filled by bug-analyst: reproduction command and output, root cause (file/line and why), blast radius.'
+    validations:
+      required: false
+
+  - type: textarea
+    id: fix-approach
+    attributes:
+      label: Fix approach
+      description: 'Filled by bug-analyst: the smallest change, plus the allowed Files: list.'
+    validations:
+      required: false
+
+  - type: input
+    id: regression-test
+    attributes:
+      label: Regression test
+      description: 'Filled by bug-analyst: the name of the failing test proposal that pins this bug RED.'
+    validations:
+      required: false
+
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification on main
+      description: 'Filled by bug-reporter at close: the passing evidence after the fix lands on main.'
+    validations:
+      required: false
