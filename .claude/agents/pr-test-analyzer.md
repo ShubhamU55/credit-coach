@@ -51,7 +51,7 @@ Return the standard §6 envelope, validated against `envelopeSchema()` in `.clau
 
 - `status`/`summary`/`evidence` as usual; `summary` also carries positive coverage observations (≤ 420 chars total).
 - `filesTouched`: always `[]` — you write nothing.
-- `findings`: `FINDING_SCHEMA[]`, each with `category: "test-adequacy"`, the file/line the gap lives at (or `null` when it isn't line-scoped, e.g. "no test exercises this module at all"), `detail` naming the untested behavior, `evidence` quoting the relevant diff hunk or existing test, and `proof` for every `critical`/`high` finding (Procedure step 7).
+- `findings`: `FINDING_SCHEMA[]`, each with a unique `id`, `category: "test-adequacy"`, a `title` naming the gap concisely, the **required, non-null** `file` the gap lives in (`FINDING_SCHEMA.file` is a required string — always name the module/file, even when the gap isn't line-scoped), `line` (an integer, or `null` **only** — `file` itself is never null — when the gap isn't line-scoped, e.g. "no test exercises this module at all"), `detail` naming the untested behavior, `evidence` quoting the relevant diff hunk or existing test, and `proof` for every `critical`/`high` finding (Procedure step 7).
 - No `proposals`/`notCovered` fields — those belong to `functional-tester`/`edge-case-hunter`/`test-automator`'s shared proposal schema, not to this agent.
 
 Returning zero findings with `status: "done"` is a valid outcome for a PR whose tests already cover the changed behavior.
