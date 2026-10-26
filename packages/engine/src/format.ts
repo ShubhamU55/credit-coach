@@ -151,17 +151,17 @@ export function formatScoreRange(low: number, high: number): string {
  * Trims first, then checks the shape is ASCII letters/digits only -- before
  * uppercasing -- so a non-ASCII letter that `toUpperCase()` case-folds into
  * two ASCII letters (e.g. `ß` -> `SS`) can never be mistaken for a PAN.
- * Returns null (without echoing the input, per PRD non-negotiable 5) unless
- * it matches `^[A-Z]{5}[0-9]{4}[A-Z]$` after uppercasing.
+ * Throws `RangeError` (without echoing the input, per PRD non-negotiable 5)
+ * unless it matches `^[A-Z]{5}[0-9]{4}[A-Z]$` after uppercasing.
  */
-export function maskPan(pan: string): string | null {
+export function maskPan(pan: string): string {
   const trimmed = pan.trim();
   if (!ASCII_PAN_SHAPE.test(trimmed)) {
-    return null;
+    throw new RangeError('Invalid PAN format');
   }
   const normalized = trimmed.toUpperCase();
   if (!PAN_PATTERN.test(normalized)) {
-    return null;
+    throw new RangeError('Invalid PAN format');
   }
   return `${normalized.slice(0, 2)}XXXXX${normalized.slice(-3)}`;
 }

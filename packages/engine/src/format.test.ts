@@ -73,9 +73,9 @@ describe('maskPan', () => {
   it('trims and uppercases before matching', () => {
     expect(maskPan(' abcde1234f ')).toBe('ABXXXXX34F');
   });
-  it('returns null for an invalid PAN', () => {
-    expect(maskPan('ABC')).toBeNull();
-    expect(maskPan('ABCD12345F')).toBeNull();
+  it('throws a RangeError for an invalid PAN', () => {
+    expect(() => maskPan('ABC')).toThrow(RangeError);
+    expect(() => maskPan('ABCD12345F')).toThrow(RangeError);
   });
 });
 
