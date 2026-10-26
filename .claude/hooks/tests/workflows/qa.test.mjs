@@ -163,6 +163,20 @@ describe('summarizeQa', () => {
     expect(qa.counts).toEqual({ testers: 1, raw: 1, unique: 1, confirmed: 1, refuted: 0 });
   });
 
+  it('keeps a deliberately skipped (not-applicable) tester out of failedTesters and counts.testers (Wave-1 carry-forward)', () => {
+    // A tester that was never dispatched (e.g. functional-tester with no acceptance criteria) is
+    // not the same as one whose call failed or returned a bad result -- confusing the two would
+    // make every ordinary no-criteria qa run look like it has a failed tester.
+    const qa = summarizeQa(
+      [{ tester: 'edge-case-hunter', result: { status: 'done', findings: [], proposals: [] } }],
+      [],
+      ['functional-tester'],
+    );
+    expect(qa.failedTesters).toEqual([]);
+    expect(qa.notApplicable).toEqual(['functional-tester']);
+    expect(qa.counts.testers).toBe(1);
+  });
+
   it('confirms a security finding with a missing verdict (fail closed), refutes a medium one', () => {
     const securityFinding = {
       id: 'sec1',
@@ -361,5 +375,34 @@ describe('runtime: base/head threading (fix round 1, finding A)', () => {
       expect(call.prompt).toContain('Base: aaa1111');
       expect(call.prompt).toContain('Head: bbb2222');
     }
+  });
+});
+
+describe('runtime: skipped-tester accounting (dry run W2-2 finding)', () => {
+  it('reports functional-tester as notApplicable, not failedTesters, when no criteria are given', async () => {
+    const { result } = await runWorkflow(workflowPath, {
+      args: {
+        scope: 'task 2',
+        base: 'aaa1111',
+        head: 'bbb2222',
+        changedFiles: ['packages/engine/src/format.ts'],
+        diff: 'diff --git a/x b/x',
+        // No criteria -- functional-tester's own Stop rules would otherwise block the whole run.
+      },
+      dispatch: (prompt, options) => {
+        if (options.agentType === 'gate-checker') {
+          throw new Error(
+            'gate-checker should not be called when base/head/changedFiles/diff are all given',
+          );
+        }
+        return { status: 'done', findings: [], proposals: [] };
+      },
+    });
+
+    expect(result.failedTesters).toEqual([]);
+    expect(result.notApplicable).toEqual(['functional-tester']);
+    // Only the testers actually dispatched (edge-case-hunter, security-reviewer) count as run --
+    // a correctly-skipped tester is not "run", so it must not inflate this count either.
+    expect(result.counts.testers).toBe(2);
   });
 });

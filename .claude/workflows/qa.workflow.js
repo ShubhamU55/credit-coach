@@ -585,8 +585,12 @@ function collectFindings(results) {
 /**
  * Folds every tester's `{ tester, result }` into one QaResult. `verdicts[i]` aligns by index with
  * `collectFindings(results).uniqueFindings`'s order -- the runtime must verify in that same order.
+ * `notApplicable` names testers deliberately never dispatched (e.g. functional-tester with no
+ * acceptance criteria) -- distinct from `failedTesters`, which is only a tester that WAS
+ * dispatched but errored or returned a non-"done" result. Conflating the two would make every
+ * ordinary no-criteria run look like it has a failed tester (dry run W2-2 finding).
  */
-function summarizeQa(results, verdicts) {
+function summarizeQa(results, verdicts, notApplicable = []) {
   const { failedTesters, rawFindings, uniqueFindings, proposals } = collectFindings(results);
   const verdictList = toList(verdicts);
   const confirmed = [];
@@ -605,6 +609,7 @@ function summarizeQa(results, verdicts) {
     refuted,
     proposals,
     failedTesters,
+    notApplicable: toList(notApplicable),
     counts: {
       testers: toList(results).length,
       raw: rawFindings.length,
@@ -794,11 +799,10 @@ for (const tester of serialTesters) {
   serialResults.push(await runTester(tester, input.scope, base, head, diff, criteria));
 }
 
-const results = [
-  ...parallelResults,
-  ...serialResults,
-  ...skipped.map((tester) => ({ tester, result: null })),
-];
+// `skipped` testers were never dispatched, so they stay out of `results` entirely -- folding
+// them in with `result: null` would make `collectFindings` read a deliberate not-applicable skip
+// as a failed tester (dry run W2-2 finding; see `summarizeQa`'s doc comment).
+const results = [...parallelResults, ...serialResults];
 
 // `collectFindings` is the one dedupe call -- `summarizeQa` below calls it again internally over
 // the same `results`, so it always sees exactly this `uniqueFindings` array, in this order,
@@ -821,8 +825,8 @@ const verdicts = await parallel(
   }),
 );
 
-const qa = summarizeQa(results, verdicts);
+const qa = summarizeQa(results, verdicts, skipped);
 log(
-  `qa: ${qa.counts.testers} tester(s) run, ${qa.counts.unique} unique finding(s), ${qa.counts.confirmed} confirmed, ${qa.failedTesters.length} failed tester(s).`,
+  `qa: ${qa.counts.testers} tester(s) run, ${qa.counts.unique} unique finding(s), ${qa.counts.confirmed} confirmed, ${qa.failedTesters.length} failed tester(s), ${qa.notApplicable.length} not-applicable.`,
 );
 return qa;
