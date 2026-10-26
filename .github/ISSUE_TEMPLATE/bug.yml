@@ -81,7 +81,7 @@ body:
     id: evidence
     attributes:
       label: Evidence
-      description: GitHub blob links to screenshots, logs, failing test output or Maestro/Playwright artifacts committed under `docs/test-reports/bugs/<issue#>/`.
+      description: Screenshots, logs, failing test output or Maestro/Playwright artifacts committed under `docs/test-reports/bugs/<issue#>/`. Repo-relative paths at filing time; swapped for GitHub blob links once the commit holding them is pushed.
     validations:
       required: true
 
@@ -113,7 +113,7 @@ body:
     id: regression-test
     attributes:
       label: Regression test
-      description: 'Filled by bug-analyst: the name of the failing test proposal that pins this bug RED.'
+      description: 'Filled by bug-analyst: the name of the failing test proposal that pins this bug RED, and its status.'
     validations:
       required: false
 
