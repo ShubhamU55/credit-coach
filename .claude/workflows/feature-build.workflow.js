@@ -837,7 +837,33 @@ function testCommandForFile(testFile) {
  * Focus #5 -- every reviewer and verifier prompt wraps untrusted text with `wrapUntrusted`), plus
  * the diff itself.
  */
-function verifierPrompt(finding, diffText) {
+/**
+ * `taskText` is the plan's own literal text for the task under review -- trusted, approved-spec
+ * content (the same status `implementerBrief` already gives it), never wrapped in `wrapUntrusted`
+ * like the finding/diff below it. Without this, a reviewer finding that a diff's behavior
+ * "drifts" from a general pattern can get confirmed even when the plan's own acceptance test or
+ * Interfaces/Produces section explicitly requires that exact behavior for this task -- a dry run
+ * on this exact plan confirmed maskPan('ABC') throwing RangeError (the plan's own literal
+ * requirement) got silently overridden to return null this way, with no owner visibility.
+ */
+function planConflictGuidance(taskText) {
+  if (!taskText) return [];
+  return [
+    "The plan text below is this task's approved spec -- trusted, not finding/diff content to",
+    'analyze. An explicit acceptance test or Interfaces/Produces example it states is compliance',
+    'with the approved spec, not drift, even if a general pattern or golden example elsewhere',
+    'disagrees. Do not confirm a finding whose fix would change behavior the plan text below',
+    'explicitly requires -- if you believe the plan itself is wrong, say so in your reasoning,',
+    'citing the specific line, but still refute the finding; changing an approved spec is a',
+    'decision for a human, not something this loop does on its own.',
+    '',
+    'PLAN TASK TEXT:',
+    taskText,
+    '',
+  ];
+}
+
+function verifierPrompt(finding, diffText, taskText) {
   const findingText = JSON.stringify(
     {
       id: finding.id,
@@ -855,6 +881,8 @@ function verifierPrompt(finding, diffText) {
   );
   return [
     'You are finding-verifier. Verify exactly this one finding against the evidence below.',
+    '',
+    ...planConflictGuidance(taskText),
     wrapUntrusted('FINDING', findingText),
     '',
     wrapUntrusted('DIFF', diffText ?? ''),
@@ -935,6 +963,7 @@ function reviewerPrompt(reviewer, task, diffText) {
     `You are ${reviewer}, reviewing Task ${task.id}: ${task.title}.`,
     `Allowed files: ${[...toList(task.files), ...toList(task.testFiles)].join(' ')}`,
     '',
+    ...planConflictGuidance(task.text),
     wrapUntrusted('DIFF', diffText ?? ''),
   ].join('\n');
 }
@@ -945,16 +974,18 @@ const runReviewer = (reviewer, task, diffText) =>
     schema: REVIEWER_SCHEMA,
   });
 
-const runVerifier = (finding, diffText) =>
-  callAgent('finding-verifier', verifierPrompt(finding, diffText), {
+const runVerifier = (finding, diffText, taskText) =>
+  callAgent('finding-verifier', verifierPrompt(finding, diffText, taskText), {
     agentType: 'finding-verifier',
     schema: VERDICT_SCHEMA,
   });
 
 /** Dedupe -> verify (parallel, one call per unique finding) -> confirmed/refuted via §14.4. */
-async function verifyFindings(findings, diffText) {
+async function verifyFindings(findings, diffText, taskText) {
   const unique = dedupeFindings(findings);
-  const verdicts = await parallel(unique.map((finding) => () => runVerifier(finding, diffText)));
+  const verdicts = await parallel(
+    unique.map((finding) => () => runVerifier(finding, diffText, taskText)),
+  );
   const confirmed = [];
   let refuted = 0;
   unique.forEach((finding, index) => {
@@ -1150,7 +1181,7 @@ for (const task of input.tasks) {
   const rawFindings = reviewResults.flatMap((result) =>
     result != null && result.status === 'done' ? toList(result.findings) : [],
   );
-  const { confirmed, refuted } = await verifyFindings(rawFindings, taskDiff);
+  const { confirmed, refuted } = await verifyFindings(rawFindings, taskDiff, task.text);
   agentsRun += confirmed.length + refuted;
 
   const allowed = [...toList(task.files), ...toList(task.testFiles)];

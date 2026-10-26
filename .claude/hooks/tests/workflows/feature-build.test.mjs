@@ -426,6 +426,33 @@ describe('verifierPrompt (fix round 1, finding E)', () => {
       expect(prompt).toContain(String(value));
     }
   });
+
+  it('omits the plan-text section entirely when no task text is given (existing callers unaffected)', () => {
+    const prompt = verifierPrompt({ id: 'f1', title: 't', detail: 'd', evidence: 'e' }, 'diff');
+    expect(prompt).not.toContain('PLAN TASK TEXT');
+  });
+
+  it('includes the plan task text, unfenced and trusted, with a do-not-confirm-plan-conflicts instruction (dry run W2-2 finding)', () => {
+    const finding = {
+      id: 'f1',
+      title: 'maskPan throws instead of returning null',
+      detail: 'd',
+      evidence: 'e',
+    };
+    const taskText = "- [ ] `maskPan('ABC')` throws `RangeError`";
+    const prompt = verifierPrompt(finding, 'diff text', taskText);
+    // The plan text is trusted content from the approved plan -- it must sit OUTSIDE any
+    // wrapUntrusted fence, the same way implementerBrief already treats task.text as trusted.
+    const fenceStart = prompt.indexOf('----- BEGIN FINDING');
+    expect(prompt.indexOf(taskText)).toBeGreaterThanOrEqual(0);
+    expect(prompt.indexOf(taskText)).toBeLessThan(fenceStart);
+    // The directive must explicitly tell the verifier not to confirm a finding that contradicts
+    // an explicit plan requirement -- this is the exact gap the dry run exposed: two
+    // finding-verifier calls confirmed a finding that silently overrode the plan's own
+    // maskPan-throws acceptance test because they never saw this text at all.
+    expect(prompt).toMatch(/approved spec/i);
+    expect(prompt).toMatch(/do not confirm/i);
+  });
 });
 
 describe('runtime: fix-pass gate range (fix round 1, finding B)', () => {
@@ -652,6 +679,183 @@ describe('runtime: fix-pass gate range (fix round 1, finding B)', () => {
     expect(
       lastAttempt.reasons.some((reason) => reason.includes('the fix needs a file outside Files:')),
     ).toBe(true);
+  });
+});
+
+describe('runtime: task-level review and verification see the plan text (dry run W2-2 finding)', () => {
+  // The dry run on this exact task found that code-reviewer/consistency-reviewer and
+  // finding-verifier never saw TASK_2's own plan text -- only the diff and a title -- so a
+  // finding that the diff's maskPan() throws "drifts" from a golden example got confirmed and
+  // fixed, even though the plan's own Interfaces section explicitly requires `maskPan('ABC')` to
+  // throw `RangeError`. TASK_2 is parsed from the real plan file, so its `.text` field already
+  // contains that literal acceptance test -- these tests assert the reviewer/verifier briefs
+  // actually carry it now, trusted and unfenced, with the do-not-confirm-plan-conflicts guidance.
+  function doneGateChecker() {
+    let startCalls = 0;
+    return (prompt) => {
+      if (prompt === 'MODE: start') {
+        startCalls += 1;
+        return {
+          status: 'done',
+          findings: [],
+          filesTouched: [],
+          evidence: [],
+          summary: '',
+          facts: { head: `s${startCalls}`, dirtyFiles: [] },
+        };
+      }
+      if (prompt.startsWith('MODE: check')) {
+        return {
+          status: 'done',
+          findings: [],
+          filesTouched: [],
+          evidence: [],
+          summary: '',
+          facts: {
+            head: 'c1',
+            attemptStart: 's1',
+            dirtyFiles: [],
+            changedFiles: TASK_2.files,
+            missingFiles: [],
+            commits: [{ sha: 'c1', message: 'feat(engine): add formatters' }],
+            testCommand: TASK_2.testCommand,
+            testExitCode: 0,
+            verifyExitCode: 0,
+          },
+        };
+      }
+      if (prompt === 'MODE: diff') {
+        return {
+          status: 'done',
+          findings: [],
+          filesTouched: [],
+          evidence: [],
+          summary: '',
+          facts: { head: 'c1', base: 's1', dirtyFiles: [], changedFiles: TASK_2.files },
+          diff: 'full diff',
+        };
+      }
+      throw new Error(`unexpected gate-checker brief: ${prompt}`);
+    };
+  }
+
+  it('includes the plan task text, trusted and unfenced, in every reviewer prompt', async () => {
+    const gateChecker = doneGateChecker();
+    const { calls } = await runWorkflow(workflowPath, {
+      args: {
+        planPath: 'docs/superpowers/plans/2026-10-21-plan-4a-mobile-ui-kit.md',
+        tasks: [TASK_2],
+      },
+      dispatch: (prompt, options) => {
+        if (options.agentType === 'gate-checker') return gateChecker(prompt);
+        if (options.agentType === 'implementer') {
+          return {
+            status: 'done',
+            commit: 'b1',
+            predictedFiles: TASK_2.files,
+            filesTouched: [],
+            evidence: [],
+            summary: '',
+            findings: [],
+          };
+        }
+        if (options.agentType === 'code-reviewer' || options.agentType === 'consistency-reviewer') {
+          return { status: 'done', findings: [], filesTouched: [], evidence: [], summary: '' };
+        }
+        throw new Error(`unexpected agentType in test: ${options.agentType}`);
+      },
+      workflowDispatch: async () => ({
+        confirmed: [],
+        refuted: 0,
+        proposals: [],
+        failedTesters: [],
+        notApplicable: [],
+        counts: { testers: 0, raw: 0, unique: 0, confirmed: 0, refuted: 0 },
+      }),
+    });
+
+    const reviewCalls = calls.filter(
+      (call) =>
+        call.kind === 'agent' &&
+        (call.agentType === 'code-reviewer' || call.agentType === 'consistency-reviewer'),
+    );
+    expect(reviewCalls.length).toBeGreaterThan(0);
+    for (const call of reviewCalls) {
+      // The plan's own literal acceptance test for maskPan -- the exact text the dry run proved
+      // a reviewer must see to avoid flagging plan-compliant behavior as drift.
+      expect(call.prompt).toContain("`'ABC'` throws `RangeError`");
+      expect(call.prompt).toMatch(/approved spec/i);
+      // Trusted plan content must sit outside the DIFF fence, not inside it.
+      expect(call.prompt.indexOf("`'ABC'` throws `RangeError`")).toBeLessThan(
+        call.prompt.indexOf('----- BEGIN DIFF'),
+      );
+    }
+  });
+
+  it('includes the plan task text in the finding-verifier brief for a task-level finding', async () => {
+    const gateChecker = doneGateChecker();
+    const { calls } = await runWorkflow(workflowPath, {
+      args: {
+        planPath: 'docs/superpowers/plans/2026-10-21-plan-4a-mobile-ui-kit.md',
+        tasks: [TASK_2],
+      },
+      dispatch: (prompt, options) => {
+        if (options.agentType === 'gate-checker') return gateChecker(prompt);
+        if (options.agentType === 'implementer') {
+          return {
+            status: 'done',
+            commit: 'b1',
+            predictedFiles: TASK_2.files,
+            filesTouched: [],
+            evidence: [],
+            summary: '',
+            findings: [],
+          };
+        }
+        if (options.agentType === 'code-reviewer') {
+          return {
+            status: 'done',
+            findings: [
+              {
+                id: 'r1',
+                severity: 'medium',
+                category: 'consistency',
+                file: 'packages/engine/src/format.ts',
+                line: 114,
+                title: 'maskPan throws instead of returning a typed value',
+                detail: 'Drifts from the golden example, which returns null for invalid input.',
+                evidence: "throw new RangeError('Invalid PAN format')",
+              },
+            ],
+            filesTouched: [],
+            evidence: [],
+            summary: '',
+          };
+        }
+        if (options.agentType === 'consistency-reviewer') {
+          return { status: 'done', findings: [], filesTouched: [], evidence: [], summary: '' };
+        }
+        if (options.agentType === 'finding-verifier') {
+          return { isReal: false, confidence: 0.9, reasoning: 'plan requires the throw' };
+        }
+        throw new Error(`unexpected agentType in test: ${options.agentType}`);
+      },
+      workflowDispatch: async () => ({
+        confirmed: [],
+        refuted: 0,
+        proposals: [],
+        failedTesters: [],
+        notApplicable: [],
+        counts: { testers: 0, raw: 0, unique: 0, confirmed: 0, refuted: 0 },
+      }),
+    });
+
+    const verifierCalls = calls.filter(
+      (call) => call.kind === 'agent' && call.agentType === 'finding-verifier',
+    );
+    expect(verifierCalls.length).toBeGreaterThan(0);
+    expect(verifierCalls[0].prompt).toContain("`'ABC'` throws `RangeError`");
+    expect(verifierCalls[0].prompt).toMatch(/do not confirm/i);
   });
 });
 
