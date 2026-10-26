@@ -962,6 +962,37 @@ describe('runtime: QA phase (fix round 1, findings A/D)', () => {
     expect(qaCall.args.head).toBe('bbb2222');
   });
 
+  it('threads every task\'s own plan text into workflow("qa", ...) (carried from W2-2 dry run: the identical gap ae9c8fc closed for task-level reviewers also exists in the QA phase)', async () => {
+    const gateChecker = doneGateChecker();
+    const taskText = "- [ ] `maskPan('ABC')` throws `RangeError`";
+    const { calls } = await runWorkflow(workflowPath, {
+      args: { ...planArgs, tasks: [{ ...planArgs.tasks[0], text: taskText }] },
+      dispatch: (prompt, options) => {
+        if (options.agentType === 'gate-checker') return gateChecker(prompt);
+        return {
+          status: 'done',
+          commit: 'z1',
+          predictedFiles: ['a.ts'],
+          filesTouched: [],
+          evidence: [],
+          summary: '',
+          findings: [],
+        };
+      },
+      workflowDispatch: async () => ({
+        confirmed: [],
+        refuted: 0,
+        proposals: [],
+        failedTesters: [],
+        counts: { testers: 0, raw: 0, unique: 0, confirmed: 0, refuted: 0 },
+      }),
+    });
+
+    const qaCall = calls.find((call) => call.kind === 'workflow' && call.name === 'qa');
+    expect(qaCall).toBeDefined();
+    expect(qaCall.args.planText).toContain(taskText);
+  });
+
   it('gives a confirmed in-scope QA finding a fix pass, and an out-of-scope one lands in outOfScope (finding D)', async () => {
     const gateChecker = doneGateChecker();
     const inScopeFinding = {
@@ -1444,6 +1475,51 @@ describe('runtime: QA red-test batching (fix round 2, findings A/B/C)', () => {
     expect(result.qaFix).not.toBeNull();
     expect(result.qaFix.ok).toBe(true);
     expect(result.qaFix.reasons).toEqual([]);
+  });
+
+  it("threads the task's plan text into the finding-verifier call for a QA red test (carried from W2-2 dry run: the gap ae9c8fc closed for task-level findings was still open on this path)", async () => {
+    const redTest1 = {
+      name: 'covers zero-amount',
+      layer: 'vitest',
+      file: 'packages/engine/src/format.test.ts',
+      commit: 'd1',
+      result: 'red',
+    };
+    const taskText = "- [ ] `maskPan('ABC')` throws `RangeError`";
+    const argsWithText = { ...planArgs, tasks: [{ ...planArgs.tasks[0], text: taskText }] };
+    const gateChecker = scriptedGateChecker([redTest1.file]);
+    let verifierPromptSeen = null;
+    const baseDispatch = dispatchFor(gateChecker, { verdicts: {}, landed: [redTest1] });
+    const dispatch = (prompt, options) => {
+      if (options.agentType === 'finding-verifier') {
+        verifierPromptSeen = prompt;
+        return { isReal: false, confidence: 0.9, reasoning: 'plan requires this behavior' };
+      }
+      return baseDispatch(prompt, options);
+    };
+    await runWorkflow(workflowPath, {
+      args: argsWithText,
+      dispatch,
+      workflowDispatch: async () => ({
+        confirmed: [],
+        refuted: 0,
+        proposals: [
+          {
+            name: redTest1.name,
+            layer: 'vitest',
+            file: redTest1.file,
+            assertion: 'x',
+            criterion: 'boundary:zero-amount',
+          },
+        ],
+        failedTesters: [],
+        counts: { testers: 0, raw: 0, unique: 0, confirmed: 0, refuted: 0 },
+      }),
+    });
+
+    expect(verifierPromptSeen).not.toBeNull();
+    expect(verifierPromptSeen).toContain(taskText);
+    expect(verifierPromptSeen).toMatch(/do not confirm/i);
   });
 
   // --- fix round 3: one unified dispatch replaces round 2's separate "revert" call -------------

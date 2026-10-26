@@ -1225,12 +1225,22 @@ let qaFix = null;
 if (taskResults.some((task) => task.status === 'done')) {
   const finalDiff = await gateDiff();
   if (finalDiff != null && finalDiff.status === 'done') {
+    // Every task's own plan text, concatenated -- the same trusted content `reviewerPrompt`/
+    // `verifierPrompt` already give the task-level loop (ae9c8fc). Without it, qa's own testers
+    // and finding-verifier calls (and the red-test verifier call below) have no way to tell
+    // plan-compliant behavior from a real gap (docs/status.md carry-forward; W3-2 adds
+    // api-tester/ui-tester/integration-tester, which exercise exactly this path).
+    const planText = toList(input.tasks)
+      .map((task) => task.text)
+      .filter(Boolean)
+      .join('\n\n---\n\n');
     qa = await workflow('qa', {
       scope: input.planPath,
       base: finalDiff.facts.base,
       head: finalDiff.facts.head,
       changedFiles: finalDiff.facts.changedFiles,
       diff: finalDiff.diff,
+      planText,
     });
 
     // The scope boundary for a post-QA fix pass: everything the plan's own tasks were allowed to
@@ -1302,7 +1312,7 @@ if (taskResults.some((task) => task.status === 'done')) {
           detail: 'A newly landed QA test fails on main; judge whether this is a real product gap.',
           evidence: redTest.name,
         };
-        const verdict = await runVerifier(candidateFinding, finalDiff.diff);
+        const verdict = await runVerifier(candidateFinding, finalDiff.diff, planText);
         agentsRun += 1;
         if (applyVerifierPolicy(candidateFinding, verdict) !== 'confirmed') {
           log(

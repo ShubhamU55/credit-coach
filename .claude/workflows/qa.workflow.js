@@ -626,7 +626,33 @@ function summarizeQa(results, verdicts, notApplicable = []) {
  * can carry text a reviewer copied from untrusted diff/PR content (Review Focus #5 -- every
  * reviewer and verifier prompt wraps untrusted text with `wrapUntrusted`), plus the diff itself.
  */
-function verifierPrompt(finding, diffText) {
+/**
+ * `planText` is the approved plan's own literal text for whatever this QA run covers -- trusted
+ * content (the same status `implementerBrief`/`reviewerPrompt` already give task text in
+ * feature-build.workflow.js), never wrapped in `wrapUntrusted` like the finding/diff below it.
+ * Without this, a tester or finding-verifier can flag plan-compliant behavior as a defect with no
+ * way to be caught first (the same gap ae9c8fc closed for feature-build's task-level reviewers --
+ * carried forward in docs/status.md as still open here, since api-tester/ui-tester/
+ * integration-tester (W3-2) exercise exactly this path).
+ */
+function planConflictGuidance(planText) {
+  if (!planText) return [];
+  return [
+    "The plan text below is this run's approved spec -- trusted, not finding/diff content to",
+    'analyze. An explicit acceptance test or requirement it states is compliance with the',
+    'approved spec, not a defect, even if a general pattern elsewhere disagrees. Do not confirm a',
+    'finding whose fix would change behavior the plan text below explicitly requires -- if you',
+    'believe the plan itself is wrong, say so in your reasoning, citing the specific line, but',
+    'still refute the finding (or report it as not-a-gap); changing an approved spec is a decision',
+    'for a human, not something this loop does on its own.',
+    '',
+    'PLAN TEXT:',
+    planText,
+    '',
+  ];
+}
+
+function verifierPrompt(finding, diffText, planText) {
   const findingText = JSON.stringify(
     {
       id: finding.id,
@@ -644,6 +670,8 @@ function verifierPrompt(finding, diffText) {
   );
   return [
     'You are finding-verifier. Verify exactly this one finding against the evidence below.',
+    '',
+    ...planConflictGuidance(planText),
     wrapUntrusted('FINDING', findingText),
     '',
     wrapUntrusted('DIFF', diffText ?? ''),
@@ -657,7 +685,10 @@ function verifierPrompt(finding, diffText) {
 // fail closed on anything that could not run.
 //
 // Caller contract -- pass `args`:
-//   { scope: string, base?: string, head?: string, changedFiles?: string[], diff?: string, criteria?: string[] }
+//   { scope: string, base?: string, head?: string, changedFiles?: string[], diff?: string, criteria?: string[], planText?: string }
+// `planText` is trusted plan text (e.g. a plan's own task text) placed unfenced, before the
+// untrusted DIFF/FINDING fences, in every tester and finding-verifier prompt -- see
+// `planConflictGuidance`. Omit it when no plan text is available (e.g. a bare `/qa <scope>` run).
 // base/head/changedFiles/diff are each optional *independently*: whichever of the four is
 // missing, gate-checker's `MODE: diff` supplies all four (it's cheap and idempotent to call even
 // when only one is missing). `feature-build` always passes all four itself, from the same
@@ -696,7 +727,7 @@ function testerSchema(tester) {
   );
 }
 
-function testerPrompt(tester, scope, base, head, diff, criteria) {
+function testerPrompt(tester, scope, base, head, diff, criteria, planText) {
   const criteriaBlock =
     criteria.length > 0 ? criteria.map((c) => `- ${c}`).join('\n') : '(none given for this run)';
   return [
@@ -706,14 +737,15 @@ function testerPrompt(tester, scope, base, head, diff, criteria) {
     'Acceptance criteria:',
     criteriaBlock,
     '',
+    ...planConflictGuidance(planText),
     wrapUntrusted('DIFF', diff ?? ''),
   ].join('\n');
 }
 
 /** A tester agent that doesn't exist yet, or that errors, is a null result -- never a thrown workflow. */
-async function runTester(tester, scope, base, head, diff, criteria) {
+async function runTester(tester, scope, base, head, diff, criteria, planText) {
   try {
-    const result = await agent(testerPrompt(tester, scope, base, head, diff, criteria), {
+    const result = await agent(testerPrompt(tester, scope, base, head, diff, criteria, planText), {
       agentType: TESTER_AGENT_TYPE[tester],
       schema: testerSchema(tester),
     });
@@ -753,6 +785,9 @@ if (input.base != null && typeof input.base !== 'string') {
 if (input.head != null && typeof input.head !== 'string') {
   throw new Error('qa: args.head must be a string');
 }
+if (input.planText != null && typeof input.planText !== 'string') {
+  throw new Error('qa: args.planText must be a string');
+}
 
 let base = typeof input.base === 'string' ? input.base : null;
 let head = typeof input.head === 'string' ? input.head : null;
@@ -775,6 +810,7 @@ if (base === null || head === null || changedFiles === null || diff === null) {
 }
 
 const criteria = input.criteria ?? [];
+const planText = typeof input.planText === 'string' ? input.planText : null;
 let testers = selectTesters(changedFiles);
 
 // functional-tester's own Stop rules require acceptance criteria. Without any, drop it here
@@ -789,14 +825,16 @@ if (criteria.length === 0 && testers.includes('functional-tester')) {
 const { parallel: parallelTesters, serial: serialTesters } = splitDeviceBound(testers);
 
 const parallelResults = await parallel(
-  parallelTesters.map((tester) => () => runTester(tester, input.scope, base, head, diff, criteria)),
+  parallelTesters.map(
+    (tester) => () => runTester(tester, input.scope, base, head, diff, criteria, planText),
+  ),
 );
 
 // The emulator is shared: device-bound testers (ui-tester, integration-tester) run one after
 // another, never in parallel with each other or with the parallel batch above.
 const serialResults = [];
 for (const tester of serialTesters) {
-  serialResults.push(await runTester(tester, input.scope, base, head, diff, criteria));
+  serialResults.push(await runTester(tester, input.scope, base, head, diff, criteria, planText));
 }
 
 // `skipped` testers were never dispatched, so they stay out of `results` entirely -- folding
@@ -812,7 +850,7 @@ const { uniqueFindings } = collectFindings(results);
 const verdicts = await parallel(
   uniqueFindings.map((finding) => async () => {
     try {
-      return await agent(verifierPrompt(finding, diff), {
+      return await agent(verifierPrompt(finding, diff, planText), {
         agentType: 'finding-verifier',
         schema: VERDICT_SCHEMA,
       });

@@ -233,6 +233,27 @@ describe('verifierPrompt', () => {
     expect(prompt).toContain('diff text');
   });
 
+  it('omits the plan-text section entirely when no plan text is given (existing callers unaffected)', () => {
+    const prompt = verifierPrompt({ id: 'f1', title: 't', detail: 'd', evidence: 'e' }, 'diff');
+    expect(prompt).not.toContain('PLAN TEXT');
+  });
+
+  it('includes the plan text, unfenced and trusted, with a do-not-confirm-plan-conflicts instruction (carried from the W2-2 dry run -- the identical gap feature-build.workflow.js already closed for task-level reviewers)', () => {
+    const finding = {
+      id: 'f1',
+      title: 'maskPan throws instead of returning null',
+      detail: 'd',
+      evidence: 'e',
+    };
+    const planText = "- [ ] `maskPan('ABC')` throws `RangeError`";
+    const prompt = verifierPrompt(finding, 'diff text', planText);
+    const fenceStart = prompt.indexOf('----- BEGIN FINDING');
+    expect(prompt.indexOf(planText)).toBeGreaterThanOrEqual(0);
+    expect(prompt.indexOf(planText)).toBeLessThan(fenceStart);
+    expect(prompt).toMatch(/approved spec/i);
+    expect(prompt).toMatch(/do not confirm/i);
+  });
+
   it('never lets a forged marker inside finding text produce a second standalone fence line', () => {
     const finding = {
       id: 'f1',
@@ -404,5 +425,101 @@ describe('runtime: skipped-tester accounting (dry run W2-2 finding)', () => {
     // Only the testers actually dispatched (edge-case-hunter, security-reviewer) count as run --
     // a correctly-skipped tester is not "run", so it must not inflate this count either.
     expect(result.counts.testers).toBe(2);
+  });
+});
+
+describe('runtime: tester and verifier prompts see the plan text (carried from W2-2 dry run)', () => {
+  // The dry run that produced ae9c8fc found that feature-build's task-level reviewer/verifier
+  // prompts never saw the plan's own text, so a reviewer flagging plan-compliant behavior as
+  // drift had no way to be caught before a fix pass silently overrode it. Status.md's carry-
+  // forward flags the identical gap here: qa's testerPrompt/verifierPrompt never received any
+  // plan text either, even though api-tester/ui-tester/integration-tester (W3-2) exercise this
+  // exact path. These tests assert args.planText, once given, reaches every tester prompt and
+  // the finding-verifier prompt -- trusted and unfenced, same shape as the already-fixed path.
+  const baseArgs = {
+    scope: 'task 2',
+    base: 'aaa1111',
+    head: 'bbb2222',
+    changedFiles: ['packages/engine/src/format.ts'],
+    diff: 'diff --git a/x b/x',
+    criteria: ['AC1'],
+  };
+  const planText = "- [ ] `maskPan('ABC')` throws `RangeError`";
+
+  it('threads args.planText into every tester prompt, trusted and before the diff fence', async () => {
+    const { calls } = await runWorkflow(workflowPath, {
+      args: { ...baseArgs, planText },
+      dispatch: (prompt, options) => {
+        if (options.agentType === 'gate-checker') {
+          throw new Error(
+            'gate-checker should not be called when base/head/changedFiles/diff are all given',
+          );
+        }
+        return { status: 'done', findings: [], proposals: [] };
+      },
+    });
+
+    const testerCalls = calls.filter(
+      (call) =>
+        call.kind === 'agent' && !['finding-verifier', 'gate-checker'].includes(call.agentType),
+    );
+    expect(testerCalls.length).toBeGreaterThan(0);
+    for (const call of testerCalls) {
+      expect(call.prompt.indexOf(planText)).toBeGreaterThanOrEqual(0);
+      expect(call.prompt).toMatch(/approved spec/i);
+      expect(call.prompt.indexOf(planText)).toBeLessThan(call.prompt.indexOf('----- BEGIN DIFF'));
+    }
+  });
+
+  it('threads args.planText into the finding-verifier prompt', async () => {
+    const finding = {
+      id: 'f1',
+      severity: 'medium',
+      category: 'correctness',
+      file: 'packages/engine/src/format.ts',
+      line: 3,
+      title: 'Drifts from the golden example',
+      detail: 'd',
+      evidence: 'e',
+    };
+    const { calls } = await runWorkflow(workflowPath, {
+      args: { ...baseArgs, planText },
+      dispatch: (prompt, options) => {
+        if (options.agentType === 'finding-verifier') {
+          return { isReal: false, confidence: 0.9, reasoning: 'plan requires this behavior' };
+        }
+        return { status: 'done', findings: [finding], proposals: [] };
+      },
+    });
+
+    const verifierCalls = calls.filter(
+      (call) => call.kind === 'agent' && call.agentType === 'finding-verifier',
+    );
+    expect(verifierCalls.length).toBeGreaterThan(0);
+    expect(verifierCalls[0].prompt).toContain(planText);
+    expect(verifierCalls[0].prompt).toMatch(/do not confirm/i);
+  });
+
+  it('omits the plan-text section from tester prompts when no planText is given (existing callers unaffected)', async () => {
+    const { calls } = await runWorkflow(workflowPath, {
+      args: baseArgs,
+      dispatch: (prompt, options) => {
+        if (options.agentType === 'gate-checker') {
+          throw new Error(
+            'gate-checker should not be called when base/head/changedFiles/diff are all given',
+          );
+        }
+        return { status: 'done', findings: [], proposals: [] };
+      },
+    });
+
+    const testerCalls = calls.filter(
+      (call) =>
+        call.kind === 'agent' && !['finding-verifier', 'gate-checker'].includes(call.agentType),
+    );
+    expect(testerCalls.length).toBeGreaterThan(0);
+    for (const call of testerCalls) {
+      expect(call.prompt).not.toContain('PLAN TEXT');
+    }
   });
 });
