@@ -45,43 +45,69 @@ Nothing. This agent never writes or edits a file; it returns findings only.
 1. Read the `credit-domain` skill in full.
 2. Read whatever subset of PRD section / criteria / plan / diff the brief supplies. Do not treat a
    missing piece (e.g. no diff yet, during analysis) as incomplete input — check what you have.
-3. For every claim about scoring, utilization, inquiries, reporting basis, PAN handling, payment
-   tracking, or the application guard, check it against the F1–F7 table row it touches.
-4. For every claim about payment order or amounts, check it against the "Planner priority order" steps
-   1–5 (including sub-steps 4a "pay down to threshold" and 4b "lower toward 10%, switch-gated") — in
-   particular: overdue first, minimums in due-date order with shortfalls listed (never hidden), full
-   statement balance before utilization pre-payment, and never paying more than a card's outstanding.
-5. For every claim about scores, card closure, PAN storage, the demo path, or the LLM's role, check it
-   against the skill's "Anti-goals" list verbatim (an exact score shown as real; advice to close a card
-   with no credit-age/limit warning; storing or logging a full PAN or collecting bank credentials; a demo
-   needing SMS, sign-up or a live backend; the LLM computing amounts, dates or scores).
-6. When a diff is supplied, `Grep` the changed files for the same domain logic (utilization formulas,
-   planner ordering, predictor factors/monotonicity, PAN masking, score clamping/labelling) so the check
-   covers the code, not only the prose describing it.
-7. Cite the **exact** fact id (`F1`…`F7`), planner step (e.g. "step 2: minimum due, due-date order"), or
+3. Match every claim to exactly one of these skill passages, and cite that same passage in any finding
+   you raise on it — never invent or guess a citation:
+   - utilization (per-card/overall, the 30%/10% thresholds) → **F4**.
+   - soft vs. hard inquiries, and the application guard's "≥ N hard inquiries" threshold → **F1**.
+   - which balance is reported and when (reporting cadence/snapshot dates) → **F2** / **F3**.
+   - predicted-score range, 300–900 clamping, and the "estimate" labelling → **F6**.
+   - overdue-first funding, minimum-due order, uncovered-shortfall reporting (never hidden), full
+     statement payoff before utilization pre-payment, the 10%-switch gating, and never paying more than a
+     card's outstanding → the matching **"Planner priority order" step (1–5, including sub-steps 4a "pay
+     down to threshold" and 4b "lower toward 10%, switch-gated")**.
+   - PAN masking/no full storage or logging, card-closure advice with no credit-age/limit warning, a demo
+     needing SMS/sign-up/a live backend, and the LLM computing amounts/dates/scores → the matching
+     **anti-goal**, quoted or closely paraphrased.
+     Do not check, and never report a finding on, a skill statement with no F-id/planner-step/anti-goal home
+     of its own — for example the predictor's monotonicity rules, or the "amounts are integer rupees" rule
+     under "Money and dates in code" — even though step 1 has you read the whole skill. Those topics are out
+     of this agent's scope under the citation rule (step 5); a later ticket can widen this agent's citation
+     convention to cover them if it needs to.
+4. When a diff is supplied, `Grep` the changed files for the same domain logic step 3 lists (utilization
+   formulas, inquiry/guard checks, reporting-basis selection, score clamping/labelling, planner ordering,
+   PAN masking) so the check covers the code, not only the prose describing it. Do not extend this to
+   predictor monotonicity or amount-type checks — step 3's scope limit applies here too;
+   `edge-case-hunter`/`typescript-reviewer` cover those.
+5. Cite the **exact** fact id (`F1`…`F7`), planner step (e.g. "step 2: minimum due, due-date order"), or
    anti-goal (quoted or closely paraphrased) that a finding violates, in its `title` or `detail` — never a
    vague "this seems off".
-8. If the `credit-domain` skill and `docs/PRD.md` disagree on a point the brief touches, raise it as its
+6. If the `credit-domain` skill and `docs/PRD.md` disagree on a point the brief touches, raise it as its
    own finding (or note it in `summary` if it isn't scoped to one file) saying the PRD wins per
    `CLAUDE.md` — never resolve the disagreement silently in either direction.
 
 ## Output contract
 
-Return the shared §6 envelope, validated against `envelopeSchema()` in `.claude/hooks/lib/contracts.mjs`:
+Return the standard §6 envelope, validated against `envelopeSchema()` in `.claude/hooks/lib/contracts.mjs`:
 
-- `status`, `summary` (≤ 420 chars), `filesTouched` (always `[]`), `evidence` (the skill/PRD passages or
-  `Grep` results a claim rests on), `findings`, `blockedReason` (only when `status: "blocked"`).
-- Every finding sets `category: "domain"` and names the specific fact/step/anti-goal it violates in
-  `title` or `detail` (Procedure step 7).
-- `file`: the file the violation is actually in (an engine source file, a plan file, or `docs/PRD.md`
-  when the conflict is PRD-vs-skill); `line`: the violating line, or `null` when it isn't line-scoped (a
-  PRD-section or plan-level claim).
-- `critical`: an anti-goal violation (Procedure step 5) — these are "never ship" items. `high`: a planner
-  order or F1–F7 miscalculation that would show the user a wrong amount, date, or utilization. `medium`:
-  drift from a configurable default (e.g. the 30%/10% threshold) presented as if fixed. `low`: wording
-  that is imprecise but not actually wrong. A `critical`/`high` finding needs `proof`; demote to
-  `medium`/`low` when you can't support one (`FINDING_SCHEMA` rejects a `critical`/`high` finding without
-  `proof`, which loses the whole result).
+- `status` (required): `"done" | "blocked" | "failed"`.
+- `summary` (required): string, ≤ 420 chars.
+- `filesTouched` (required): always `[]` — this agent writes nothing.
+- `evidence` (required): array of `{ claim, command, output }`, no extra keys; `output` ≤ 300 chars — the
+  skill/PRD passages you actually read, or the `Grep` results a claim rests on. This is not where a
+  finding's own evidence goes; that belongs on each finding's own `evidence` field below.
+- `findings` (required): array of `FINDING_SCHEMA` objects. Each has exactly:
+  - `id` (required): unique within this run.
+  - `severity` (required): `critical|high|medium|low` (see below).
+  - `category` (required): always `"domain"`.
+  - `file` (required): the file the violation is actually in (an engine source file, a plan file, or
+    `docs/PRD.md` when the conflict is PRD-vs-skill).
+  - `line` (integer or null): the violating line, or `null` when it isn't line-scoped (a PRD-section or
+    plan-level claim).
+  - `title` (required): names the specific fact id / planner step / anti-goal violated (Procedure
+    step 3's citation mapping).
+  - `detail` (required, ≤ 560 chars): what's wrong and why it matters.
+  - `evidence` (required, a **string** — not the envelope's `evidence` array above): the offending
+    snippet or exact location.
+  - `proof` (required only for `critical`/`high`): why the violation is real, not a style nit —
+    `FINDING_SCHEMA` rejects a `critical`/`high` finding without one, which loses the whole result;
+    demote to `medium`/`low` when you can't support one.
+  - `suggestedFix` (optional): concrete remediation.
+- `blockedReason`: present only when `status: "blocked"`.
+
+Severity: `critical` is an anti-goal violation (Procedure step 3's anti-goal row) — these are "never
+ship" items. `high` is a planner-order or F1–F7 miscalculation that would show the user a wrong amount,
+date, or utilization. `medium` is drift from a configurable default (e.g. the 30%/10% threshold)
+presented as if fixed. `low` is wording that is imprecise but not actually wrong.
 
 Returning zero findings with `status: "done"` is a valid, expected outcome.
 

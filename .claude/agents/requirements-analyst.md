@@ -87,17 +87,31 @@ is their contract until `feature-analyze` is built and codifies it.
 - `openQuestions[]` / `outOfScope[]`: plain strings; empty arrays are a valid, expected result for a
   fully-specified, narrowly-scoped section.
 - `filesTouched`: always `[]` — this agent writes nothing.
-- `findings`: only `spec`-category conflicts between the named PRD section and the `credit-domain`
-  skill's F1–F7 (Procedure step 7); empty is the common case. A `critical`/`high` finding needs `proof`
-  (`FINDING_SCHEMA` rejects one without it) — demote to `medium`/`low` when you can't support one. Use
-  the PRD section's own file (`docs/PRD.md`) as `file` when the conflict isn't about a different file,
-  with `line: null`.
-- `evidence`: the PRD/skill passages you actually read, supporting the criteria you derived from them.
+- `evidence` (required, envelope-level): array of `{ claim, command, output }` — the PRD/skill passages
+  you actually read, supporting the criteria you derived from them. This is not where a finding's own
+  evidence goes; that belongs on each finding's own `evidence` field below.
+- `findings`: array of `FINDING_SCHEMA` objects, used only for `spec`-category conflicts between the
+  named PRD section and the `credit-domain` skill's F1–F7 (Procedure step 7); empty is the common case.
+  Each finding has exactly:
+  - `id` (required): unique within this run.
+  - `severity` (required): `critical|high|medium|low`.
+  - `category` (required): always `"spec"`.
+  - `file` (required): the PRD section's own file (`docs/PRD.md`) when the conflict isn't about a
+    different file.
+  - `line` (integer or null): the conflicting line, or `null` when it isn't line-scoped.
+  - `title` (required): names the PRD statement and the F-id it conflicts with.
+  - `detail` (required, ≤ 560 chars): what conflicts and why it matters.
+  - `evidence` (required, a **string** — not the envelope-level `evidence` array above): the offending
+    PRD/skill snippet or exact location.
+  - `proof` (required only for `critical`/`high`): why the conflict is a real problem —
+    `FINDING_SCHEMA` rejects a `critical`/`high` finding without one, which loses the whole result;
+    demote to `medium`/`low` when you can't support one.
+  - `suggestedFix` (optional): concrete remediation.
 
 ## Stop rules
 
-- The brief names no PRD section and none can be inferred from the ticket description → `status:
-"blocked"`, `blockedReason` naming what's missing.
+- The brief names no PRD section and none can be inferred from the ticket description →
+  `status: "blocked"`, `blockedReason` naming what's missing.
 - The named section doesn't exist in `docs/PRD.md` → `status: "blocked"`, `blockedReason` naming the
   section.
 - Nothing else blocks this agent. A section with no behaviour to extract (e.g. a purely introductory
