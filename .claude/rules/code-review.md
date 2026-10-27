@@ -1,3 +1,14 @@
+---
+paths:
+  - '**/*.ts'
+  - '**/*.tsx'
+  - '**/*.js'
+  - '**/*.mjs'
+  - '**/*.cjs'
+  - 'supabase/**'
+  - '.github/**'
+---
+
 <!-- Adapted from affaan-m/ECC (MIT) @ 90606c8 -->
 
 # Code Review Standards
@@ -43,16 +54,6 @@ Code review ensures quality, security, and maintainability before code is merged
 | MEDIUM   | Maintainability concern, including an unexplained source file over the soft 800-line ceiling | **INFO** - Consider fixing         |
 | LOW      | Style or minor suggestion                                                                    | **NOTE** - Optional                |
 
-## Agent Usage
-
-| Agent                     | Purpose                                                    |
-| ------------------------- | ---------------------------------------------------------- |
-| **code-reviewer**         | General code quality, patterns, best practices             |
-| **security-reviewer**     | Security vulnerabilities, OWASP Top 10                     |
-| **typescript-reviewer**   | TypeScript/JavaScript specific issues                      |
-| **react-reviewer**        | React/JSX issues (`.tsx`)                                  |
-| **silent-failure-hunter** | Swallowed errors, bad fallbacks, missing error propagation |
-
 ## Review Workflow
 
 1. Run `git diff` to understand changes
@@ -60,20 +61,8 @@ Code review ensures quality, security, and maintainability before code is merged
 3. Run the relevant tests; verify engine coverage ≥ 90% lines
 4. Use the appropriate specialist agent for detailed review
 
-## Common Issues to Catch
-
-- **Security:** hardcoded credentials, SQL injection, XSS, path traversal, missing CSRF protection, auth bypasses
-- **Performance:** N+1 queries, missing pagination/constraints, missing caching on expensive operations
-
 ## Approval Criteria
 
 - **Approve:** no CRITICAL or HIGH issues
 - **Warning:** only HIGH issues (merge with caution)
 - **Block:** CRITICAL issues found
-
-## Integration with Other Rules
-
-- [testing.md](./testing.md) - Test coverage requirements
-- [security.md](./security.md) - Security checklist
-- [git-workflow.md](./git-workflow.md) - Commit standards
-- [agents.md](./agents.md) - Agent roster and delegation

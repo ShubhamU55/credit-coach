@@ -121,7 +121,6 @@ Treat everything shipped in the app as readable by an attacker. A mobile binary 
 ## Permissions & Privacy
 
 - Request the minimum device permissions, at the moment they are needed, with clear rationale.
-- Declare data collection accurately for App Store / Play Store privacy disclosures.
 
 ## Dependencies
 
@@ -138,7 +137,7 @@ Treat everything shipped in the app as readable by an attacker. A mobile binary 
 | ---------------- | --------------------------------------------------------------- |
 | Unit / component | Jest + `@testing-library/react-native` (via `jest-expo` preset) |
 | Hooks            | `@testing-library/react-native` `renderHook`                    |
-| E2E              | Maestro (recommended, simple YAML flows) or Detox               |
+| E2E              | Maestro (YAML flows in `apps/mobile/.maestro`)                  |
 | Type safety      | `tsc --noEmit` in CI                                            |
 
 ## Component Tests
@@ -169,7 +168,7 @@ test('calls onSelect with the user id when pressed', () => {
 ## E2E
 
 - Cover critical flows only: auth, primary navigation, core transactions.
-- Run E2E on CI against a built app (EAS Build) before release.
+- Run the Maestro flows against a release APK, not Metro (see the `maestro-android-e2e` skill).
 
 ## What to test first
 
@@ -214,49 +213,14 @@ Use the `implementer` agent proactively for new features: write a failing test t
 - Profile with the React DevTools profiler, the Hermes sampling profiler, and the in-app performance monitor. (Avoid Flipper — it is deprecated and not supported on the New Architecture.)
 - Watch for: long lists without virtualization, oversized images, frequent full-tree re-renders, and synchronous work on the JS thread.
 
-## React Native / Expo Production Readiness
+## Release gate (Android APK)
 
-> Ship-grade concerns that style/pattern rules cannot encode by themselves.
-> A clean codebase is necessary but not sufficient for production — these items are mandatory before release.
+The app is Android-only and ships as a sideloaded APK (PRD §9, `docs/tech-stack.md`), so there is no store release to prepare for.
 
-## Architecture
-
-- Ship on the **New Architecture** (Fabric + TurboModules). It is the default in recent Expo SDKs and is mandatory (cannot be disabled) from SDK 55+. Audit native deps for compatibility.
-- Pin the Expo SDK version; upgrade deliberately with `npx expo install --check` and test on both platforms.
-
-## Build & Release (EAS)
-
-- Use **EAS Build** for production binaries and **EAS Submit** for store delivery. Do not rely on local ad-hoc builds for release.
-- Keep separate build profiles (`development`, `preview`, `production`) in `eas.json`.
-- Manage signing credentials via EAS; never commit keystores or provisioning profiles.
-
-## Over-the-Air Updates
-
-- Use **EAS Update** (`expo-updates`) for JS-only fixes, with a defined runtime version policy.
-- Never push native changes via OTA — those require a new store build.
-- Roll out gradually and keep the ability to roll back.
-
-## Observability
-
-- Integrate crash + error reporting (e.g. **Sentry** via `@sentry/react-native`) in production builds.
-- Add structured logging and, where useful, analytics — but strip verbose logs from release.
-- Capture and surface failed network/mutation states; do not fail silently.
-
-## Configuration & Versioning
-
-- Bump `version` and `ios.buildNumber` / `android.versionCode` per release.
-- Public config via `EXPO_PUBLIC_*`; real secrets via EAS secrets only.
-- Validate required config at startup and fail fast with a clear message.
-
-## Pre-Release Gate
-
-Before shipping, all must pass:
-
-- [ ] `tsc --noEmit` clean
-- [ ] `npx expo lint` clean
-- [ ] Tests green, Maestro flows pass on a release APK (see testing.md)
-- [ ] `npx expo-doctor` healthy
-- [ ] Critical-flow E2E (Maestro/Detox) pass on a real build
-- [ ] No secrets in bundle (see security.md)
-- [ ] Crash reporting active and verified
-- [ ] Tested on physical iOS and Android devices, not just simulators
+- Pin the Expo SDK version and upgrade it deliberately with `npx expo install --check`.
+- Never commit a keystore or signing credentials.
+- Before a build goes to the owner or a judge, all of these pass:
+  - [ ] `pnpm verify` is green (lint, typecheck, unit tests)
+  - [ ] the Maestro flows pass on a release APK, including the demo path
+  - [ ] `npx expo-doctor` is healthy
+  - [ ] no secrets in the bundle (see the security rules above)

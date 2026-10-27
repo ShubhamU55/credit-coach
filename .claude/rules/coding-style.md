@@ -1,3 +1,14 @@
+---
+paths:
+  - '**/*.ts'
+  - '**/*.tsx'
+  - '**/*.js'
+  - '**/*.mjs'
+  - '**/*.cjs'
+  - 'supabase/**'
+  - '.github/**'
+---
+
 <!-- Adapted from affaan-m/ECC (MIT) @ 90606c8 -->
 
 # Coding Style
@@ -58,20 +69,6 @@ ALWAYS validate at system boundaries:
 - Use schema-based validation where available
 - Fail fast with clear error messages
 - Never trust external data (API responses, user input, file content)
-
-## Naming Conventions
-
-> **Language note**: This rule may be overridden by language-specific rules for
-> languages where a pattern is not idiomatic. Casing and framework-specific
-> prefixes belong to the applicable language or package rule.
-
-Language-independent:
-
-- Descriptive names: the name says what the thing holds or does, without a comment.
-- Boolean names read clearly as claims under the applicable language or package
-  convention.
-- Where the language draws the distinction, constants and types are visually
-  distinct from ordinary values in the form its language or package rule defines.
 
 ## Code Smells to Avoid
 
