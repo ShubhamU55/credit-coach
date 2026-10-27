@@ -124,14 +124,19 @@ re-verified. This step is what actually decides whether it stays closed.
   Done and comments the PR link. `bug-reporter` never closes the ticket, and `pm-sync` has no close
   action.
 
-  `verified` rests on gate-checker facts, not on `bug-reporter`'s own report: `MODE: check <mainHead>`
-  with `EXPECT:` the claimed evidence paths must show at least one commit in `mainHead..HEAD`, a
-  clean tree, an empty `missingFiles`, every changed file under `docs/test-reports/bugs/<issue#>/`,
-  and every claimed evidence path among the changed files (so evidence left over from the original
-  report cannot pass). `bug-reporter` must also have returned `done` for this issue with evidence
-  paths under that folder. It does not judge `pnpm verify` on `main` (a red `main` for another
-  reason is not this re-run's failure), and it does not itself re-run the test: that is
-  `bug-reporter`'s step, whose output the evidence files hold.
+  What `verified` rests on, exactly: the pass/fail verdict is still `bug-reporter`'s own (it must
+  return `done` for this issue, with evidence paths under `docs/test-reports/bugs/<issue#>/`). The
+  gate does not re-run anything and does not confirm the re-run passed. It proves only that fresh
+  evidence was committed: `gate-checker` `MODE: check <mainHead>` with `EXPECT:` the claimed paths
+  must show at least one commit in `mainHead..HEAD`, a clean tree, an empty `missingFiles`, every
+  changed file under that folder, and every claimed evidence path among the changed files (so evidence
+  left over from the original report cannot pass). The same gate also runs when the re-run failed,
+  because a failed re-run commits its output on local `main` too: any file outside the folder shows
+  up in `reasons`. Evidence file names may use only letters, digits, `.`, `_` and `-`.
+
+  The result carries the gate's `verifyExitCode` (`pnpm verify` on `main`). Show it to the owner when
+  it is not `0`, but it never changes the verdict: a red `main` for an unrelated reason must not
+  reopen a fixed bug.
 
 - **C4. Act on `status`.** Look at the issue's state first:
   `GH_TOKEN=$(gh auth token --user ShubhamU55) gh issue view <issue#> --json state --jq .state`. The comments below are fixed text

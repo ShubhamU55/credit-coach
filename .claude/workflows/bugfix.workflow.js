@@ -528,12 +528,29 @@ const PROTECTED_BASENAMES = [
   'pnpm-lock.yaml',
   'pnpm-workspace.yaml',
   'yarn.lock',
+  'eslint.shared.cjs',
+  '.npmrc',
+  '.pnpmfile.cjs',
+];
+// Tool and test-runner configs, at any depth: they load code when `pnpm verify` or the TEST: command
+// runs, and a runner config could simply exclude the pinned test so both exit 0.
+const PROTECTED_CONFIG_PATTERNS = [
+  /^eslint\.config\./,
+  /^\.eslintrc/,
+  /^\.prettierrc/,
+  /^prettier\.config\./,
+  /^vitest\.config\./,
+  /^vitest\.workspace\./,
+  /^vite\.config\./,
+  /^playwright\.config\./,
+  /^jest\.config\./,
 ];
 // Modules the harness's own hooks load, outside the `.claude/hooks/*` entry files themselves.
 const HOOK_SUPPORT_FILES = [
   '.claude/hooks/lib/shell-scan.cjs',
   '.claude/hooks/lib/paths.mjs',
   '.claude/hooks/lib/contracts.mjs',
+  '.claude/hooks/lib/pure-block.mjs',
 ];
 
 const REPORT_TEXT_FIELDS = [
@@ -609,6 +626,8 @@ function isProtectedPath(file) {
     segments.includes('.git') ||
     segments.includes('.husky') ||
     PROTECTED_BASENAMES.includes(segments[segments.length - 1]) ||
+    PROTECTED_CONFIG_PATTERNS.some((pattern) => pattern.test(segments[segments.length - 1])) ||
+    lower.startsWith('.github/actions/') ||
     /^\.claude\/settings[^/]*\.json$/.test(lower) ||
     lower.startsWith('.github/workflows/') ||
     /^\.claude\/hooks\/[^/]+$/.test(lower) ||
@@ -637,7 +656,8 @@ function canFix(analysis) {
   }
   // The analyst reads attacker-controllable issue text: it must not be able to hand the
   // implementer the pinned test as a file to edit (and weaken until it passes).
-  if (fixFiles.map(normalizePath).includes(normalizePath(testFile))) {
+  const pinned = normalizePath(testFile).toLowerCase();
+  if (fixFiles.some((file) => normalizePath(file).toLowerCase() === pinned)) {
     return { ok: false, reason: 'regression-test-in-fix-files' };
   }
   if (typeof a.testCommand !== 'string' || a.testCommand === '') {
@@ -731,7 +751,7 @@ function analystBrief(issue) {
     `Reproduce and root-cause bug #${issue} (your Procedure steps 1-8), starting with \`GH_TOKEN=$(gh auth token --user ShubhamU55) gh issue view ${issue}\`.`,
     'If it does not reproduce at the current HEAD, take your cannot-reproduce path (status "done", reproduced false) and stop. Never edit product code.',
     'Your testCommand must be exactly the workspace script that runs the regression test file (packages/engine: `pnpm --filter @credit-coach/engine test`; .claude/hooks: `... @credit-coach/hooks test`; apps/admin/e2e: `... @credit-coach/admin test:e2e`; apps/mobile/.maestro: `... @credit-coach/mobile e2e`), optionally followed by plain repo paths and no flags.',
-    'fixFiles must not contain the regression test, package.json or a lockfile, anything under .git, .husky or .github/workflows, .claude/settings*.json, or the files directly inside .claude/hooks/; such an analysis is rejected.',
+    'fixFiles must not contain the regression test, package.json, a lockfile (pnpm-lock.yaml, package-lock.json, yarn.lock), pnpm-workspace.yaml, .npmrc or .pnpmfile.cjs, anything under .git, .husky, .github/workflows or .github/actions, .claude/settings*.json, the files directly inside .claude/hooks/ or .claude/hooks/lib/{shell-scan.cjs,paths.mjs,contracts.mjs,pure-block.mjs}, or a tool or runner config (vitest.config.*, vitest.workspace.*, vite.config.*, playwright.config.*, jest.config.*, eslint.config.*, eslint.shared.cjs, .eslintrc*, .prettierrc*, prettier.config.*); such an analysis is rejected.',
   ].join('\n');
 }
 
@@ -910,11 +930,12 @@ function evidenceOnlyReasons(facts, issue, attemptStart) {
 }
 
 /**
- * What `verified` rests on at close time: gate-checker's facts for `mainHead..HEAD`, never
- * bug-reporter's word. At least one commit, a clean tree, every changed file under the issue's
- * evidence folder, every claimed evidence path present and among the changed files (so evidence
- * left over from the original report cannot pass). A red `pnpm verify` on main is not this
- * re-run's failure, so it is not counted.
+ * What gate-checker proves at close time, from its facts for `mainHead..HEAD`: that FRESH evidence
+ * was committed. At least one commit, a clean tree, every changed file under the issue's evidence
+ * folder, every claimed evidence path present and among the changed files (so evidence left over
+ * from the original report cannot pass). It does NOT prove the re-run passed: pass/fail is still
+ * bug-reporter's own `done` (see `verificationReasons`). A red `pnpm verify` on main is not this
+ * re-run's failure, so it is not counted here (the caller surfaces `verifyExitCode` instead).
  */
 function closeEvidenceReasons(facts, issue, evidencePaths, mainHead) {
   const glob = `docs/test-reports/bugs/${issue}/**`;
@@ -959,6 +980,7 @@ function closeVerifyBrief(issue, pr, mainHead) {
     `CLOSE-TIME VERIFICATION for bug #${issue}, fixed by merged PR #${pr} (your Procedure step 6). main is checked out at ${mainHead} and the tree is clean.`,
     `Re-run the ticket's original failing flow or test on main, commit the output as evidence under docs/test-reports/bugs/${issue}/, and fill the ticket's \`### Verification on main\` section.`,
     'Return status "done" only if the re-run PASSED and its evidence is committed (evidencePaths non-empty). If the re-run FAILS, commit the failing output as evidence, comment it on the ticket, and return status: "failed" with evidencePaths for that output.',
+    'Evidence file names must use only letters, digits, ".", "_" and "-" (no spaces or other characters), or the workflow cannot accept them.',
     'Do not close, reopen or re-label the ticket.',
   ].join('\n');
 }
@@ -1272,7 +1294,9 @@ async function runFix(issue) {
   const found = await analyse(issue);
   // Judged even when the analyst stops (cannot-reproduce commits a transcript too).
   const strays = await evidenceGuard(start.head, issue);
-  if (strays.length > 0) return failed(issue, strays);
+  // A dead analyst and a failed gate are both reported, never one hiding the other.
+  if (strays.length > 0)
+    return failed(issue, [...strays, ...toList(found.stop && found.stop.reasons)]);
   if (found.stop) return found.stop;
   const analysis = found.analysis;
   const task = fixTask(analysis);
@@ -1323,32 +1347,34 @@ async function runClose(input) {
     agentType: 'bug-reporter',
     schema: REPORTER_SCHEMA,
   });
+  // Pass/fail is bug-reporter's own verdict (`done` for this issue, with evidence paths under the
+  // issue's folder). The gate below is run on EVERY branch, success or failure, because a failed
+  // re-run commits its output on local main too, and it proves only what was committed: fresh
+  // evidence inside the folder, nothing else.
   const reasons = verificationReasons(verified, issue);
-  if (reasons.length > 0) {
-    return finish('verification-failed', issue, {
-      pr,
-      closeIssue: false,
-      reasons,
-      evidencePaths: verified != null ? toList(verified.evidencePaths) : [],
-    });
-  }
-  const evidencePaths = toList(verified.evidencePaths);
-  // `verified` rests on gate-checker's facts, not on bug-reporter's own word: a commit in
-  // mainHead..HEAD that adds exactly the claimed evidence, inside the issue's evidence folder.
+  const evidencePaths = verified != null ? toList(verified.evidencePaths) : [];
+  const claimed = reasons.length === 0 ? evidencePaths : [];
   const gate = await gateCheck(
-    { createFiles: [], testFiles: evidencePaths, testCommand: null },
+    { createFiles: [], testFiles: claimed, testCommand: null },
     mainHead,
   );
-  const proof =
-    gate != null && gate.status === 'done'
-      ? closeEvidenceReasons(gate.facts, issue, evidencePaths, mainHead)
-      : ['gate-check-failed'];
-  if (proof.length > 0) {
+  const gated = gate != null && gate.status === 'done';
+  const gateReasons = !gated
+    ? ['gate-check-failed']
+    : reasons.length === 0
+      ? closeEvidenceReasons(gate.facts, issue, claimed, mainHead)
+      : evidenceOnlyReasons(gate.facts, issue, mainHead);
+  // Shown to the owner, never a pass/fail input: an unrelated red main must not reopen a fixed bug.
+  const verifyExitCode =
+    gated && Number.isInteger(gate.facts.verifyExitCode) ? gate.facts.verifyExitCode : null;
+  const allReasons = [...reasons, ...gateReasons];
+  if (allReasons.length > 0) {
     return finish('verification-failed', issue, {
       pr,
       closeIssue: false,
-      reasons: proof,
+      reasons: allReasons,
       evidencePaths,
+      verifyExitCode,
     });
   }
   const synced = await callAgent('pm-sync', pmSyncBrief(issue, pr, mainHead, evidencePaths), {
@@ -1365,9 +1391,10 @@ async function runClose(input) {
           : `pm-sync-${synced.status}: ${synced.blockedReason || synced.summary || ''}`,
       ],
       evidencePaths,
+      verifyExitCode,
     });
   }
-  return finish('verified', issue, { pr, closeIssue: true, evidencePaths });
+  return finish('verified', issue, { pr, closeIssue: true, evidencePaths, verifyExitCode });
 }
 
 async function runBugfix(input) {
@@ -1395,7 +1422,9 @@ async function runBugfix(input) {
   const filed = await fileReport(verdict.report);
   const filedIssue = filed.issue ?? (filed.stop && filed.stop.issue) ?? null;
   const strays = await evidenceGuard(start.head, filedIssue);
-  if (strays.length > 0) return failed(filedIssue, strays);
+  if (strays.length > 0) {
+    return failed(filedIssue, [...strays, ...toList(filed.stop && filed.stop.reasons)]);
+  }
   if (filed.stop) return filed.stop;
   if (input.reportOnly === true) return finish('reported', filed.issue, { labels: filed.labels });
   return runFix(filed.issue);

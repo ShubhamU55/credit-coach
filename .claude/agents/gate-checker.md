@@ -47,7 +47,7 @@ Run every command exactly once, in this order, and copy outputs verbatim (no sum
 1. `git status --porcelain` → `dirtyFiles`, parsed as above. Always included, even when empty (`[]`), never omitted — captured before anything below can regenerate files.
 2. `git rev-parse HEAD` → `head`.
 3. `git rev-parse --verify <attemptStart>^{commit}`. If this fails, stop (see Stop rules) — `facts.head` and `facts.dirtyFiles` from steps 1–2 are still returned.
-4. `git diff --name-only <attemptStart>..HEAD` → `changedFiles` (one path per line, quoting stripped; `[]` if no output).
+4. `git diff --no-renames --name-only <attemptStart>..HEAD` → `changedFiles` (one path per line, quoting stripped; `[]` if no output).
 5. Read the brief's `EXPECT:` line. If it is `EXPECT: none`, `missingFiles` is `[]`. Otherwise, for each space-separated path on that line: `git cat-file -e HEAD:<path>`; a non-zero exit means the path is missing → append it to `missingFiles` (`[]` if none are missing).
 6. `git log --format=%H%x00%B%x01 <attemptStart>..HEAD` → `commits`. Parse the raw text purely by its visible line structure — never by naming or searching for the format string's control characters, and never via `cat -v`, `hexdump`, or any tool that dumps raw bytes. Scan line by line: a new record begins at any line whose first 40 characters are all hex digits (`[0-9a-f]{40}`) — that 40-character prefix is `sha`. The record's `message` is everything from just after that prefix (drop one leading separator character on that same line, if the line has more content right after the sha) through to, but not including, the start of the next such sha-line or the end of the output — and drop one trailing separator-only line at the end of that span, if present. This gives the full `%B` (subject and body), not just the first line. `[]` if there are no commits in range.
 7. Echo `attemptStart` back exactly as given on the brief's first line (never resolve, shorten or reformat it).
@@ -60,7 +60,7 @@ Run every command exactly once, in this order, and copy outputs verbatim (no sum
 1. `git status --porcelain` → `dirtyFiles`, parsed as above. First, as in every mode.
 2. `git rev-parse HEAD` → `head`.
 3. `git merge-base main HEAD` → `base`.
-4. `git diff --name-only <base>..HEAD` → `changedFiles` (quoting stripped; `[]` if no output).
+4. `git diff --no-renames --name-only <base>..HEAD` → `changedFiles` (quoting stripped; `[]` if no output).
 5. `git diff <base>..HEAD` → the full diff text, returned as a top-level `diff` string. Do **not** cap, truncate or tail this to 300 characters like other output — it is a tester's input, not this agent's evidence of its own claims.
 6. Return `facts: { head, base, dirtyFiles, changedFiles }` plus the top-level `diff` string.
 

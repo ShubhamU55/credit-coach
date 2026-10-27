@@ -1809,3 +1809,287 @@ describe('isProtectedPath', () => {
     }
   });
 });
+
+describe('round 2: protected configs and runners (a fix file could exclude the pinned test)', () => {
+  it.each([
+    'packages/engine/vitest.config.ts',
+    'vitest.workspace.ts',
+    'apps/admin/playwright.config.ts',
+    'apps/admin/jest.config.js',
+    'packages/engine/vite.config.ts',
+    'eslint.shared.cjs',
+    'apps/admin/eslint.config.mjs',
+    '.eslintrc.json',
+    'apps/mobile/.eslintrc.js',
+    '.prettierrc',
+    '.prettierrc.json',
+    'prettier.config.mjs',
+    '.npmrc',
+    'apps/admin/.npmrc',
+    '.pnpmfile.cjs',
+    '.github/actions/setup/action.yml',
+    '.claude/hooks/lib/pure-block.mjs',
+    '.claude/hooks/lib/paths.mjs',
+    '.claude/hooks/lib/contracts.mjs',
+    './packages/engine/vitest.config.ts',
+    'packages\\engine\\vitest.config.ts',
+    'PACKAGES/ENGINE/Vitest.Config.TS',
+  ])('isProtectedPath flags %s', (file) => {
+    expect(isProtectedPath(file), file).toBe(true);
+    expect(canFix(analysis({ fixFiles: [FIX_FILE, file] })).reason, file).toMatch(
+      /^(protected|unsafe)-fix-file$/,
+    );
+  });
+
+  it.each([
+    'packages/engine/vitest.config.ts',
+    'apps/admin/playwright.config.ts',
+    '.claude/hooks/lib/pure-block.mjs',
+  ])('canFix rejects %s as a fix file with the protected reason', (file) => {
+    expect(canFix(analysis({ fixFiles: [file] }))).toEqual({
+      ok: false,
+      reason: 'protected-fix-file',
+    });
+  });
+
+  it('does not ban ordinary source that merely resembles a config name', () => {
+    for (const file of [
+      'packages/engine/src/vitest-helpers.ts',
+      'packages/engine/src/eslint-rules.ts',
+      'apps/admin/src/playwright-utils.ts',
+      '.claude/hooks/lib/plan-tasks.mjs',
+    ]) {
+      expect(isProtectedPath(file), file).toBe(false);
+    }
+  });
+
+  it('compares fixFiles with the regression test case-insensitively', () => {
+    expect(canFix(analysis({ fixFiles: [TEST_FILE.toUpperCase()] })).reason).toBe(
+      'regression-test-in-fix-files',
+    );
+    expect(canFix(analysis({ fixFiles: [FIX_FILE, `./${TEST_FILE}`] })).reason).toBe(
+      'regression-test-in-fix-files',
+    );
+  });
+
+  it('analystBrief names the whole protected set and the testCommand grammar', () => {
+    const brief = analystBrief(7);
+    for (const token of [
+      'package.json',
+      'pnpm-lock.yaml',
+      '.git',
+      '.husky',
+      '.github/workflows',
+      '.github/actions',
+      '.claude/settings',
+      '.claude/hooks/',
+      'shell-scan.cjs',
+      'paths.mjs',
+      'contracts.mjs',
+      'pure-block.mjs',
+      'vitest.config',
+      'vite.config',
+      'playwright.config',
+      'jest.config',
+      'eslint.config',
+      'eslint.shared.cjs',
+      '.eslintrc',
+      '.prettierrc',
+      'prettier.config',
+      '.npmrc',
+      '.pnpmfile.cjs',
+    ]) {
+      expect(brief, token).toContain(token);
+    }
+  });
+});
+
+describe('round 2: gate-checker lists renames as delete + add', () => {
+  const gateCheckerMd = fs.readFileSync(path.join(here, '../../../agents/gate-checker.md'), 'utf8');
+
+  it('MODE check and MODE diff both list changed files with --no-renames', () => {
+    const nameOnly = gateCheckerMd
+      .split(/\r?\n/)
+      .filter((line) => /git diff\b[^`]*--name-only/.test(line));
+    expect(nameOnly).toHaveLength(2);
+    for (const line of nameOnly) {
+      expect(line, line).toContain('--no-renames');
+    }
+  });
+
+  it('a renamed-away source file shows up as a deleted path, which is drift', () => {
+    const start = 'a'.repeat(40);
+    const head = 'b'.repeat(40);
+    const facts = {
+      head,
+      attemptStart: start,
+      changedFiles: [FIX_FILE, 'docs/test-reports/bugs/7/x.test.ts'],
+      dirtyFiles: [],
+      missingFiles: [],
+      commits: [{ sha: head, message: 'docs(bugs): evidence' }],
+      testCommand: null,
+      testExitCode: null,
+      verifyExitCode: 0,
+    };
+    expect(evidenceOnlyReasons(facts, 7, start)).toEqual([`drift: ${FIX_FILE}`]);
+  });
+});
+
+describe('round 2: --close guards the failure branches too', () => {
+  const EVIDENCE = 'docs/test-reports/bugs/7/pass.txt';
+  const build = ({ reporter, overrides = {} }) => {
+    const built = scenario({ 'bug-reporter': reporter, ...overrides });
+    return { ...built, args: { issue: 7, close: true, pr: 12, mainHead: built.git.head() } };
+  };
+  const passing = (_prompt, c) => {
+    c.git.commit('docs(bugs): re-run on main passes', [EVIDENCE]);
+    return envelope({ issueNumber: 7, duplicateOf: null, evidencePaths: [EVIDENCE], labels: [] });
+  };
+
+  it('a failed re-run that committed a stray file reports the drift as well as the failure', async () => {
+    const { dispatch, args } = build({
+      reporter: (_prompt, c) => {
+        c.git.commit('docs(bugs): failing output', [FIX_FILE, 'docs/test-reports/bugs/7/fail.txt']);
+        return envelope({
+          status: 'failed',
+          issueNumber: 7,
+          duplicateOf: null,
+          evidencePaths: ['docs/test-reports/bugs/7/fail.txt'],
+          labels: [],
+        });
+      },
+    });
+    const { result, calls } = await runWorkflow({ args, dispatch });
+    expect(result.status).toBe('verification-failed');
+    expect(result.reasons).toEqual(
+      expect.arrayContaining([expect.stringMatching(/^rerun-not-passing/), `drift: ${FIX_FILE}`]),
+    );
+    expect(agentTypes(calls)).toEqual(['gate-checker', 'bug-reporter', 'gate-checker']);
+    expect(callsOf(calls, 'pm-sync')).toHaveLength(0);
+  });
+
+  it('the failure branch runs the gate from mainHead with no EXPECT list (claimed paths are not trusted yet)', async () => {
+    const { dispatch, args } = build({
+      reporter: (_prompt, c) => {
+        c.git.commit('docs(bugs): failing output', ['docs/test-reports/bugs/7/fail.txt']);
+        return envelope({
+          status: 'failed',
+          issueNumber: 7,
+          duplicateOf: null,
+          evidencePaths: ['bad path with spaces.txt'],
+          labels: [],
+        });
+      },
+    });
+    const { calls } = await runWorkflow({ args, dispatch });
+    expect(callsOf(calls, 'gate-checker')[1].prompt).toBe(
+      `MODE: check ${args.mainHead}\nTEST: none\nEXPECT: none`,
+    );
+  });
+
+  it('a null reporter that still committed a stray file is reported with both reasons', async () => {
+    const { dispatch, args } = build({
+      reporter: (_prompt, c) => {
+        c.git.commit('docs(bugs): oops', ['package.json']);
+        return null;
+      },
+    });
+    const { result } = await runWorkflow({ args, dispatch });
+    expect(result.status).toBe('verification-failed');
+    expect(result.reasons).toEqual(['bug-reporter-returned-null', 'drift: package.json']);
+  });
+
+  it('a dead gate on the failure branch is reported, not swallowed', async () => {
+    const base = build({ reporter: () => null });
+    let gateCalls = 0;
+    const dispatch = async (prompt, options) => {
+      if (options.agentType === 'gate-checker') {
+        gateCalls += 1;
+        if (gateCalls === 2) return null;
+      }
+      return base.dispatch(prompt, options);
+    };
+    const { result } = await runWorkflow({ args: base.args, dispatch });
+    expect(result.status).toBe('verification-failed');
+    expect(result.reasons).toEqual(['bug-reporter-returned-null', 'gate-check-failed']);
+  });
+
+  it('surfaces the gate verifyExitCode on verified, without letting a red verify flip it (W4-3e)', async () => {
+    for (const verifyExitCode of [0, 1]) {
+      const base = build({ reporter: passing });
+      const dispatch = async (prompt, options) => {
+        const response = await base.dispatch(prompt, options);
+        if (options.agentType === 'gate-checker' && prompt.startsWith('MODE: check')) {
+          return { ...response, facts: { ...response.facts, verifyExitCode } };
+        }
+        return response;
+      };
+      const { result } = await runWorkflow({ args: base.args, dispatch });
+      expect(result.status).toBe('verified');
+      expect(result.closeIssue).toBe(true);
+      expect(result.verifyExitCode).toBe(verifyExitCode);
+    }
+  });
+
+  it('surfaces verifyExitCode on verification-failed too', async () => {
+    const base = build({ reporter: () => null });
+    const dispatch = async (prompt, options) => {
+      const response = await base.dispatch(prompt, options);
+      if (options.agentType === 'gate-checker' && prompt.startsWith('MODE: check')) {
+        return { ...response, facts: { ...response.facts, verifyExitCode: 1 } };
+      }
+      return response;
+    };
+    const { result } = await runWorkflow({ args: base.args, dispatch });
+    expect(result.verifyExitCode).toBe(1);
+  });
+
+  it('closeVerifyBrief tells bug-reporter which evidence file names are accepted', () => {
+    const brief = closeVerifyBrief(7, 12, 'd'.repeat(40));
+    expect(brief).toMatch(/letters, digits/);
+    expect(brief).toMatch(/no spaces/i);
+  });
+});
+
+describe('round 2: an analyst that dies and a gate that fails report both', () => {
+  it('keeps bug-analyst-returned-null next to gate-check-failed', async () => {
+    const base = scenario({ 'bug-analyst': () => null });
+    let gateCalls = 0;
+    const dispatch = async (prompt, options) => {
+      if (options.agentType === 'gate-checker') {
+        gateCalls += 1;
+        if (gateCalls === 2) return null;
+      }
+      return base.dispatch(prompt, options);
+    };
+    const { result } = await runWorkflow({ args: { issue: 7 }, dispatch });
+    expect(result.status).toBe('failed');
+    expect(result.reasons).toEqual(['gate-check-failed', 'bug-analyst-returned-null']);
+  });
+
+  it('keeps a stray-commit reason next to a blocked analyst', async () => {
+    const { dispatch } = scenario({
+      'bug-analyst': (_prompt, c) => {
+        c.git.commit('docs(bugs): x', ['package.json']);
+        return envelope({ status: 'blocked', blockedReason: 'not a bug' });
+      },
+    });
+    const { result } = await runWorkflow({ args: { issue: 7 }, dispatch });
+    expect(result.reasons).toEqual(['drift: package.json', 'not a bug']);
+  });
+});
+
+describe('round 2: verified wording is honest (W4-3e)', () => {
+  it('bugfix.md says pass/fail is still bug-reporter, and the gate proves only fresh committed evidence', () => {
+    const text = fs.readFileSync(path.join(here, '../../../commands/bugfix.md'), 'utf8');
+    expect(text).not.toMatch(/not\s+on\s+`?bug-reporter`?'s\s+own/i);
+    expect(text).toMatch(/pass\/fail[\s\S]{0,80}bug-reporter/i);
+    expect(text).toMatch(/fresh[\s\S]{0,60}evidence/i);
+    expect(text).toContain('verifyExitCode');
+  });
+
+  it("the workflow comments do not claim the gate replaces bug-reporter's verdict", () => {
+    expect(source).not.toMatch(/not on bug-reporter's own word/);
+    expect(source).not.toMatch(/never\s+bug-reporter's word/);
+  });
+});
