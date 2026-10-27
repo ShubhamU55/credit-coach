@@ -108,7 +108,6 @@ describe('mergeAnalysis: the mandatory requirements-analyst', () => {
 
   it.each([
     ['criteria missing', { criteria: undefined }],
-    ['criteria empty', { criteria: [] }],
     ['criteria not an array', { criteria: 'AC-1' }],
     ['a criterion missing its then', { criteria: [{ id: 'AC-1', given: 'g', when: 'w' }] }],
     [
@@ -127,6 +126,56 @@ describe('mergeAnalysis: the mandatory requirements-analyst', () => {
   it('does not throw on null or garbage entries', () => {
     expect(() => mergeAnalysis([null, undefined, {}, { agent: 'domain-checker' }])).not.toThrow();
     expect(mergeAnalysis(null).status).toBe('failed');
+  });
+});
+
+describe('mergeAnalysis: a done analyst with no criteria (nothing to specify)', () => {
+  const emptyAnalyst = (overrides = {}) =>
+    analystResult({
+      criteria: [],
+      invariants: [],
+      summary: 'Purely introductory section; no behaviour to extract.',
+      openQuestions: ['Which section holds the behaviour?'],
+      outOfScope: ['Everything in this intro'],
+      ...overrides,
+    });
+
+  it('is status empty, not failed, and the analyst is NOT in failedAgents', () => {
+    const brief = mergeAnalysis([
+      { agent: 'requirements-analyst', result: emptyAnalyst() },
+      { agent: 'domain-checker', result: checkerResult() },
+    ]);
+    expect(brief.status).toBe('empty');
+    expect(brief.failedAgents).toEqual([]);
+    expect(brief.criteria).toEqual([]);
+  });
+
+  it('still passes the analyst openQuestions, outOfScope and summary through', () => {
+    const brief = mergeAnalysis([
+      { agent: 'requirements-analyst', result: emptyAnalyst() },
+      { agent: 'domain-checker', result: checkerResult() },
+    ]);
+    expect(brief.openQuestions).toEqual(['Which section holds the behaviour?']);
+    expect(brief.outOfScope).toEqual(['Everything in this intro']);
+    expect(brief.analystSummary).toBe('Purely introductory section; no behaviour to extract.');
+  });
+
+  it('still lists another failed agent in failedAgents', () => {
+    const brief = mergeAnalysis([
+      { agent: 'requirements-analyst', result: emptyAnalyst() },
+      { agent: 'domain-checker', result: null },
+    ]);
+    expect(brief.status).toBe('empty');
+    expect(brief.failedAgents).toEqual(['domain-checker']);
+  });
+
+  it('has a null analystSummary when the analyst failed, and the real one on a normal brief', () => {
+    const failed = mergeAnalysis([
+      { agent: 'requirements-analyst', result: null },
+      { agent: 'domain-checker', result: checkerResult() },
+    ]);
+    expect(failed.analystSummary).toBeNull();
+    expect(mergeAnalysis(entries()).analystSummary).toBe('s');
   });
 });
 

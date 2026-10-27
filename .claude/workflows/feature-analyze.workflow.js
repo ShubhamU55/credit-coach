@@ -545,13 +545,16 @@ function isWellFormedCriterion(c) {
   );
 }
 
-/** requirements-analyst is usable only when done with a non-empty list of well-formed criteria. */
+/**
+ * requirements-analyst is usable when done with a criteria ARRAY of well-formed items. An empty
+ * array is valid: requirements-analyst.md's Stop rules say a section with no behaviour to extract
+ * returns `status: "done"`, `criteria: []` with the reason in `summary`/`openQuestions`.
+ */
 function isUsableAnalyst(result) {
   return (
     result != null &&
     result.status === 'done' &&
     Array.isArray(result.criteria) &&
-    result.criteria.length > 0 &&
     result.criteria.every(isWellFormedCriterion)
   );
 }
@@ -594,14 +597,20 @@ function mergeRisks(findings) {
 /**
  * Folds `[{ agent, result }]` (one entry per DISPATCHED agent; `agent` is the agentType) into one
  * AnalysisBrief:
- *   { status, criteria, invariants, risks, kitComponents, openQuestions, outOfScope, failedAgents }
+ *   { status, criteria, invariants, risks, kitComponents, openQuestions, outOfScope, failedAgents,
+ *     analystSummary }
  * `status`:
- *   'failed'   -- requirements-analyst is null, absent, non-done or has no well-formed criteria.
+ *   'failed'   -- requirements-analyst is null, absent, non-done or returned malformed criteria.
  *                 `criteria`/`invariants` are then [] (never trust a malformed analyst), but the
- *                 other agents' risks are still reported for the owner.
+ *                 other agents' risks are still reported for the owner. `analystSummary` is null.
+ *   'empty'    -- requirements-analyst succeeded (done) but found no behaviour to specify
+ *                 (`criteria: []`). NOT an agent failure: the analyst is not in `failedAgents`, and
+ *                 its `openQuestions`/`outOfScope`/`analystSummary` (the reason) pass through. There
+ *                 is nothing to plan, so /feature stops and tells the owner.
  *   'degraded' -- criteria are fine but a dispatched agent failed (see `failedAgents`): the brief is
  *                 usable but incomplete, and the main session must say so before planning.
  *   'done'     -- every dispatched agent returned a usable result.
+ * Precedence: failed > empty > degraded > done (`failedAgents` is reported in every case).
  * A required agent missing from `results` counts as failed; design-checker missing does NOT (it is
  * skipped for non-UI work). The findings of an agent that is not usable are never trusted.
  */
@@ -634,10 +643,12 @@ function mergeAnalysis(results) {
 
   let status = 'done';
   if (failedAgents.length > 0) status = 'degraded';
+  if (analystOk && analyst.criteria.length === 0) status = 'empty';
   if (!analystOk) status = 'failed';
 
   return {
     status,
+    analystSummary: analystOk && typeof analyst.summary === 'string' ? analyst.summary : null,
     criteria: analystOk ? toList(analyst.criteria) : [],
     invariants: analystOk ? toList(analyst.invariants) : [],
     risks,
