@@ -13,6 +13,7 @@
 - **PRD §4** lists the domain facts F1–F7. The **`credit-domain` skill** expands them. Never contradict them.
 - **`docs/design.md`** (v3 "Midnight") is the **UI design guide for the mobile app**: tokens, components, screens, copy, accessibility and the demo fixture. Read it before building any screen. For mobile visuals it supersedes `.design/`; for requirements, the PRD wins.
 - `docs/tech-stack.md` is the stack and its risks. `docs/adr/` holds the decisions. `docs/superpowers/plans/` holds the implementation plans.
+- **`docs/ai-policy.md`** is the AI usage policy: what agents may touch, what is never allowed, how changes are reviewed, and when the setup is next reviewed.
 
 ## Workflow (Think → Build → Test → Review → Learn)
 
