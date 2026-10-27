@@ -1,6 +1,7 @@
 ---
-description: File a bug ticket from the owner's report (collects the template fields, then runs the bugfix Workflow's report phase)
+description: 'File a bug ticket from the owner''s report (collects the template fields, then runs the bugfix Workflow''s report phase). Use when the owner reports a defect and wants a ticket, not a fix.'
 argument-hint: '<description>'
+disable-model-invocation: true
 ---
 
 File a GitHub bug ticket for **$ARGUMENTS** with the `bugfix` Workflow's report phase

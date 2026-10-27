@@ -1,6 +1,8 @@
 ---
-description: Drive an approved plan task by task with the feature-build Workflow (implementer -> gate-checker -> retry/escalate -> review -> qa)
-argument-hint: <plan path> [task ids...] [--dry-run drift,tests]
+description: 'Drive an approved plan task by task with the feature-build Workflow (implementer -> gate-checker -> retry/escalate -> review -> qa). Use when a plan is approved and ready to build.'
+argument-hint: '<plan path> [task ids...] [--dry-run drift,tests]'
+disable-model-invocation: true
+allowed-tools: 'Bash(node .claude/hooks/bin/plan-tasks.mjs *)'
 ---
 
 Run the `feature-build` Workflow over **$ARGUMENTS**. This is the explicit Workflow opt-in for

@@ -1,6 +1,7 @@
 ---
 name: maestro-android-e2e
 description: How to write and run Maestro end-to-end flows for the Credit Coach Android app (apps/mobile) against a standalone release APK on Windows, including testID conventions and where to store reports. Use when adding or changing a mobile screen, writing a mobile E2E test, or verifying the demo path before submission.
+allowed-tools: 'Bash(pnpm --filter @credit-coach/mobile android:release) Bash(pnpm --filter @credit-coach/mobile e2e) Bash(adb devices)'
 ---
 
 # Maestro Android E2E (Credit Coach)

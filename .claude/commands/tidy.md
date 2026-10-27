@@ -1,6 +1,7 @@
 ---
-description: Janitor scan (proposals only): expired scratch items and living docs that reference paths that no longer exist
-argument-hint: [--today YYYY-MM-DD]
+description: 'Janitor scan (proposals only): expired scratch items and living docs that reference paths that no longer exist. Use before a release or when docs may be stale.'
+argument-hint: '[--today YYYY-MM-DD]'
+allowed-tools: 'Bash(node .claude/hooks/bin/tidy.mjs) Bash(node .claude/hooks/bin/tidy.mjs *)'
 ---
 
 Run the janitor scan from the repo root. It is **read-only and proposes only**: no command or
