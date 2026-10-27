@@ -324,6 +324,22 @@ function protectedFileExists(filePath) {
   }
 }
 
+// Fix round 4 (Linux CI): the "first-time creation is allowed" escape hatch
+// used to check only the CANDIDATE path. A case variant such as
+// `.claude/Settings.json` matches the protected path case-insensitively, and
+// on a case-insensitive filesystem it also exists (it IS settings.json), so
+// it was blocked. On a case-sensitive filesystem (Linux) the variant is a
+// distinct, absent path, so the hook returned exit 0. A case variant is not
+// a bootstrap: block it whenever the canonical protected file exists too.
+function protectedTargetExists(filePath, canonicalPath) {
+  return protectedFileExists(filePath) || protectedFileExists(canonicalPath);
+}
+
+function matchingGuardScriptPath(filePath) {
+  const index = PROTECTED_GUARD_SCRIPT_PATHS.indexOf(normalizeFilePath(filePath));
+  return index === -1 ? filePath : PROTECTED_GUARD_SCRIPT_PATHS_RAW[index];
+}
+
 function blockResult(message) {
   return { exitCode: 2, stderr: message };
 }
@@ -353,7 +369,7 @@ function run(inputOrRaw, options = {}) {
   const filePath = stripAlternateDataStream(rawFilePath);
 
   if (isClaudeSettingsPath(filePath)) {
-    if (!protectedFileExists(filePath)) return { exitCode: 0 };
+    if (!protectedTargetExists(filePath, PROTECTED_SETTINGS_PATH_RAW)) return { exitCode: 0 };
     return blockResult(
       'BLOCKED: Modifying .claude/settings.json via Write/Edit/MultiEdit is not allowed. ' +
       'It carries this repo\'s hook registrations and permission deny-list; weakening it ' +
@@ -376,7 +392,7 @@ function run(inputOrRaw, options = {}) {
   }
 
   if (isProtectedGuardScript(filePath)) {
-    if (!protectedFileExists(filePath)) return { exitCode: 0 };
+    if (!protectedTargetExists(filePath, matchingGuardScriptPath(filePath))) return { exitCode: 0 };
     return blockResult(
       `BLOCKED: Modifying ${path.basename(filePath)} via Write/Edit/MultiEdit is not allowed. ` +
       'It is one of this repo\'s guard-hook scripts; an agent weakening its own guard defeats ' +
