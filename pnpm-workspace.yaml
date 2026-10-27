@@ -21,3 +21,12 @@ auditConfig:
     # braces ReDoS via deeply nested patterns; no patch available;
     # transitive via metro/eslint-config-next. Added 2026-10-21, re-review by 2026-11-21.
     - GHSA-vfj7-8cjw-p6xm
+
+# Transitive zod@3 (via apps/mobile expo/@expo/cli, which pins ^3.25.76) is
+# vulnerable to GHSA-mrhx-c7xc-m3w5 (memory exhaustion on oversized constrained
+# collections); only zod >=4.6.6 is patched. Scoped to the vulnerable range so
+# already-patched zod 4 consumers are untouched. @expo/cli uses only basic zod
+# APIs (object/enum/string/array) for its MCP devtools schema, dev-time only.
+# Added 2026-10-27; drop once @expo/cli ships with a patched zod.
+overrides:
+  'zod@<4.6.6': '^4.6.6'
