@@ -297,6 +297,24 @@ function isProtectedGuardScript(filePath) {
   );
 }
 
+// CI workflows can weaken every other check at once (drop a job, loosen a
+// trigger, widen a token's permissions), so an existing file under
+// `.github/workflows/` is protected like a linter config: modifying it is
+// blocked, creating a first-time one is allowed. The string match is the first
+// pass; the real-path comparison catches aliases such as 8.3 short names.
+const PROTECTED_WORKFLOWS_DIR = resolveProjectPath('.github', 'workflows');
+const PROTECTED_WORKFLOWS_DIR_RAW = resolveProjectPathRaw('.github', 'workflows');
+
+function isWorkflowFile(filePath) {
+  if (normalizeFilePath(filePath).startsWith(`${PROTECTED_WORKFLOWS_DIR}/`)) return true;
+  const candidateReal = realPathIdentity(filePath);
+  const workflowsReal = realPathIdentity(PROTECTED_WORKFLOWS_DIR_RAW);
+  if (candidateReal === null || workflowsReal === null) return false;
+  return `${candidateReal.toLowerCase()}${path.sep}`.startsWith(
+    `${workflowsReal.toLowerCase()}${path.sep}`,
+  );
+}
+
 function parseInput(inputOrRaw) {
   if (typeof inputOrRaw === 'string') {
     try {
@@ -398,6 +416,16 @@ function run(inputOrRaw, options = {}) {
       'It is one of this repo\'s guard-hook scripts; an agent weakening its own guard defeats ' +
       'the purpose of every hook in this chain. If this is a legitimate change to the guard ' +
       'itself (e.g. a planned fix-round task), disable the config-protection hook temporarily.'
+    );
+  }
+
+  if (isWorkflowFile(filePath)) {
+    if (!protectedFileExists(filePath)) return { exitCode: 0 };
+    return blockResult(
+      `BLOCKED: Modifying ${path.basename(filePath)} under .github/workflows is not allowed. ` +
+      'A CI workflow can weaken every other check at once; fix the code the check reports ' +
+      'instead. If this is a legitimate workflow change, disable the config-protection hook ' +
+      'temporarily.'
     );
   }
 

@@ -17,7 +17,14 @@ export function changedCodePaths(porcelain) {
   return porcelain
     .split('\n')
     .filter((line) => line.length > 3)
-    .map((line) => line.slice(3).split(' -> ').pop().trim().replace(/^"(.*)"$/, '$1'))
+    .map((line) =>
+      line
+        .slice(3)
+        .split(' -> ')
+        .pop()
+        .trim()
+        .replace(/^"(.*)"$/, '$1'),
+    )
     .map((file) => file.replaceAll('\\', '/'))
     .filter((file) => CODE_PREFIXES.some((prefix) => file.startsWith(prefix)));
 }
