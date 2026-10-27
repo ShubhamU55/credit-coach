@@ -46,10 +46,12 @@ flowchart TD
 - `feature-build` calls `qa` inline. That is the only workflow-to-workflow call.
   `bugfix` hands its PR to `/pr-review` through the command text, not through a workflow call.
 
-## Control policies (all in `.claude/hooks/lib/contracts.mjs`, unit-tested once)
+## Control policies
 
-Workflow scripts can't `import`, so each of the 6 workflows pastes the `// <contracts>` block byte
-for byte. `workflows-sync.test.mjs` fails `pnpm verify` on any difference.
+The shared rules live in `.claude/hooks/lib/contracts.mjs` and are unit-tested once. Workflow
+scripts can't `import`, so each of the 6 workflows pastes the `// <contracts>` block byte for byte,
+and `workflows-sync.test.mjs` fails `pnpm verify` on any difference. Rules that apply to only one
+workflow, such as `pr-review`'s verifier rules below, live in that workflow's body.
 
 - **Drift guard (spec §8.2).** After every `implementer` run, `gate-checker` reports git facts and
   `checkDrift` judges them. The agent's own `status` never counts. The attempt fails on:
@@ -75,8 +77,10 @@ for byte. `workflows-sync.test.mjs` fails `pnpm verify` on any difference.
   - `feature-build` and `qa` pass a missing verdict straight to the policy. So a crashed verifier
     drops a non-security `high` finding there. This asymmetry is open (see `docs/status.md`).
 - **Untrusted input.** Diffs, findings and PR text reach prompts only inside `wrapUntrusted` fences.
-  The approved plan text is passed unfenced as the spec, so a reviewer can't "fix" the plan's own
-  acceptance test (that bug was found in the W2-2 dry run).
+  In `feature-build` and `qa`, the approved plan text is passed unfenced as the spec, and
+  reviewers, testers and verifiers are told not to confirm a finding whose fix would change what
+  the plan requires (`planConflictGuidance`). This is prompt guidance, not enforcement. It was
+  added after the W2-2 dry run, where a fix pass rewrote a plan's own acceptance test.
 
 ## Token policy
 
@@ -91,8 +95,12 @@ clear input and produces one clear output. Tiers come from each agent's `model:`
 | Sonnet | the other 20: build, test, review, verify, analysis                                              | ECC's default for most coding and review work                   |
 | Opus   | `planner`, `pr-reviewer` (2); plus a per-call `model: 'opus'` for `pr-review`'s end-of-plan pair | Plan second opinion, and the agent holding the merge-gate token |
 
-Where this differs from ECC's table: ECC puts PR review on Sonnet and security analysis on Opus.
-Here `pr-reviewer` is Opus because it posts G8, and `security-reviewer` runs on Sonnet.
+Where this differs:
+
+- **From ECC's table:** ECC puts PR review on Sonnet and security analysis on Opus. Here
+  `pr-reviewer` is Opus because it posts G8, and `security-reviewer` runs on Sonnet.
+- **From spec §8.4:** the spec says "Opus only for plan second opinions and the end-of-plan
+  review". `pr-reviewer` on Opus follows the spec's own §5 and §8.9 roster rows instead.
 
 Other levers: briefs instead of context dumps; schema output caps (summary ≤ 420 chars, finding
 detail ≤ 560, evidence output ≤ 300); testers selected by changed path (at most 6 per run); and
@@ -113,10 +121,12 @@ reads an `## Agent stats` ledger table that no ledger emits yet, so it has no da
 
 ## Honest limits (as of 27 Oct 2026)
 
-- `feature-build` and `qa` have run live once, in the W2-2 dry run. `feature-analyze`, `pr-review`,
-  `bugfix` and `retro` have only run on the test harness's fake runtime. The first real
-  `/feature` → `/build` → `/qa` → `/pr-review` run is their real test.
+- An earlier version of `feature-build` and `qa` ran live once, in the W2-2 dry run. Every later
+  change is unit-tested only: `6316f15`, `ae9c8fc`, `3485e8c`, `d37f0a8` and `fd7f0a6`.
+  `feature-analyze`, `pr-review`, `bugfix` and `retro` have only run on the test harness's fake
+  runtime. The first real `/feature` → `/build` → `/qa` → `/pr-review` run is their real test.
 - Nothing is pushed yet. Branch protection, required checks, the Sonar gate and the Projects board
   are Wave 5 and need owner actions. G3 (API tests) arrives with Plan 3.
 - `build-error-resolver` exists, but no workflow dispatches it. Retries go back to `implementer`.
-- The hooks guard only the `Bash` tool, not `PowerShell`.
+- The shell hooks (`block-no-verify`, `pre-bash-commit-quality`) match only the `Bash` tool, not
+  `PowerShell`. `protect-env` and `config-protection` guard `Write`, `Edit` and `MultiEdit`.

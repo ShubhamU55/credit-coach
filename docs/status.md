@@ -7,10 +7,10 @@
 ### State at handoff
 
 - **`main` is at `fd7f0a6`.** W4-1..W4-4 are all merged fast-forward under the bootstrap rule (no push before W5-1).
-- **Branch `feat/1c-w4-5-judge-docs`** (worktree `../cc-1c-w4-5`) adds 2 commits on top: `c5f3405` (Wave 4 ledger) and this ticket's commit, `docs: explain the agentic system for judges`. It is not merged yet; merge it fast-forward the same way.
+- **Branch `feat/1c-w4-5-judge-docs`** (worktree `../cc-1c-w4-5`) adds the Wave 4 ledger, the docs commits and the review-fix commit on top of `fd7f0a6`. It is not merged yet; merge it fast-forward the same way.
 - **`pnpm verify` is green on the branch:** 1555 hooks tests across 26 files, and 30 engine tests at 98.76% line coverage.
 - **Nothing is pushed.** No remote-tracking branch exists locally.
-- **The owner has two unmerged branches:** `chore/ai-setup-docs-drift` and `chore/ai-setup-command-policy`.
+- **The owner has unmerged `chore/ai-setup-*` branches** (at the time of writing: `docs-drift`, `command-policy` and `guards`).
 - **Superseded:** the 2026-10-26 entry below says "Wave 3 is next". Waves 3 and 4 are done.
 - **Why Waves 3 and 4 have no entries of their own here:** neither wave's hotspot table named a `docs/status.md` owner until W4-5, so under the parallel-wave exception their handoffs went into the run ledgers. This entry summarizes both.
 
@@ -22,9 +22,9 @@
   - the bug agents and `bug.yml`
   - `pr-reviewer`, `pr-test-analyzer`, `pm-sync` and `journal-writer`
 
-  The `pr-reviewer` worked-example shell script had a remote-code-execution path. It was caught and fixed in 3 rounds.
+  W3-4 took 3 fix rounds. A security pass in round 2 reproduced a remote-code-execution path in `pr-reviewer`'s worked-example shell script, and round 2 fixed it. Round 3 fixed a separate HIGH, where the fail-closed exit didn't stop the review POST.
 
-- **Wave 4** (`6322f2f..fd7f0a6`, ledger `docs/agent-runs/2026-10-27-plan-1c-wave-4.md`, journal 003) added:
+- **Wave 4** (`c84e390..fd7f0a6`, ledger `docs/agent-runs/2026-10-27-plan-1c-wave-4.md`, journal 003) added:
   - the `feature-analyze`, `pr-review`, `bugfix` and `retro` workflows
   - the commands `/feature` (rewired), `/pr-review`, `/bugfix`, `/bug`, `/retro`, `/tidy` and `/worktrees`
   - the scripts `.claude/hooks/bin/tidy.mjs` and `worktrees.cjs`
@@ -42,7 +42,12 @@
 
 ### The live Workflow runtime is mostly untested
 
-- `feature-build` and `qa` ran live once, in the W2-2 dry run (`docs/agent-runs/2026-10-26-dry-run-plan-4a-task-2.md`). Fixes landed after that run (`3485e8c`, the Wave 4 `--no-renames`) and were only unit-tested.
+- An earlier version of `feature-build` and `qa` ran live once, in the W2-2 dry run (`docs/agent-runs/2026-10-26-dry-run-plan-4a-task-2.md`, which says "No live re-run was performed"). Every later change to those workflows or their gate is unit-tested only:
+  - `6316f15` (qa: a skipped tester is not a failed one)
+  - `ae9c8fc` (feature-build: plan text in the reviewer and verifier prompts)
+  - `3485e8c` (qa and feature-build: plan text for the testers and the QA verifier)
+  - `d37f0a8` (qa: `ui-tester` screenshots schema)
+  - `fd7f0a6` (`gate-checker.md`: `--no-renames`, the drift guard's facts)
 - `feature-analyze`, `pr-review`, `bugfix` and `retro` have only run on the `vm` fake runtime in `.claude/hooks/tests/workflows/`.
 - Not yet observed:
   - whether the real runtime enforces `schema` so that a malformed `done` result becomes null
@@ -75,8 +80,9 @@
   - line 27: `/retro` is not run by pm-sync or journal-writer; `retro` dispatches only `planner`
   - line 28: `/tidy` is described as lint, format and dead code
   - `/worktrees` is missing
-- **`chore/ai-setup-docs-drift`** (`git diff main...chore/ai-setup-docs-drift -- .claude/rules`) covers the Planned roster, the `pr-reviewer` line and the Planned pipeline, and adds `/worktrees`. Two lines in it still look wrong:
+- **`chore/ai-setup-docs-drift`** (`git diff main...chore/ai-setup-docs-drift -- .claude/rules`) covers the Planned roster, the `pr-reviewer` line and the Planned pipeline, and adds `/worktrees`. Three lines in it still look wrong:
   - its `/retro` bullet still names pm-sync and journal-writer
+  - its `/build` bullet says `build-error-resolver` "fixes failing builds", but no workflow dispatches it
   - its `/qa` bullet says `test-automator` lands proposals, but only `feature-build` does that (a bare `/qa` only reports them), and it leaves out `security-reviewer`
 - **Outside this ticket's files:**
   - `.claude/commands/build.md`: lines 43 ("landing in W3-3") and 56–57 ("until `journal-writer` exists")
@@ -94,7 +100,7 @@
 - Install Docker Desktop (needed by `api-tester`, Plan 3).
 - When convenient, toggle `config-protection` off briefly to fix the 5 locked-file security gaps (see the Wave-1-complete entry below), including the `PowerShell` tool not being hooked.
 - Decide whether to commit or `.gitignore` `.design/` and `ai-audit/`. Both are untracked in the main checkout.
-- Merge or close `chore/ai-setup-docs-drift` and `chore/ai-setup-command-policy`.
+- Merge or close the unmerged `chore/ai-setup-*` branches.
 
 ## 2026-10-26 (W2-2 done and merged — Wave 2 complete; a real pipeline defect was found and fixed)
 

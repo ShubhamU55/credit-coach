@@ -16,7 +16,7 @@
 
 ## Workflow (Think → Build → Test → Review → Learn)
 
-Each command below starts a Workflow script in `.claude/workflows/`. `docs/ai-system.md` explains the whole system. The owner starts every command and approves every plan and escalation.
+Seven commands start a Workflow script in `.claude/workflows/`: `/feature`, `/build`, `/qa`, `/pr-review`, `/bugfix`, `/bug` and `/retro`. `/journal`, `/verify`, `/tidy` and `/worktrees` are plain commands. `docs/ai-system.md` explains the whole system. The owner starts every command and approves every plan and escalation.
 
 1. **`/feature <PRD section>`**: `feature-analyze` turns the section into acceptance criteria, risks and open questions. Read the PRD section and the `credit-domain` skill, write the plan with superpowers `writing-plans` (`planner` is an optional second opinion), then **stop for owner approval**. This command plans; it does not build.
 2. **`/build <plan path>`**: `feature-build` runs each task test-first. The order is `implementer`, then the `gate-checker` drift guard (at most 2 retries, then escalate), then the reviewers, then `finding-verifier`, then one fix pass. `qa` runs after the last task.
@@ -31,31 +31,32 @@ Also:
 - **`/tidy`** and **`/worktrees`**: read-only reports.
 - **`/verify`**: run it before every commit.
 
-**Without a workflow** (a small change, or the Workflow runtime is unavailable), use the manual loop:
+**Temporary fallback, only when the Workflow runtime is unavailable or the owner says to work by hand:**
 
 1. Read the PRD section and the `credit-domain` skill.
-2. Plan with `writing-plans`.
+2. Plan with `writing-plans`, and get owner approval.
 3. Build test-first with superpowers `test-driven-development`.
 4. Review with `typescript-reviewer`. Add `react-reviewer` for `.tsx`, `security-reviewer` when auth, PII, network or secrets are touched, and `silent-failure-hunter` for error paths.
 5. Run `/verify`.
-6. Run `/journal`.
+6. Run `/pr-review` on the PR (G8).
+7. Run `/journal`.
 
 ## Who owns what
 
-| Phase                                        | Owner                                                                                                                                                                                      |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Brainstorm, plans, TDD, verification         | superpowers plugin (user-level)                                                                                                                                                            |
-| Orchestration                                | `.claude/workflows/` (6 Workflow scripts), started only by `.claude/commands/`                                                                                                             |
-| Analysis                                     | `.claude/agents/`: requirements-analyst, domain-checker, design-checker                                                                                                                    |
-| Build and gates                              | implementer, gate-checker, test-automator; build-error-resolver (no workflow dispatches it yet)                                                                                            |
-| Testing (they propose; test-automator lands) | functional-tester, edge-case-hunter, api-tester, ui-tester, integration-tester, security-reviewer                                                                                          |
-| Review and verification                      | code-reviewer, consistency-reviewer, typescript-reviewer, react-reviewer, silent-failure-hunter, pr-test-analyzer, finding-verifier, pr-reviewer (posts G8), planner (plan second opinion) |
-| Bugs                                         | bug-reporter, bug-analyst                                                                                                                                                                  |
-| Ops and records                              | pm-sync (GitHub issues and board), journal-writer (ledgers and journal)                                                                                                                    |
-| Domain knowledge                             | `credit-domain` skill                                                                                                                                                                      |
-| Android E2E                                  | `maestro-android-e2e` skill                                                                                                                                                                |
-| Admin E2E                                    | `e2e-testing` skill (Playwright)                                                                                                                                                           |
-| Process evidence                             | `process-journal` skill, `/journal`, `docs/agent-runs/`                                                                                                                                    |
+| Phase                                | Owner                                                                                                                                                                                      |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Brainstorm, plans, TDD, verification | superpowers plugin (user-level)                                                                                                                                                            |
+| Orchestration                        | `.claude/workflows/` (6 Workflow scripts), started only by `.claude/commands/`                                                                                                             |
+| Analysis                             | `.claude/agents/`: requirements-analyst, domain-checker, design-checker                                                                                                                    |
+| Build and gates                      | implementer, gate-checker, test-automator; build-error-resolver (no workflow dispatches it yet)                                                                                            |
+| Testing (`qa`)                       | functional-tester, edge-case-hunter, api-tester, ui-tester, integration-tester propose tests (landed by test-automator inside `/build`); security-reviewer reports findings only           |
+| Review and verification              | code-reviewer, consistency-reviewer, typescript-reviewer, react-reviewer, silent-failure-hunter, pr-test-analyzer, finding-verifier, pr-reviewer (posts G8), planner (plan second opinion) |
+| Bugs                                 | bug-reporter, bug-analyst                                                                                                                                                                  |
+| Ops and records                      | pm-sync (GitHub issues and board), journal-writer (ledgers and journal)                                                                                                                    |
+| Domain knowledge                     | `credit-domain` skill                                                                                                                                                                      |
+| Android E2E                          | `maestro-android-e2e` skill                                                                                                                                                                |
+| Admin E2E                            | `e2e-testing` skill (Playwright)                                                                                                                                                           |
+| Process evidence                     | `process-journal` skill, `/journal`, `docs/agent-runs/`                                                                                                                                    |
 
 Several of the agents are adapted from affaan-m/ECC (MIT); see ADR 0002.
 

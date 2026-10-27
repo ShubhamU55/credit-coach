@@ -23,7 +23,7 @@
 
 **Decision**
 
-- There are six workflows in `.claude/workflows/`: `feature-analyze`, `feature-build`, `qa`, `pr-review`, `bugfix` and `retro`. Each one starts only from an explicit command.
+- There are six workflows in `.claude/workflows/`: `feature-analyze`, `feature-build`, `qa`, `pr-review`, `bugfix` and `retro`. Each one starts only from an explicit command. The one exception is `qa`, which `feature-build` also calls inline after its last task; that is the only workflow-to-workflow call.
 - The script decides what runs next.
 - Agents return schema-validated envelopes, and `gate-checker` reports git and test facts.
 - The script compares the facts itself: the drift guard, the retry cap of 2, then escalation.
@@ -74,13 +74,13 @@ These are recorded so that nobody mistakes them for the spec's behaviour.
   - `verified` rests on `bug-reporter` returning `done`, plus a gate proof that fresh evidence was committed. The gate does not re-run the test itself (W4-3e).
 - **The Wave 4 workflows have run only on a fake runtime.**
   - `feature-analyze`, `pr-review`, `bugfix` and `retro` were tested on a `vm`-based fake of the Workflow runtime, never on the live runtime.
-  - `feature-build` and `qa` ran live once, in the W2-2 dry run.
+  - An earlier version of `feature-build` and `qa` ran live once, in the W2-2 dry run. Every later change is unit-tested only: `6316f15`, `ae9c8fc`, `3485e8c`, `d37f0a8` and `fd7f0a6` (no live re-run was performed).
   - Whether the live runtime enforces `schema` the same way is still unproven.
 
 ## Consequences
 
 - **Gate decisions are deterministic and unit-tested.**
-  - An agent saying "done" never passes a gate.
+  - An agent saying "done" never passes a gate on its own. (The `--close` deviation above rests partly on `bug-reporter`'s `done`, alongside a gate proof.)
   - The fail-open bugs found in Wave 4 (see [journal 003](../journal/003-agentic-system.md)) were found and fixed as test cases.
 - **Each workflow file is long.** It carries about 475 lines of pasted contracts, and five of the six exceed the 800-line soft ceiling. Sonar's duplication check excludes `.claude/workflows/**`.
 - **Changing the contracts touches seven files:** `contracts.mjs` plus the six re-pasted blocks. The sync test makes a missed copy fail loudly.

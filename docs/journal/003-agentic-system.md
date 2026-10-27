@@ -3,7 +3,7 @@
 - **Date:** 2026-10-27
 - **PRD refs:** none. Plan 1c builds the repo's own agentic dev system, not the product.
 - **Plan:** docs/superpowers/plans/2026-10-21-plan-1c-agentic-system.md (Wave 4, tickets W4-1..W4-5)
-- **Commits:** `6322f2f..fd7f0a6` (W4-1..W4-4), `c5f3405` (Wave 4 ledger), plus this ticket's docs commit
+- **Commits:** `c84e390..fd7f0a6` (W4-1..W4-4), then on the W4-5 branch the Wave 4 ledger, the docs commits and the review-fix commit
 - **Run ledger:** [`docs/agent-runs/2026-10-27-plan-1c-wave-4.md`](../agent-runs/2026-10-27-plan-1c-wave-4.md). Design summary: [`docs/ai-system.md`](../ai-system.md). Decisions: [ADR 0003](../adr/0003-agentic-delivery-system.md).
 
 ## Goal
@@ -22,7 +22,19 @@ Wire the 26 agents into the pipeline the owner asked for: `/feature` → `/build
   - W4-3: `bugfix`, `/bugfix` and `/bug`. 2 fix rounds, plus a one-line widening into `gate-checker.md`.
   - W4-4: `retro`, `/retro`, `/tidy` and `/worktrees`. 1 fix round, under a 2-round cap because it was first in the cut order.
 - **The session hit its limit mid-wave and stopped at a safe point.** It wrote a ledger handoff first. Two dispatched reviews and one implementer report hadn't been read yet. The resumed session collected them before acting on anything.
-- **W4-5 (this entry) wrote `docs/ai-system.md`, ADR 0003, this journal and the `docs/status.md` handoff.** Every count in them came from `ls` and the agents' frontmatter, not from the brief. Grounding the docs in the code turned up three claims that were wrong (see below).
+- **W4-5 (this entry) wrote `docs/ai-system.md`, ADR 0003, this journal and the `docs/status.md` handoff.** Every count in them came from `ls` and the agents' frontmatter, not from the brief. Checking the docs against the code turned up claims that needed correcting (see below). An opus accuracy review then found further slips in the docs themselves, fixed in a review-fix commit.
+
+## The two earlier catches this wave builds on
+
+- **W2-2: the pipeline silently overrode an approved plan** ([journal 001](001-agentic-system-dry-run.md); ledger `docs/agent-runs/2026-10-26-dry-run-plan-4a-task-2.md`).
+  - What happened: the first live `/build` ran on Plan 4a Task 2, whose acceptance test requires `maskPan('ABC')` to throw `RangeError`. The implementer built it that way. `consistency-reviewer` then flagged the throw as drift from an unrelated golden example, and two `finding-verifier` calls confirmed the finding (0.95 and 0.82 confidence). The reviewer and verifier prompts carried only a task title and the diff, never the plan text.
+  - Result: a fix pass changed `maskPan` to return `null` and rewrote the plan's own acceptance test to match.
+  - Caught before merge: the owner was asked, the throw was restored, and the plan text was added to the task-level reviewer and verifier prompts (`ae9c8fc`). The same gap in `qa` was closed later (`3485e8c`).
+- **W3-4: a remote-code-execution path in `pr-reviewer`** ([journal 002](002-wave-3-agents-and-rce-catch.md); ledger `docs/agent-runs/2026-10-27-plan-1c-wave-3.md`).
+  - What happened: a dedicated security-reviewer (opus) pass reproduced a working exploit. A crafted PR filename could break out of `pr-reviewer.md`'s worked-example `node -e` script, and a fixed heredoc delimiter could be terminated early by untrusted text.
+  - Why it mattered: this agent holds the token that posts the G8 verdict, so a malicious PR could have approved itself.
+  - Round 2 fixed it. Untrusted values now reach the script only through `process.env`, and the delimiter is a per-run random token with a collision check. All 3 original exploit strings plus 9 more hostile strings were run against the old and new text: they fired against the old text and were inert against the new.
+  - Round 3 fixed a separate HIGH: the script's fail-closed exit didn't stop the shell's review POST. It was verified with 8 negative cases and 1 positive control.
 
 ## Tests added
 
@@ -62,17 +74,20 @@ Every ticket needed at least one fix round. The serious findings share one shape
 
 ## Where AI was wrong / where I overrode it
 
-- **The implementer agents wrote every fail-open path above, and each ticket's own tests passed before review.** Most of these paths treat a missing or untrusted answer as harmless. The independent reviewers found them by asking "what if this agent returns nothing, or lies?"
+- **The Wave 4 implementer agents wrote most of the fail-open paths above, and each ticket's own tests passed before review.** The `--no-renames` gap is the exception: it was older, since `feature-build`'s drift guard had the same root cause. Most of these paths treat a missing or untrusted answer as harmless. The independent reviewers found them by asking "what if this agent returns nothing, or lies?"
 - **The controller's own handoff had gaps.** At the session stop, one implementer report had never been read and two reviews had no recorded result. The ledger says so plainly, and the next session collected them before merging anything.
-- **Three wrong claims were caught while writing these docs (W4-5):**
-  - The brief said no workflow had run on the live Workflow runtime. In fact `feature-build` and `qa` ran live in the W2-2 dry run. Only the four Wave 4 workflows are fake-runtime-only.
+- **Five corrections came out of checking the docs against the code (W4-5):**
+  - The live-runtime limit needed a finer statement. An earlier version of `feature-build` and `qa` ran live in the W2-2 dry run. Five later commits changed those workflows or their gate, and every one of them is unit-tested only: `6316f15`, `ae9c8fc`, `3485e8c`, `d37f0a8` and `fd7f0a6`. No live re-run was performed. The four Wave 4 workflows have only ever run on the fake runtime.
   - The W4-2 fix made a missing verdict fail closed only inside `pr-review`. `feature-build` and `qa` still drop a non-security `high` finding when the verifier crashes. This is recorded as open, not fixed here (outside this ticket's files).
-  - `build-error-resolver` is described as the retry fixer, but no workflow dispatches it. The Wave 3 ledger also says "14 new agent files" where there were 12 (the agent count went from 14 to 26).
+  - `build-error-resolver` is described as the retry fixer, but no workflow dispatches it.
+  - The Wave 3 ledger says "14 new agent files" where there were 12 (the agent count went from 14 to 26).
+  - My own first draft of `docs/ai-system.md` said a failed reviewer is "never silently dropped". `feature-build` does drop a failed task-level reviewer, only logging it. I corrected this in `22790de` and recorded it as open.
 - **Who decided what:**
   - **The owner decided:**
     - in the spec (§13): the merge model (agent-reviewed, gate-enforced), security as a first-class gate, and maximum reuse of ECC
     - in the W2-2 dry run: keep the plan's `maskPan` throw, defer the `qa` plan-text gap, and accept unit-harness validation instead of a live re-run
-    - on 26 Oct: proceed with Wave 3 rather than pivot to product work, and fix the `qa.proposals` fencing gap
+    - on 24 Oct: fix the `qa.proposals` fencing gap (`20ab88f`)
+    - on 26 Oct: proceed with Wave 3 rather than pivot to product work
     - Wave 5's push, Sonar, branch protection and board are owner actions.
   - **The controller session (Claude) decided** every "Ruling W4-…" in the ledger. Each has a stated cost if wrong. Examples: keep only blocking findings verified in `pr-review` (W4-2e), accept the `--close` design (W4-3b), and leave `/retro` with no data until `journal-writer` emits an `## Agent stats` table (W4-4a).
   - The Wave 4 ledger records no question put to the owner during the wave.
@@ -80,8 +95,8 @@ Every ticket needed at least one fix round. The serious findings share one shape
 ## What I learned
 
 - **Every gate needs a test for the "agent returned nothing" case.** It is the most common way these gates failed open. A shared policy can't decide it alone: whether "unsure" and "absent" mean the same thing depends on the gate.
-- **Give security-sensitive orchestration an opus review that is weighted towards security.** The two opus-reviewed tickets (W4-2, W4-3) produced four of the five findings marked Important listed above.
-- **Docs for judges should be written from `ls` and the code, not from the brief.** The brief overstated one limit and didn't mention another.
+- **Give security-sensitive orchestration an opus review that is weighted towards security.** By the ledger's count, the opus reviews raised 2 Important findings on W4-2 and 7 on W4-3, plus 1 more in W4-3's re-review. The sonnet reviews raised 1 on W4-1 and 3 on W4-4.
+- **Docs for judges should be written from `ls` and the code, and then reviewed for accuracy.** Each pass here found a statement that needed narrowing, my own drafts included.
 
 ## Time spent
 
