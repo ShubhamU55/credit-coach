@@ -58,6 +58,7 @@
   - (a) `apps/mobile/.maestro/config.yaml|yml` is not on `bugfix`'s `isProtectedPath` list, so an analyst-steered `fixFiles` could exclude the pinned Maestro flow.
   - (b) A `protected-fix-file` rejection doesn't name the file. `bugfix.md`'s `failed` row gives no route, and `bug-analyst.md`'s Stop rules don't say to return `blocked` with the file named.
 - **A missing verifier verdict fails closed only in `pr-review` (found while writing W4-5's docs).** `feature-build` and `qa` pass a null verdict (verifier crashed) to `applyVerifierPolicy`, which refutes a non-security `high` finding. So a crashed verifier silently drops it. Decide whether to apply `pr-review`'s rule in the workflow bodies (not in the contracts block).
+- **`feature-build` drops a failed task-level reviewer silently (found while writing W4-5's docs).** A null or non-`done` reviewer result is only `log()`ged, and its findings are lost. There is no `failedReviewers` field, unlike `qa`'s `failedTesters` and `pr-review`'s `failedLenses`. Also, if the task's `gateDiff` fails, the reviewers get an empty diff. Spec §8.3 says a drop must be logged (it is), but nothing reaches the result or the ledger.
 - **`build-error-resolver` is not wired up.** No workflow dispatches it (`feature-build.workflow.js` says so), although `/build` and `CLAUDE.md` name it.
 - **Spec and owner calls carried from Wave 3:**
   - `integration-tester` is never dispatched on a mobile-only diff.

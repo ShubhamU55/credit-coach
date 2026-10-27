@@ -61,8 +61,10 @@ for byte. `workflows-sync.test.mjs` fails `pnpm verify` on any difference.
 - **Retry and escalation (spec §8.3).** `nextStep` allows at most 2 retries. Each retry's brief
   carries the exact failure reasons. A null agent result counts as a failed attempt. After the third
   failure the task escalates, and the owner chooses: re-split the task, switch the agent or model, or
-  decide. Testers and reviewers don't retry; a failed one is reported in `failedTesters` /
-  `failedLenses`, never silently dropped.
+  decide. Testers and reviewers don't retry. In `qa` and `pr-review` a failed one is reported in
+  `failedTesters` / `failedLenses`, and a failed lens forces `request-changes`. In `feature-build`
+  a failed task-level reviewer is only logged and its findings are lost; this is open (see
+  `docs/status.md`).
 - **Verifier policy (spec §14.4).** `applyVerifierPolicy`: a `security` or `critical` finding stays
   confirmed unless `finding-verifier` refutes it with confidence ≥ 0.8. Any other finding is refuted
   unless it is confirmed with confidence ≥ 0.8. Only confirmed findings reach a fix pass. Two
