@@ -2,6 +2,27 @@
 
 > Read this first when starting a new session. Update it at the end of every session (newest entry on top).
 
+## 2026-10-27 (later: Wave 5 W5-1 done — pushed, CI green, `main` protected; W5-2 board still open)
+
+Newest entry. The entry below it describes the state before the first push; where they differ, this one wins.
+
+### State at handoff
+
+- **`origin/main` is at `2df6656`** (plus whatever this docs PR adds once the owner merges it). The repo `ShubhamU55/credit-coach` is public. CI and CodeQL are green on `2df6656`.
+- **Branch protection is on `main`:** required checks `verify`, `admin-e2e`, `secrets`, `deps`, `codeql`, `CodeQL`, `sonar`, `maestro-evidence`, `changes`, `hold-check`; non-strict; linear history; no force-push or deletion; `enforce_admins=true`. A direct push was rejected (`GH006`). Repo settings: squash-only, auto-merge allowed, branches deleted on merge. Full commands and outputs: `docs/agent-runs/2026-10-23-branch-protection.md`.
+- **The first CI run was red and is fixed:** a high zod advisory (PR #1, an override in `pnpm-workspace.yaml`) and three config-protection tests that only fail on a case-sensitive filesystem (PR #2, a real gap in the hook on Linux). Both merged by the owner as `ShubhamU55`.
+- **Sonar works:** `SONAR_TOKEN` and `SONAR_REQUIRED=true` are set, the scan runs with `sonar.qualitygate.wait=true`. `SonarCloud Code Analysis` is the quality-gate decoration, not a duplicate.
+- **First live `/pr-review`** ran on a throwaway PR (#3, closed unmerged): 7 agents, no errors, clean verdict, review and `pr-review` status posted. See the ledger and ADR 0003.
+
+### Decisions and open items
+
+- **`pr-review` is deliberately NOT a required check.** The harness flagged the run as self-approval: author, reviewer and status creator are all `ShubhamU55`, so G8 is self-attested and advisory. Making it independent needs a separate identity for `pr-reviewer` (second account or GitHub App). Not done. With `enforce_admins=true` the owner's override for any stuck PR is to toggle it off temporarily and record that.
+- **Auto-merge has never been exercised** (`gh pr merge --auto --squash`). The harness declined an agent-run merge, so the owner merges PRs as `ShubhamU55`: `$env:GH_TOKEN = gh auth token --user ShubhamU55; gh pr merge <n> --repo ShubhamU55/credit-coach --squash --delete-branch; Remove-Item Env:GH_TOKEN`. The default `gh` account is the work account, which has no rights on this repo.
+- **W5-2 (Projects board) is not started.** The `ShubhamU55` token now has the `project` scope. `pm-sync` and the board field set (`Plan`/`Task #`/`Wave`/`Agent`/`Attempts` vs `owner`/`scope`/`merge_gate`/`handoff`) still need confirming against the real board.
+- **Fixed in this PR:** `/pr-review` step 4 now uses `origin/main` as the diff base (a stale local `main` made the first live run review already-merged changes).
+- **Still open from earlier entries:** the screenshot-commit-before-fix-pass gap (first mobile `/build` with an emulator), the `## Agent stats` table `journal-writer` should emit for `/retro`, the null-verdict asymmetry in `feature-build`/`qa`, the three never-live Wave 4 workflows (`feature-analyze`, `bugfix`, `retro`), the Maestro `config.yaml` protected-path gap in `bugfix`, and the owner's unmerged `chore/ai-setup-*` branches (their `/retro`, `/qa`, `/build` bullets were found wrong in W4-5).
+- **Owner actions left:** none required for W5-1. Optional: give `pr-reviewer` its own identity; decide whether `.design/` and `ai-audit/` are committed or ignored.
+
 ## 2026-10-27 (Plan 1c Waves 3 and 4 done; W4-5 judge docs; Wave 5 is next and owner-gated)
 
 ### State at handoff
