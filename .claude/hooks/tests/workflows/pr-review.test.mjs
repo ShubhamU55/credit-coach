@@ -791,3 +791,222 @@ describe("runtime: 'end-of-plan' mode", () => {
     ).rejects.toThrow(/headSha/);
   });
 });
+describe('fix round 1 (W4-2b): a missing verifier verdict never refutes a blocking finding', () => {
+  const lensEntry = (findings) => ({
+    lens: 'correctness',
+    agents: [{ agentType: 'typescript-reviewer', result: envelope(findings) }],
+  });
+
+  it('keeps a non-security high finding confirmed when its verdict is null, and requests changes', () => {
+    const out = summarizePrReview([lensEntry([highFinding()])], [null], 1);
+    expect(out.confirmed.map((f) => f.id)).toEqual(['h1']);
+    expect(out.verdict).toBe('request-changes');
+    expect(out.counts).toMatchObject({
+      confirmed: 1,
+      refuted: 0,
+      unverified: 1,
+    });
+  });
+
+  it('keeps it confirmed when the verdicts array is shorter than the blocking list', () => {
+    const out = summarizePrReview([lensEntry([highFinding()])], [], 1);
+    expect(out.verdict).toBe('request-changes');
+    expect(out.counts.unverified).toBe(1);
+  });
+
+  it('still refutes it on a present but low-confidence verdict, and counts nothing unverified', () => {
+    const out = summarizePrReview(
+      [lensEntry([highFinding()])],
+      [{ isReal: true, confidence: 0.4, reasoning: 'maybe' }],
+      1,
+    );
+    expect(out.verdict).toBe('approve');
+    expect(out.counts).toMatchObject({
+      confirmed: 0,
+      refuted: 1,
+      unverified: 0,
+    });
+  });
+
+  it.each([
+    ['returns null', () => null],
+    [
+      'throws',
+      () => {
+        throw new Error('verifier down');
+      },
+    ],
+  ])(
+    'runtime: a non-security high finding stays blocking when finding-verifier %s',
+    async (_n, verifier) => {
+      const { result, calls } = await runWorkflow(workflowPath, {
+        args: baseArgs(),
+        dispatch: cleanDispatch({
+          'typescript-reviewer': envelope([highFinding()]),
+          'finding-verifier': verifier,
+        }),
+      });
+      expect(result.verdict).toBe('request-changes');
+      expect(result.confirmed.map((f) => f.id)).toEqual(['h1']);
+      expect(calls.find((c) => c.agentType === 'pr-reviewer').prompt).toContain(
+        'verdict: request-changes',
+      );
+    },
+  );
+});
+
+describe('fix round 1 (W4-2c): end-of-plan verifier cannot overrule a reviewer', () => {
+  const endArgs = (overrides = {}) => ({
+    mode: 'end-of-plan',
+    diff: 'diff --git a/x b/x\n+plan diff',
+    changedFiles: ['.claude/workflows/a.workflow.js'],
+    specPaths: ['docs/superpowers/plans/p.md'],
+    round: 1,
+    ...overrides,
+  });
+
+  it.each([
+    ['a low-confidence verdict', () => ({ isReal: true, confidence: 0.3, reasoning: 'unsure' })],
+    ['a confident refutation', () => ({ isReal: false, confidence: 0.99, reasoning: 'no' })],
+    ['a null verdict', () => null],
+    [
+      'a thrown verifier',
+      () => {
+        throw new Error('down');
+      },
+    ],
+  ])(
+    'is NOT passed when a reviewer reports a high finding and the verifier gives %s',
+    async (_n, verifier) => {
+      const { result } = await runWorkflow(workflowPath, {
+        args: endArgs(),
+        dispatch: cleanDispatch({
+          'code-reviewer': envelope([highFinding()]),
+          'finding-verifier': verifier,
+        }),
+      });
+      expect(result.passed).toBe(false);
+      expect(result.verdict).toBe('request-changes');
+    },
+  );
+
+  it('escalates the failed result at round 2 even when the verifier refuted the finding', async () => {
+    const { result } = await runWorkflow(workflowPath, {
+      args: endArgs({ round: 2 }),
+      dispatch: cleanDispatch({
+        'code-reviewer': envelope([highFinding()]),
+        'finding-verifier': () => ({
+          isReal: false,
+          confidence: 0.99,
+          reasoning: 'no',
+        }),
+      }),
+    });
+    expect(result.passed).toBe(false);
+    expect(result.escalate).toBe(true);
+  });
+
+  it('still passes when reviewers report only medium findings', async () => {
+    const { result } = await runWorkflow(workflowPath, {
+      args: endArgs(),
+      dispatch: cleanDispatch({ 'code-reviewer': envelope([mediumFinding()]) }),
+    });
+    expect(result.passed).toBe(true);
+  });
+});
+
+describe('fix round 1 (W4-2d): quoted paths, base sha, honest reviewer outcome', () => {
+  it('sees a mobile file git quoted with core.quotePath (octal escapes) as a mobile change', () => {
+    expect(lensesFor(['"apps/mobile/caf\\303\\251.tsx"'], 'pr')).toContain('ui');
+  });
+
+  it('puts a valid base sha in the lens prompt, and omits an invalid one', () => {
+    const ctx = {
+      mode: 'pr',
+      headSha: SHA,
+      base: 'b'.repeat(40),
+      round: 1,
+      diff: 'd',
+      changedFiles: [],
+      specPaths: ['docs/PRD.md'],
+    };
+    expect(lensPrompt('test-adequacy', 'pr-test-analyzer', ctx)).toContain(
+      `Base: ${'b'.repeat(40)}`,
+    );
+    expect(
+      lensPrompt('test-adequacy', 'pr-test-analyzer', {
+        ...ctx,
+        base: '$(id)',
+      }),
+    ).toContain('Base: (not supplied)');
+  });
+
+  it('threads args.base into the lens prompts, and rejects a malformed base before any agent runs', async () => {
+    const base = 'c'.repeat(40);
+    const { calls } = await runWorkflow(workflowPath, {
+      args: baseArgs({ base }),
+      dispatch: cleanDispatch(),
+    });
+    const analyzer = calls.find((c) => c.agentType === 'pr-test-analyzer');
+    expect(analyzer.prompt).toContain(`Base: ${base}`);
+    const dispatched = [];
+    await expect(
+      runWorkflow(workflowPath, {
+        args: baseArgs({ base: 'main; id' }),
+        dispatch: (p, o) => {
+          dispatched.push(o.agentType);
+          return envelope();
+        },
+      }),
+    ).rejects.toThrow(/base/);
+    expect(dispatched).toEqual([]);
+  });
+
+  it("is 'unknown', not false, when an escalated round comes back blocked with the right verdict", () => {
+    const out = reviewerOutcome(
+      {
+        status: 'blocked',
+        blockedReason: 'escalate to the owner',
+        verdict: 'request-changes',
+      },
+      'request-changes',
+      true,
+    );
+    expect(out.posted).toBe('unknown');
+    expect(out.blockedReason).toBe('escalate to the owner');
+  });
+
+  it('stays false for a blocked reply when the round was not an escalation', () => {
+    const out = reviewerOutcome(
+      {
+        status: 'blocked',
+        blockedReason: 'bad pr',
+        verdict: 'request-changes',
+      },
+      'request-changes',
+      false,
+    );
+    expect(out.posted).toBe(false);
+  });
+
+  it('stays false for an escalated blocked reply echoing a different verdict', () => {
+    const out = reviewerOutcome({ status: 'blocked', verdict: 'approve' }, 'request-changes', true);
+    expect(out.posted).toBe(false);
+  });
+
+  it('runtime: an escalated round whose pr-reviewer comes back blocked reports posted: unknown', async () => {
+    const { result } = await runWorkflow(workflowPath, {
+      args: baseArgs({ round: 2 }),
+      dispatch: cleanDispatch({
+        'typescript-reviewer': envelope([highFinding()]),
+        'pr-reviewer': {
+          ...envelope([], { verdict: 'request-changes' }),
+          status: 'blocked',
+          blockedReason: 'two rounds reached; escalate to the owner',
+        },
+      }),
+    });
+    expect(result.escalate).toBe(true);
+    expect(result.reviewer.posted).toBe('unknown');
+  });
+});

@@ -539,9 +539,15 @@ const ESCALATE_FROM_ROUND = 2;
 const END_OF_PLAN_MAX_ROUNDS = 2;
 const HEAD_SHA_PATTERN = /^[0-9a-f]{40}$/;
 
-/** True when some changed path (backslashes normalized) starts with `prefix`. */
+/**
+ * True when some changed path (backslashes normalized) starts with `prefix`. A leading double quote
+ * is dropped first: `git diff --name-only` wraps a path with non-ASCII characters in quotes (under
+ * core.quotePath), and a mobile file named that way must not skip the `ui` lens.
+ */
 function anyUnder(changedFiles, prefix) {
-  return toList(changedFiles).some((file) => normalizePath(file).startsWith(prefix));
+  return toList(changedFiles).some((file) =>
+    normalizePath(file).replace(/^"/, '').startsWith(prefix),
+  );
 }
 
 /**
@@ -630,10 +636,14 @@ function summarizePrReview(entries, verdicts, round) {
   const { failedLenses, rawFindings, uniqueFindings, blocking, advisory } =
     collectLensFindings(entries);
   const verdictList = toList(verdicts);
+  // A null or missing verdict means the verifier never answered (agent error, absent, truncated
+  // list). That is NOT the same as a verifier that answered with low confidence (§14.4's "unsure ->
+  // refute"): with no answer, a blocking finding stays confirmed (fail closed, Review Focus #2).
+  const verdictAt = (index) => (index < verdictList.length ? verdictList[index] : null);
+  const unverified = blocking.filter((finding, index) => verdictAt(index) == null);
   const confirmed = blocking.filter(
     (finding, index) =>
-      applyVerifierPolicy(finding, index < verdictList.length ? verdictList[index] : null) ===
-      'confirmed',
+      verdictAt(index) == null || applyVerifierPolicy(finding, verdictAt(index)) === 'confirmed',
   );
   const { verdict, escalate } = prVerdict(confirmed, failedLenses, round);
   return {
@@ -642,6 +652,7 @@ function summarizePrReview(entries, verdicts, round) {
     confirmed,
     advisory,
     refuted: blocking.length - confirmed.length,
+    unverifiedIds: unverified.map((finding) => finding.id),
     failedLenses,
     lenses: toList(entries).map((entry) => ({
       lens: (entry || {}).lens,
@@ -657,18 +668,39 @@ function summarizePrReview(entries, verdicts, round) {
       blocking: blocking.length,
       confirmed: confirmed.length,
       refuted: blocking.length - confirmed.length,
+      unverified: unverified.length,
       advisory: advisory.length,
     },
   };
 }
 
 /**
- * What came back from pr-reviewer. `posted` is true only for a "done" reply that echoes the exact
- * verdict we sent; a null, blocked or mismatched reply is NOT posted. An escalated round 2 may
- * legitimately come back "blocked" after posting (pr-reviewer's own Stop rule 11), so the caller
- * must read `blockedReason`/GitHub rather than assume nothing posted.
+ * 'end-of-plan' result. Both reviewers must PASS: nothing here lets the verifier overrule a
+ * reviewer, so ANY critical/high finding a reviewer returned (or any reviewer that failed to run)
+ * is "not passed", whatever the verifier said. The verifier still annotates (`confirmed`,
+ * `refuted`, `counts`), which tells the fix pass what is probably real; it just cannot turn a
+ * reviewer's blocker into a pass. The verdict/escalate pair is recomputed on the raw blockers.
  */
-function reviewerOutcome(reply, verdict) {
+function summarizeEndOfPlan(entries, verdicts, round) {
+  const review = summarizePrReview(entries, verdicts, round);
+  const { failedLenses, blocking } = collectLensFindings(entries);
+  const gate = prVerdict(blocking, failedLenses, round);
+  return {
+    ...review,
+    verdict: gate.verdict,
+    escalate: gate.escalate,
+    passed: gate.verdict === 'approve',
+  };
+}
+
+/**
+ * What came back from pr-reviewer. `posted` is tri-state: true for a "done" reply that echoes the
+ * exact verdict we sent; false for a null, mismatched or otherwise blocked reply; and 'unknown'
+ * for a "blocked" reply with the right verdict on an escalated round, because pr-reviewer's own
+ * Stop rule 11 returns "blocked" AFTER both posts succeed -- the caller must read `blockedReason`
+ * and check the PR on GitHub rather than assume either way.
+ */
+function reviewerOutcome(reply, verdict, escalate = false) {
   if (reply == null) {
     return {
       dispatched: true,
@@ -678,9 +710,10 @@ function reviewerOutcome(reply, verdict) {
     };
   }
   const verdictMatches = reply.verdict === verdict;
+  const escalatedBlock = reply.status === 'blocked' && escalate === true && verdictMatches;
   return {
     dispatched: true,
-    posted: reply.status === 'done' && verdictMatches,
+    posted: escalatedBlock ? 'unknown' : reply.status === 'done' && verdictMatches,
     status: reply.status,
     verdictMatches,
     ...(typeof reply.summary === 'string' ? { summary: reply.summary } : {}),
@@ -720,6 +753,7 @@ function lensPrompt(lens, agentType, ctx) {
       : [];
   return [
     `You are ${agentType} reviewing under the "${lens}" lens of the "pr-review" workflow (mode: ${ctx.mode}, round ${Number.isInteger(ctx.round) ? ctx.round : 'unknown'}).`,
+    `Base: ${isValidHeadSha(ctx.base) ? ctx.base : '(not supplied)'}`,
     `Head: ${isValidHeadSha(ctx.headSha) ? ctx.headSha : '(not supplied)'}`,
     '',
     LENS_FOCUS[lens],
@@ -799,7 +833,9 @@ function prReviewerPrompt(brief) {
 //
 // Caller contract -- pass `args`:
 //   { pr: number, headSha: string, diff: string, changedFiles: string[], specPaths: string[],
-//     round: number, previousFindings?: Finding[], mode?: 'pr' | 'end-of-plan' }
+//     round: number, previousFindings?: Finding[], base?: string, mode?: 'pr' | 'end-of-plan' }
+// - `base` (optional, 40 lowercase hex) is the merge-base sha; it goes into every lens prompt
+//   because pr-test-analyzer's Inputs require base/head shas. Shape-checked when given.
 // - `pr` (positive integer) and `headSha` (40 lowercase hex) are REQUIRED and shape-checked in
 //   'pr' mode, before any agent runs, because they reach pr-reviewer, the agent holding the
 //   merge-gate GitHub token. In 'end-of-plan' mode there is no PR: both are optional, but still
@@ -905,11 +941,16 @@ if ((mode === 'pr' || input.pr != null) && !isValidPr(input.pr)) {
 if ((mode === 'pr' || input.headSha != null) && !isValidHeadSha(input.headSha)) {
   throw invalid('args.headSha must be 40 lowercase hex characters');
 }
+// base (the merge-base sha) is optional -- pr-test-analyzer wants it -- but shape-checked when given.
+if (input.base != null && !isValidHeadSha(input.base)) {
+  throw invalid('args.base must be 40 lowercase hex characters');
+}
 
 const lenses = lensesFor(input.changedFiles, mode);
 const ctx = {
   mode,
   headSha: input.headSha,
+  base: input.base,
   round: input.round,
   diff: input.diff,
   changedFiles: input.changedFiles,
@@ -939,14 +980,17 @@ const verdicts = await parallel(
   }),
 );
 
-const review = summarizePrReview(entries, verdicts, input.round);
+const review =
+  mode === 'end-of-plan'
+    ? summarizeEndOfPlan(entries, verdicts, input.round)
+    : summarizePrReview(entries, verdicts, input.round);
 log(
   `pr-review: ${review.counts.unique} unique finding(s), ${review.counts.blocking} blocking, ${review.counts.confirmed} confirmed, ${review.failedLenses.length} failed lens(es) -> ${review.verdict}${review.escalate ? ' (escalate)' : ''}`,
 );
 
 if (mode === 'end-of-plan') {
   // Ruling W4-2a: no PR exists, so pr-reviewer is never dispatched; the verdict goes back to the caller.
-  return { mode, round: input.round, passed: review.verdict === 'approve', ...review };
+  return { mode, round: input.round, ...review };
 }
 
 let reply = null;
@@ -968,4 +1012,9 @@ try {
     `pr-review: pr-reviewer errored -- review NOT posted: ${String((error && error.message) || error)}`,
   );
 }
-return { mode, round: input.round, ...review, reviewer: reviewerOutcome(reply, review.verdict) };
+return {
+  mode,
+  round: input.round,
+  ...review,
+  reviewer: reviewerOutcome(reply, review.verdict, review.escalate),
+};
