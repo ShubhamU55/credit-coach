@@ -18,10 +18,15 @@ Do the steps in order and don't skip any.
 
    `prdSection` is the section id or heading only, never the section's text: the agents read
    `docs/PRD.md` themselves. The result is an analysis brief:
-   `{ status, criteria, invariants, risks, kitComponents, openQuestions, outOfScope, failedAgents }`.
+   `{ status, criteria, invariants, risks, kitComponents, openQuestions, outOfScope, failedAgents, analystSummary }`.
 
    - `status: 'failed'`: the criteria are mandatory. **Stop here**: tell the owner which agent in
      `failedAgents` failed, show any `risks`, and do not write a plan from a failed brief.
+   - `status: 'empty'`: `requirements-analyst` succeeded but found no behaviour to specify in this
+     section (for example a purely introductory one). **This is not an agent failure.** Stop here:
+     tell the owner "nothing to specify in `$ARGUMENTS`", quote `analystSummary`, and show the
+     `openQuestions` and `outOfScope` it returned (and name any `failedAgents`, which can still be
+     set). Ask which section to analyze instead; do not write a plan.
    - `status: 'degraded'`: the brief is usable but a checker did not run. Name every entry of
      `failedAgents` in your summary to the owner and say which checks (domain facts F1–F7 or
      design) were not done, before planning on it.
