@@ -97,6 +97,72 @@ describe('.github/workflows/ci.yml', () => {
   );
 });
 
+describe('third-party actions are pinned to a commit SHA', () => {
+  // `yaml` drops comments, so scan the raw text for `uses:` lines.
+  const FIRST_PARTY = /^(actions|github)\//;
+  for (const [name, relPath] of Object.entries(WORKFLOW_PATHS)) {
+    const lines = fs.readFileSync(path.join(repoRoot, relPath), 'utf8').split(/\r?\n/);
+    const thirdParty = lines
+      .map((line) => line.match(/^\s*(?:-\s+)?uses:\s*(\S+)(.*)$/))
+      .filter(Boolean)
+      .filter(([, ref]) => !FIRST_PARTY.test(ref) && !ref.startsWith('./'));
+
+    it(`${name}: every third-party uses: is @<40-hex sha> with a trailing # version comment`, () => {
+      for (const [line, ref, rest] of thirdParty) {
+        expect(ref, line).toMatch(/@[0-9a-f]{40}$/);
+        expect(rest, line).toMatch(/^\s+#\s*\S+/);
+      }
+    });
+  }
+
+  it('ci: the scan finds the third-party actions it is meant to pin', () => {
+    const text = fs.readFileSync(path.join(repoRoot, WORKFLOW_PATHS.ci), 'utf8');
+    for (const action of [
+      'dorny/paths-filter',
+      'pnpm/action-setup',
+      'gitleaks/gitleaks-action',
+      'SonarSource/sonarqube-scan-action',
+      'google/osv-scanner-action/osv-scanner-action',
+    ]) {
+      expect(text).toContain(action);
+    }
+  });
+});
+
+describe('ci.yml hardening', () => {
+  let ci;
+  beforeAll(() => {
+    ci = readWorkflow(WORKFLOW_PATHS.ci);
+  });
+
+  it('deps installs with --ignore-scripts so a dependency install script never runs', () => {
+    const installSteps = ci.jobs.deps.steps.filter((step) => /pnpm install/.test(step.run ?? ''));
+    expect(installSteps).toHaveLength(1);
+    expect(installSteps[0].run).toContain('--ignore-scripts');
+  });
+
+  it("sonar fails when SONAR_REQUIRED is 'true' and the token is absent", () => {
+    const failStep = ci.jobs.sonar.steps.find(
+      (step) => /exit 1/.test(step.run ?? '') && /vars\.SONAR_REQUIRED/.test(ifText(step.if)),
+    );
+    expect(failStep).toBeDefined();
+    expect(ifText(failStep.if)).toContain("vars.SONAR_REQUIRED == 'true'");
+    expect(ifText(failStep.if)).toContain("env.HAS_SONAR != 'true'");
+  });
+
+  it('sonar still skips (warning, no failure) when not required and no token', () => {
+    const skipStep = ci.jobs.sonar.steps.find((step) => /Sonar skipped/.test(step.run ?? ''));
+    expect(skipStep).toBeDefined();
+    expect(skipStep.run).not.toMatch(/exit 1/);
+    expect(ifText(skipStep.if)).toContain("env.HAS_SONAR != 'true'");
+    expect(ifText(skipStep.if)).toContain("vars.SONAR_REQUIRED != 'true'");
+  });
+
+  it('sonar keeps its job id and name', () => {
+    expect(ci.jobs.sonar.name).toBe('sonar');
+  });
+});
+
 describe('.github/workflows/hold.yml', () => {
   let hold;
   beforeAll(() => {
