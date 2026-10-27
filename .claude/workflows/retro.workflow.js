@@ -659,10 +659,23 @@ function hasText(value) {
   return typeof value === 'string' && value.trim() !== '';
 }
 
-/** True when the unified diff names `target` in every file header, and in at least two. */
+// Git extended-header and patch-body lines that change a path, a mode or a binary: none of them
+// carry a `---`/`+++` header, so a diff may not contain any of them.
+const FORBIDDEN_DIFF_LINE =
+  /^(rename |copy |old mode |new mode |new file mode |deleted file mode |GIT binary patch|Binary files )/;
+const GIT_DIFF_LINE = /^diff --git a\/(.+) b\/(.+)$/;
+
+/**
+ * True when the unified diff can only change `target`: no rename/copy/mode/new-file/delete/binary
+ * line, every `diff --git` line names `target` on both sides, and every `---`/`+++` header names
+ * `target` (at least two headers).
+ */
 function diffTouchesOnly(diff, target) {
-  const headers = diff
-    .split(/\r?\n/)
+  const lines = diff.split(/\r?\n/);
+  if (lines.some((line) => FORBIDDEN_DIFF_LINE.test(line))) return false;
+  const gitSections = lines.map((line) => line.match(GIT_DIFF_LINE)).filter((m) => m !== null);
+  if (gitSections.some((m) => m[1] !== target || m[2] !== target)) return false;
+  const headers = lines
     .filter((line) => /^(---|\+\+\+) /.test(line))
     .map((line) =>
       line

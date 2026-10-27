@@ -103,8 +103,6 @@ const LEDGER_B = `${LEDGER_FRONT_MATTER}
 | consistency-reviewer   | 0           | 1    | 0       | 1       | 0         |
 `;
 
-const REAL_LEDGER_DIR = path.join(repoRoot, 'docs/agent-runs');
-
 describe('agentStats', () => {
   it('sums runs, retries and escalations across two ledgers and derives the false-positive rate', () => {
     expect(agentStats([LEDGER_A, LEDGER_B])).toEqual({
@@ -170,14 +168,10 @@ describe('ledgerDiagnostics', () => {
     });
   });
 
-  it('the real ledgers in docs/agent-runs carry no per-agent table today: {} stats, all without stats', () => {
-    const real = fs
-      .readdirSync(REAL_LEDGER_DIR)
-      .filter((name) => name.endsWith('.md'))
-      .map((name) => fs.readFileSync(path.join(REAL_LEDGER_DIR, name), 'utf8'));
-    expect(real.length).toBeGreaterThan(0);
-    expect(agentStats(real)).toEqual({});
-    expect(ledgerDiagnostics(real).withoutStats).toBe(real.length);
+  it('a prose-only ledger (real attempts and findings tables, no Agent stats table) reads as {} and without stats', () => {
+    const prose = `${LEDGER_FRONT_MATTER}\n${ATTEMPTS_TABLE}\n${FINDINGS_TABLE}`;
+    expect(agentStats([prose])).toEqual({});
+    expect(ledgerDiagnostics([prose])).toEqual({ total: 1, withoutStats: 1, malformedRows: 0 });
   });
 });
 
@@ -219,6 +213,18 @@ describe('normalizeProposal', () => {
     evidence: [],
     findings: [],
     ...extra,
+  });
+
+  it('accepts a plain `git diff` section whose diff --git paths are the target', () => {
+    const gitDiff = [
+      'diff --git a/.claude/agents/implementer.md b/.claude/agents/implementer.md',
+      'index 1111111..2222222 100644',
+      diff,
+    ].join('\n');
+    expect(
+      normalizeProposal('implementer', done({ verdict: 'Save', rationale: 'r', diff: gitDiff }))
+        .diff,
+    ).toBe(gitDiff);
   });
 
   it('accepts each learn-eval verdict with the fields it needs and pins the target path', () => {
@@ -266,6 +272,41 @@ describe('normalizeProposal', () => {
         diff: diff.replace(/implementer\.md/g, '../settings.json'),
       }),
     ],
+    [
+      'a rename section smuggled in before a valid target hunk',
+      done({
+        verdict: 'Save',
+        rationale: 'r',
+        diff: [
+          'diff --git a/settings.json b/pwned.json',
+          'similarity index 100%',
+          'rename from settings.json',
+          'rename to pwned.json',
+          diff,
+        ].join('\n'),
+      }),
+    ],
+    [
+      'a diff --git section whose paths differ from the target',
+      done({
+        verdict: 'Save',
+        rationale: 'r',
+        diff: `diff --git a/settings.json b/settings.json\n${diff}`,
+      }),
+    ],
+    ...[
+      'new file mode 100644',
+      'deleted file mode 100644',
+      'old mode 100644',
+      'new mode 100755',
+      'copy from x',
+      'copy to y',
+      'GIT binary patch',
+      'Binary files a/x and b/x differ',
+    ].map((line) => [
+      `a diff containing "${line}"`,
+      done({ verdict: 'Save', rationale: 'r', diff: `${diff}\n${line}` }),
+    ]),
     ['a diff with no file headers', done({ verdict: 'Save', rationale: 'r', diff: '-old\n+new' })],
   ])('rejects %s as null', (_name, result) => {
     expect(normalizeProposal('implementer', result)).toBeNull();

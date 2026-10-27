@@ -155,6 +155,10 @@ function buildReport(repoRoot, options, nowMs) {
   if (list.status !== 0) {
     throw new Error(`git worktree list failed: ${list.stderr.trim() || `exit ${list.status}`}`);
   }
+  const baseRef = `refs/heads/${options.baseBranch}`;
+  if (git(repoRoot, ['rev-parse', '--verify', '--quiet', `${baseRef}^{commit}`]).status !== 0) {
+    throw new Error(`base branch not found: ${options.baseBranch}`);
+  }
   const worktrees = parseWorktreeList(list.stdout)
     .filter((worktree) => worktree.branch === null || isSafeRef(worktree.branch))
     .map((worktree) => inspectWorktree(repoRoot, worktree, options, nowMs));
@@ -163,7 +167,12 @@ function buildReport(repoRoot, options, nowMs) {
   const unmerged = worktrees.filter(
     (w) => w.branch && (w.state === 'active' || w.state === 'stale'),
   );
-  const base = `refs/heads/${options.baseBranch}`;
+  const base = baseRef;
+  // Anything that is neither the base nor predicted (no branch, or git facts unavailable) must be
+  // named, so "no conflicts" never means "nothing was checked".
+  const notChecked = worktrees
+    .filter((w) => w.state === 'unknown' || w.state === 'detached')
+    .map((w) => ({ path: w.path, branch: w.branch, state: w.state }));
   const againstBase = unmerged.map((w) => ({
     branch: w.branch,
     ...predictConflict(repoRoot, base, `refs/heads/${w.branch}`),
@@ -183,6 +192,7 @@ function buildReport(repoRoot, options, nowMs) {
     conflicts: {
       againstBase: againstBase.filter((c) => c.outcome !== 'clean'),
       between: between.filter((c) => c.outcome !== 'clean'),
+      notChecked,
     },
   };
 }
@@ -198,12 +208,19 @@ function formatReport(report) {
     );
   }
   lines.push('', 'Predicted conflicts');
-  const { againstBase, between } = report.conflicts;
-  if (againstBase.length + between.length === 0) lines.push('  none');
+  const { againstBase, between, notChecked } = report.conflicts;
+  if (againstBase.length + between.length === 0) {
+    lines.push(
+      notChecked.length === 0 ? '  none' : '  none among the branches that could be checked',
+    );
+  }
   for (const c of againstBase) {
     lines.push(`  ${c.branch} vs ${report.baseBranch}: ${describeOutcome(c)}`);
   }
   for (const c of between) lines.push(`  ${c.branches.join(' vs ')}: ${describeOutcome(c)}`);
+  for (const w of notChecked) {
+    lines.push(`  NOT CHECKED: ${w.branch || '(detached)'} is ${w.state} (${w.path})`);
+  }
   return lines.join('\n');
 }
 
