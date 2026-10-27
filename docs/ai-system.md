@@ -128,5 +128,6 @@ reads an `## Agent stats` ledger table that no ledger emits yet, so it has no da
 - Nothing is pushed yet. Branch protection, required checks, the Sonar gate and the Projects board
   are Wave 5 and need owner actions. G3 (API tests) arrives with Plan 3.
 - `build-error-resolver` exists, but no workflow dispatches it. Retries go back to `implementer`.
-- The shell hooks (`block-no-verify`, `pre-bash-commit-quality`) match only the `Bash` tool, not
-  `PowerShell`. `protect-env` and `config-protection` guard `Write`, `Edit` and `MultiEdit`.
+- The shell hooks (`block-no-verify`, `pre-bash-commit-quality`) match both `Bash` and `PowerShell`.
+  A PowerShell here-string commit message is blocked as unreadable. `protect-env` and
+  `config-protection` guard `Write`, `Edit` and `MultiEdit`, not an edit made through a shell tool.
