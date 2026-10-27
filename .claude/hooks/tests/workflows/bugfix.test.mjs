@@ -33,6 +33,10 @@ const {
   modifiedTests,
   closeVerifyBrief,
   pmSyncBrief,
+  isProtectedPath,
+  testCommandForFile,
+  evidenceOnlyReasons,
+  closeEvidenceReasons,
 } = loadBlocks(source, [
   'canFix',
   'fixTask',
@@ -50,6 +54,10 @@ const {
   'modifiedTests',
   'closeVerifyBrief',
   'pmSyncBrief',
+  'isProtectedPath',
+  'testCommandForFile',
+  'evidenceOnlyReasons',
+  'closeEvidenceReasons',
 ]);
 
 const ENGINE_TEST = 'pnpm --filter @credit-coach/engine test';
@@ -154,19 +162,90 @@ describe('canFix', () => {
         .reason,
     ).toBe('unsafe-test-file');
   });
+  it('rejects a fixFiles that contains the regression test (the implementer could weaken the pin)', () => {
+    expect(canFix(analysis({ fixFiles: [FIX_FILE, TEST_FILE] }))).toEqual({
+      ok: false,
+      reason: 'regression-test-in-fix-files',
+    });
+    expect(
+      canFix(analysis({ fixFiles: ['packages\\engine\\src\\utilization.regression.test.ts'] }))
+        .reason,
+    ).toBe('regression-test-in-fix-files');
+  });
+
+  it('rejects protected files that execute outside the test run or are invisible to the drift guard', () => {
+    const protectedFiles = [
+      '.git/hooks/pre-commit',
+      '.husky/pre-commit',
+      'package.json',
+      'packages/engine/package.json',
+      'pnpm-lock.yaml',
+      '.claude/hooks/protect-env.mjs',
+      '.claude/hooks/pre-bash-commit-quality.cjs',
+      '.claude/hooks/lib/shell-scan.cjs',
+      '.claude/settings.json',
+      '.claude/settings.local.json',
+      '.github/workflows/ci.yml',
+      '.GIT/config',
+    ];
+    for (const file of protectedFiles) {
+      expect(canFix(analysis({ fixFiles: [file] })).reason, file).toBe('protected-fix-file');
+    }
+  });
+
+  it('still allows agent, workflow and normal source fixes (.claude/** is not banned outright)', () => {
+    for (const file of [
+      '.claude/workflows/qa.workflow.js',
+      '.claude/agents/implementer.md',
+      '.claude/hooks/lib/plan-tasks.mjs',
+      '.claude/commands/qa.md',
+      'apps/mobile/src/a.tsx',
+    ]) {
+      expect(canFix(analysis({ fixFiles: [file] })).ok, file).toBe(true);
+    }
+  });
+
+  it('treats .env segments case-insensitively', () => {
+    expect(canFix(analysis({ fixFiles: ['apps/mobile/.ENV.local'] })).reason).toBe(
+      'unsafe-fix-file',
+    );
+  });
 });
 
-describe('isAllowedTestCommand', () => {
-  it('accepts every command feature-build maps a test file to', () => {
-    for (const command of [
-      'pnpm --filter @credit-coach/engine test',
-      'pnpm --filter @credit-coach/hooks test',
-      'pnpm --filter @credit-coach/admin test:e2e',
-      'pnpm --filter @credit-coach/mobile e2e',
-      'pnpm verify',
-    ]) {
-      expect(isAllowedTestCommand(command), command).toBe(true);
+describe('testCommandForFile / isAllowedTestCommand', () => {
+  const PAIRS = [
+    ['packages/engine/src/a.test.ts', 'pnpm --filter @credit-coach/engine test'],
+    ['.claude/hooks/tests/a.test.mjs', 'pnpm --filter @credit-coach/hooks test'],
+    ['apps/admin/e2e/a.spec.ts', 'pnpm --filter @credit-coach/admin test:e2e'],
+    ['apps/mobile/.maestro/a.yaml', 'pnpm --filter @credit-coach/mobile e2e'],
+  ];
+
+  it('maps each test file location to its one real workspace script', () => {
+    for (const [file, command] of PAIRS) {
+      expect(testCommandForFile(file), file).toBe(command);
+      expect(isAllowedTestCommand(command, file), file).toBe(true);
     }
+    expect(testCommandForFile('apps/mobile/src/a.test.ts')).toBeNull();
+  });
+
+  it('rejects a workspace/script pair that does not run this test file (a false RED or green)', () => {
+    const engineFile = 'packages/engine/src/a.test.ts';
+    for (const command of [
+      'pnpm --filter @credit-coach/engine e2e', // no such script: exits 1, would read as RED
+      'pnpm --filter @credit-coach/mobile test', // no such script, or a different suite
+      'pnpm --filter @credit-coach/hooks test', // real script, wrong workspace for this file
+      'pnpm --filter @credit-coach/admin test:e2e',
+      'pnpm verify',
+      'pnpm test',
+    ]) {
+      expect(isAllowedTestCommand(command, engineFile), command).toBe(false);
+    }
+    expect(
+      isAllowedTestCommand('pnpm --filter @credit-coach/engine test', 'apps/mobile/x.ts'),
+    ).toBe(false);
+    expect(canFix(analysis({ testCommand: 'pnpm --filter @credit-coach/engine e2e' })).reason).toBe(
+      'unsafe-test-command',
+    );
   });
 
   it('rejects any flag argument, so a runner option cannot load a file from elsewhere in the repo', () => {
@@ -177,7 +256,7 @@ describe('isAllowedTestCommand', () => {
       '../x.test.ts',
       '/etc/passwd',
     ]) {
-      expect(isAllowedTestCommand(`${ENGINE_TEST} ${extra}`), extra).toBe(false);
+      expect(isAllowedTestCommand(`${ENGINE_TEST} ${extra}`, TEST_FILE), extra).toBe(false);
     }
     expect(canFix(analysis({ testCommand: `${ENGINE_TEST} --config=../x.mjs` })).reason).toBe(
       'unsafe-test-command',
@@ -185,15 +264,15 @@ describe('isAllowedTestCommand', () => {
   });
 
   it('accepts plain path arguments but not shell metacharacters or non-string input', () => {
-    expect(isAllowedTestCommand(`${ENGINE_TEST} src/utilization.regression.test.ts`)).toBe(true);
-    expect(isAllowedTestCommand(`${ENGINE_TEST} "a b"`)).toBe(false);
-    expect(isAllowedTestCommand(`${ENGINE_TEST} --reporter=$HOME`)).toBe(false);
     expect(
-      isAllowedTestCommand(`${ENGINE_TEST} extra
-rm -rf .`),
-    ).toBe(false);
-    expect(isAllowedTestCommand(undefined)).toBe(false);
-    expect(isAllowedTestCommand(42)).toBe(false);
+      isAllowedTestCommand(`${ENGINE_TEST} src/utilization.regression.test.ts`, TEST_FILE),
+    ).toBe(true);
+    expect(isAllowedTestCommand(`${ENGINE_TEST} "a b"`, TEST_FILE)).toBe(false);
+    expect(isAllowedTestCommand(`${ENGINE_TEST} --reporter=$HOME`, TEST_FILE)).toBe(false);
+    expect(isAllowedTestCommand(`${ENGINE_TEST} extra\nrm -rf .`, TEST_FILE)).toBe(false);
+    expect(isAllowedTestCommand(undefined, TEST_FILE)).toBe(false);
+    expect(isAllowedTestCommand(42, TEST_FILE)).toBe(false);
+    expect(isAllowedTestCommand(ENGINE_TEST, undefined)).toBe(false);
   });
 });
 
@@ -340,6 +419,8 @@ describe('briefs', () => {
     expect(brief).toContain('#7');
     expect(brief).toContain('cannot-reproduce');
     expect(brief).not.toContain('SECURITY:');
+    expect(brief).toContain('@credit-coach/engine test');
+    expect(brief).toMatch(/fixFiles must not contain the regression test/);
   });
 
   it('redLandingBrief fences the proposal and requires the test to land RED, on HEAD, without product edits', () => {
@@ -481,11 +562,123 @@ describe('modifiedTests', () => {
     ).toHaveLength(1);
   });
 
-  it('is empty for a fix-only change, and when the analyst listed the test as a fix file', () => {
+  it('is empty for a fix-only change or missing facts', () => {
     expect(modifiedTests({ changedFiles: [FIX_FILE] }, task)).toEqual([]);
-    const listed = fixTask(analysis({ fixFiles: [FIX_FILE, TEST_FILE] }));
-    expect(modifiedTests({ changedFiles: [TEST_FILE] }, listed)).toEqual([]);
     expect(modifiedTests(undefined, task)).toEqual([]);
+  });
+
+  it('has no exemption: even a test listed in files is flagged (canFix rejects that analysis too)', () => {
+    const listed = fixTask(analysis({ fixFiles: [FIX_FILE, TEST_FILE] }));
+    expect(modifiedTests({ changedFiles: [TEST_FILE] }, listed)).toEqual([
+      `regression-test-modified: ${TEST_FILE}`,
+    ]);
+  });
+});
+
+describe('evidenceOnlyReasons (bug-analyst / bug-reporter may only commit under their evidence folder)', () => {
+  const start = 'a'.repeat(40);
+  const head = 'b'.repeat(40);
+  const evidenceFile = 'docs/test-reports/bugs/7/repro.txt';
+  const facts = (overrides = {}) => ({
+    head,
+    attemptStart: start,
+    changedFiles: [],
+    dirtyFiles: [],
+    missingFiles: [],
+    commits: [],
+    testCommand: null,
+    testExitCode: null,
+    verifyExitCode: 1,
+    ...overrides,
+  });
+  const withCommit = (files, message = 'docs(bugs): repro transcript') =>
+    facts({ changedFiles: files, commits: [{ sha: head, message }] });
+
+  it('passes when nothing was committed (no evidence file is fine) even if pnpm verify is red', () => {
+    expect(evidenceOnlyReasons(facts(), 7, start)).toEqual([]);
+  });
+
+  it('passes a commit confined to docs/test-reports/bugs/<N>/', () => {
+    expect(evidenceOnlyReasons(withCommit([evidenceFile]), 7, start)).toEqual([]);
+  });
+
+  it('flags a changed file outside the folder, another issue folder, or a product file', () => {
+    expect(evidenceOnlyReasons(withCommit([FIX_FILE]), 7, start)).toEqual([`drift: ${FIX_FILE}`]);
+    expect(evidenceOnlyReasons(withCommit(['docs/test-reports/bugs/8/x.txt']), 7, start)).toEqual([
+      'drift: docs/test-reports/bugs/8/x.txt',
+    ]);
+    expect(evidenceOnlyReasons(withCommit(['package.json']), 7, start)).toEqual([
+      'drift: package.json',
+    ]);
+  });
+
+  it('allows nothing at all when the issue number is unknown', () => {
+    expect(evidenceOnlyReasons(withCommit([evidenceFile]), null, start)).toEqual([
+      `drift: ${evidenceFile}`,
+    ]);
+  });
+
+  it('still flags a dirty tree, a malformed commit message and a wrong start range', () => {
+    expect(evidenceOnlyReasons(facts({ dirtyFiles: ['x.ts'] }), 7, start)).toContain(
+      'uncommitted: x.ts',
+    );
+    expect(evidenceOnlyReasons(withCommit([evidenceFile], 'wip'), 7, start).length).toBeGreaterThan(
+      0,
+    );
+    expect(evidenceOnlyReasons(facts({ attemptStart: 'c'.repeat(40) }), 7, start)).toContain(
+      'attempt-start-mismatch',
+    );
+  });
+
+  it('fails closed on missing facts', () => {
+    expect(evidenceOnlyReasons(undefined, 7, start).length).toBeGreaterThan(0);
+  });
+});
+
+describe('closeEvidenceReasons (verified must rest on gate facts, not the reporter word)', () => {
+  const mainHead = 'a'.repeat(40);
+  const head = 'b'.repeat(40);
+  const evidence = ['docs/test-reports/bugs/7/pass.txt'];
+  const facts = (overrides = {}) => ({
+    head,
+    attemptStart: mainHead,
+    changedFiles: evidence,
+    dirtyFiles: [],
+    missingFiles: [],
+    commits: [{ sha: head, message: 'docs(bugs): re-run on main passes' }],
+    testCommand: null,
+    testExitCode: null,
+    verifyExitCode: 0,
+    ...overrides,
+  });
+
+  it('passes one commit that adds exactly the evidence files, all present', () => {
+    expect(closeEvidenceReasons(facts(), 7, evidence, mainHead)).toEqual([]);
+  });
+
+  it('fails with no commit in mainHead..HEAD (stale evidence from the original report)', () => {
+    expect(
+      closeEvidenceReasons(facts({ commits: [], changedFiles: [] }), 7, evidence, mainHead),
+    ).toEqual(expect.arrayContaining(['no-commit', `evidence-not-committed: ${evidence[0]}`]));
+  });
+
+  it('fails when an evidence path is missing on disk or not among the changed files', () => {
+    expect(
+      closeEvidenceReasons(facts({ missingFiles: evidence }), 7, evidence, mainHead),
+    ).toContain(`missing: ${evidence[0]}`);
+    expect(closeEvidenceReasons(facts({ changedFiles: [] }), 7, evidence, mainHead)).toContain(
+      `evidence-not-committed: ${evidence[0]}`,
+    );
+  });
+
+  it('fails when the commit changed a file outside the evidence folder', () => {
+    expect(
+      closeEvidenceReasons(facts({ changedFiles: [...evidence, FIX_FILE] }), 7, evidence, mainHead),
+    ).toContain(`drift: ${FIX_FILE}`);
+  });
+
+  it('does not let an unrelated red main (verify exit 1) flip a passing re-run', () => {
+    expect(closeEvidenceReasons(facts({ verifyExitCode: 1 }), 7, evidence, mainHead)).toEqual([]);
   });
 });
 
@@ -640,6 +833,8 @@ function scenario(overrides = {}) {
       const attemptStart = first.replace('MODE: check ', '');
       const commits = git.since(attemptStart);
       const fixed = git.log.some((entry) => entry.files.includes(FIX_FILE));
+      const testLine = prompt.split('\n')[1].replace('TEST: ', '');
+      const noTest = testLine === 'none';
       return envelope({
         facts: {
           head: git.head(),
@@ -648,8 +843,8 @@ function scenario(overrides = {}) {
           dirtyFiles: [],
           missingFiles: [],
           commits: commits.map((entry) => ({ sha: entry.sha, message: entry.message })),
-          testCommand: prompt.split('\n')[1].replace('TEST: ', ''),
-          testExitCode: fixed ? 0 : 1,
+          testCommand: noTest ? null : testLine,
+          testExitCode: noTest ? null : fixed ? 0 : 1,
           verifyExitCode: fixed ? 0 : 1,
         },
       });
@@ -661,6 +856,8 @@ function scenario(overrides = {}) {
 }
 
 const agentTypes = (calls) => calls.map((call) => call.agentType);
+/** The agent sequence without the gate-checker calls that bracket every step. */
+const nonGate = (calls) => agentTypes(calls).filter((type) => type !== 'gate-checker');
 const callsOf = (calls, agentType) => calls.filter((call) => call.agentType === agentType);
 
 describe('runtime: fix an existing issue', () => {
@@ -669,7 +866,9 @@ describe('runtime: fix an existing issue', () => {
     const { result, calls } = await runWorkflow({ args: { issue: 7 }, dispatch });
 
     expect(agentTypes(calls)).toEqual([
+      'gate-checker', // MODE: start (before the analyst runs)
       'bug-analyst',
+      'gate-checker', // MODE: check: the analyst committed only evidence files
       'gate-checker', // MODE: start (before the regression test lands)
       'test-automator',
       'gate-checker', // MODE: check: independently verifies RED
@@ -697,11 +896,13 @@ describe('runtime: fix an existing issue', () => {
     const checks = callsOf(calls, 'gate-checker').filter((call) =>
       call.prompt.startsWith('MODE: check'),
     );
-    expect(checks[0].prompt.split('\n')[0]).toBe(`MODE: check ${sha(0)}`);
-    const redCommit = git.log.find((entry) => entry.files.includes(TEST_FILE)).sha;
-    expect(checks[1].prompt.split('\n')[0]).toBe(`MODE: check ${redCommit}`);
+    // checks[0] guards the analyst (no test, no expected files), checks[1] proves RED
+    expect(checks[0].prompt).toBe(`MODE: check ${sha(0)}\nTEST: none\nEXPECT: none`);
+    expect(checks[1].prompt.split('\n')[0]).toBe(`MODE: check ${sha(0)}`);
     expect(checks[1].prompt).toContain(`TEST: ${ENGINE_TEST}`);
     expect(checks[1].prompt).toContain(`EXPECT: ${TEST_FILE}`);
+    const redCommit = git.log.find((entry) => entry.files.includes(TEST_FILE)).sha;
+    expect(checks[2].prompt.split('\n')[0]).toBe(`MODE: check ${redCommit}`);
   });
 
   it('fences the analyst text passed to the implementer and the test-automator', async () => {
@@ -752,7 +953,7 @@ describe('runtime: bug-analyst outcomes', () => {
     expect(result.status).toBe('cannot-reproduce');
     expect(result.issue).toBe(7);
     expect(result.prBody).toBeNull();
-    expect(agentTypes(calls)).toEqual(['bug-analyst']);
+    expect(nonGate(calls)).toEqual(['bug-analyst']);
   });
 
   it('a dead analyst (null) is failed, never cannot-reproduce', async () => {
@@ -761,7 +962,7 @@ describe('runtime: bug-analyst outcomes', () => {
     const { result, calls } = await runWorkflow({ args: { issue: 7 }, dispatch });
     expect(result.status).toBe('failed');
     expect(result.reasons).toContain('bug-analyst-returned-null');
-    expect(agentTypes(calls)).toEqual(['bug-analyst']);
+    expect(nonGate(calls)).toEqual(['bug-analyst']);
   });
 
   it('an analyst that throws is failed too', async () => {
@@ -780,7 +981,7 @@ describe('runtime: bug-analyst outcomes', () => {
     const { result, calls } = await runWorkflow({ args: { issue: 7 }, dispatch });
     expect(result.status).toBe('blocked');
     expect(result.reasons).toEqual(['issue 7 is not a bug']);
-    expect(agentTypes(calls)).toEqual(['bug-analyst']);
+    expect(nonGate(calls)).toEqual(['bug-analyst']);
   });
 
   it('a non-boolean reproduced is malformed, not cannot-reproduce', async () => {
@@ -796,7 +997,7 @@ describe('runtime: bug-analyst outcomes', () => {
     const { result, calls } = await runWorkflow({ args: { issue: 7 }, dispatch });
     expect(result.status).toBe('failed');
     expect(result.reasons).toContain('analysis-issue-mismatch: 8');
-    expect(agentTypes(calls)).toEqual(['bug-analyst']);
+    expect(nonGate(calls)).toEqual(['bug-analyst']);
   });
 
   it.each([
@@ -810,7 +1011,7 @@ describe('runtime: bug-analyst outcomes', () => {
     const { result, calls } = await runWorkflow({ args: { issue: 7 }, dispatch });
     expect(result.status).toBe('failed');
     expect(result.reasons).toEqual([reason]);
-    expect(agentTypes(calls)).toEqual(['bug-analyst']);
+    expect(nonGate(calls)).toEqual(['bug-analyst']);
   });
 });
 
@@ -879,9 +1080,19 @@ describe('runtime: the regression test must land RED before the fix', () => {
       expect(result.status).toBe('escalated');
       expect(callsOf(calls, 'implementer')).toHaveLength(0);
     }
-    const { dispatch } = scenario({ 'gate-checker': () => null });
+    // gate call 3 is the pin baseline (1 = analyst start, 2 = analyst guard): the gate dies there
+    const base = scenario();
+    let gateCalls = 0;
+    const dispatch = async (prompt, options) => {
+      if (options.agentType === 'gate-checker') {
+        gateCalls += 1;
+        if (gateCalls === 3) return null;
+      }
+      return base.dispatch(prompt, options);
+    };
     const { result, calls } = await runWorkflow({ args: { issue: 7 }, dispatch });
     expect(result.status).toBe('escalated');
+    expect(result.reasons).toContain('gate-start-failed');
     expect(callsOf(calls, 'test-automator')).toHaveLength(0);
   });
 
@@ -891,10 +1102,18 @@ describe('runtime: the regression test must land RED before the fix', () => {
     expect(callsOf(calls, 'test-automator')).toHaveLength(1);
   });
 
-  it('stops before the test lands when the tree is already dirty', async () => {
-    const { dispatch } = scenario({
-      'gate-checker': () => envelope({ facts: { head: sha(0), dirtyFiles: ['stray.ts'] } }),
-    });
+  it('stops before the test lands when the tree is dirty at the pin baseline', async () => {
+    const base = scenario();
+    let gateCalls = 0;
+    const dispatch = async (prompt, options) => {
+      const response = await base.dispatch(prompt, options);
+      if (options.agentType === 'gate-checker') {
+        gateCalls += 1;
+        if (gateCalls === 3)
+          return { ...response, facts: { ...response.facts, dirtyFiles: ['stray.ts'] } };
+      }
+      return response;
+    };
     const { result, calls } = await runWorkflow({ args: { issue: 7 }, dispatch });
     expect(result.status).toBe('escalated');
     expect(result.reasons).toContain('dirty-start: stray.ts');
@@ -1016,9 +1235,9 @@ describe('runtime: /bug and a null issue', () => {
       args: { issue: null, report: REPORT },
       dispatch,
     });
-    expect(agentTypes(calls).slice(0, 2)).toEqual(['bug-reporter', 'bug-analyst']);
+    expect(nonGate(calls).slice(0, 2)).toEqual(['bug-reporter', 'bug-analyst']);
     expect(callsOf(calls, 'bug-analyst')[0].prompt).toContain('#9');
-    expect(fenceText(calls[0].prompt, 'REPORT')).toContain(REPORT.summary);
+    expect(fenceText(callsOf(calls, 'bug-reporter')[0].prompt, 'REPORT')).toContain(REPORT.summary);
     expect(result.status).toBe('done');
     expect(result.issue).toBe(9);
     expect(result.prBody).toContain('Fixes #9');
@@ -1059,7 +1278,7 @@ describe('runtime: /bug and a null issue', () => {
     expect(result.status).toBe('reported');
     expect(result.issue).toBe(7);
     expect(result.prBody).toBeNull();
-    expect(agentTypes(calls)).toEqual(['bug-reporter']);
+    expect(nonGate(calls)).toEqual(['bug-reporter']);
   });
 
   it('reportOnly without a report fails the same way, never filing anything', async () => {
@@ -1083,7 +1302,7 @@ describe('runtime: /bug and a null issue', () => {
     });
     expect(result.status).toBe('duplicate');
     expect(result.issue).toBe(3);
-    expect(agentTypes(calls)).toEqual(['bug-reporter']);
+    expect(nonGate(calls)).toEqual(['bug-reporter']);
   });
 
   it.each([
@@ -1098,7 +1317,7 @@ describe('runtime: /bug and a null issue', () => {
       dispatch,
     });
     expect(result.status).toBe(status);
-    expect(agentTypes(calls)).toEqual(['bug-reporter']);
+    expect(nonGate(calls)).toEqual(['bug-reporter']);
   });
 
   it('rejects reportOnly together with an existing issue number', async () => {
@@ -1112,94 +1331,252 @@ describe('runtime: /bug and a null issue', () => {
   });
 });
 
+describe('runtime: bug-analyst and bug-reporter may only commit evidence', () => {
+  const EVIDENCE = 'docs/test-reports/bugs/7/repro.txt';
+
+  it('lets the analyst commit evidence under docs/test-reports/bugs/<N>/ and carries on', async () => {
+    const { dispatch, git } = scenario({
+      'bug-analyst': (_prompt, c) => {
+        git.commit('docs(bugs): repro transcript', [EVIDENCE]);
+        return c.analysisResult;
+      },
+    });
+    const { result } = await runWorkflow({ args: { issue: 7 }, dispatch });
+    expect(result.status).toBe('done');
+    expect(git.log.some((entry) => entry.files.includes(EVIDENCE))).toBe(true);
+  });
+
+  it('fails the run, dispatching nothing further, when the analyst committed a file outside the folder', async () => {
+    const { dispatch } = scenario({
+      'bug-analyst': (_prompt, c) => {
+        c.git.commit('docs(bugs): repro transcript', [EVIDENCE, 'package.json']);
+        return c.analysisResult;
+      },
+    });
+    const { result, calls } = await runWorkflow({ args: { issue: 7 }, dispatch });
+    expect(result.status).toBe('failed');
+    expect(result.reasons).toEqual(['drift: package.json']);
+    expect(nonGate(calls)).toEqual(['bug-analyst']);
+  });
+
+  it('applies the same guard to a cannot-reproduce analyst (it commits a transcript too)', async () => {
+    const { dispatch, ctx } = scenario({
+      'bug-analyst': (_prompt, c) => {
+        c.git.commit('docs(bugs): failed repro', ['.husky/pre-commit']);
+        return c.analysisResult;
+      },
+    });
+    ctx.analysisResult = analysis({
+      reproduced: false,
+      rootCause: null,
+      blastRadius: [],
+      fixFiles: [],
+      regressionTest: null,
+      testCommand: null,
+    });
+    const { result } = await runWorkflow({ args: { issue: 7 }, dispatch });
+    expect(result.status).toBe('failed');
+    expect(result.reasons).toEqual(['drift: .husky/pre-commit']);
+  });
+
+  it('fails when the analyst leaves the tree dirty, before the regression test lands', async () => {
+    const base = scenario();
+    let checks = 0;
+    const dispatch = async (prompt, options) => {
+      const response = await base.dispatch(prompt, options);
+      if (options.agentType === 'gate-checker' && prompt.startsWith('MODE: check')) {
+        checks += 1;
+        if (checks === 1)
+          return { ...response, facts: { ...response.facts, dirtyFiles: ['x.ts'] } };
+      }
+      return response;
+    };
+    const { result, calls } = await runWorkflow({ args: { issue: 7 }, dispatch });
+    expect(result.status).toBe('failed');
+    expect(result.reasons).toContain('uncommitted: x.ts');
+    expect(callsOf(calls, 'test-automator')).toHaveLength(0);
+  });
+
+  it('refuses to start on a dirty tree, before any agent runs', async () => {
+    const { dispatch } = scenario({
+      'gate-checker': () => envelope({ facts: { head: sha(0), dirtyFiles: ['stray.ts'] } }),
+    });
+    const { result, calls } = await runWorkflow({ args: { issue: 7 }, dispatch });
+    expect(result.status).toBe('failed');
+    expect(result.reasons).toContain('dirty-start: stray.ts');
+    expect(callsOf(calls, 'bug-analyst')).toHaveLength(0);
+  });
+
+  it('guards bug-reporter against the ticket it just filed: a stray file fails the run', async () => {
+    const { dispatch, git } = scenario({
+      'bug-reporter': () => {
+        git.commit('docs(bugs): evidence', [
+          'docs/test-reports/bugs/9/shot.png',
+          'apps/admin/x.ts',
+        ]);
+        return envelope({ issueNumber: 9, duplicateOf: null, evidencePaths: [], labels: ['bug'] });
+      },
+    });
+    const { result, calls } = await runWorkflow({
+      args: { issue: null, report: REPORT },
+      dispatch,
+    });
+    expect(result.status).toBe('failed');
+    expect(result.reasons).toEqual(['drift: apps/admin/x.ts']);
+    expect(callsOf(calls, 'bug-analyst')).toHaveLength(0);
+  });
+
+  it("accepts a bug-reporter that committed only the new ticket's evidence folder", async () => {
+    const { dispatch, ctx, git } = scenario({
+      'bug-reporter': () => {
+        git.commit('docs(bugs): evidence', ['docs/test-reports/bugs/9/shot.png']);
+        return envelope({ issueNumber: 9, duplicateOf: null, evidencePaths: [], labels: ['bug'] });
+      },
+    });
+    ctx.analysisResult = analysis({ issue: 9 });
+    const { result } = await runWorkflow({ args: { issue: null, report: REPORT }, dispatch });
+    expect(result.status).toBe('done');
+  });
+
+  it('with reportOnly, still guards the reporter before returning reported', async () => {
+    const { dispatch } = scenario({
+      'bug-reporter': (_prompt, c) => {
+        c.git.commit('docs(bugs): evidence', ['package.json']);
+        return envelope({ issueNumber: 9, duplicateOf: null, evidencePaths: [], labels: [] });
+      },
+    });
+    const { result } = await runWorkflow({
+      args: { issue: null, report: REPORT, reportOnly: true },
+      dispatch,
+    });
+    expect(result.status).toBe('failed');
+  });
+});
+
+describe('runtime: flags must be real booleans', () => {
+  it.each([
+    ['close', 'true'],
+    ['close', 1],
+    ['reportOnly', 'true'],
+    ['reportOnly', 1],
+  ])('rejects %s: %j instead of silently running the fix flow', async (flag, value) => {
+    const { dispatch } = scenario();
+    const { result, calls } = await runWorkflow({
+      args: { issue: 7, [flag]: value, pr: 12, mainHead: sha(0) },
+      dispatch,
+    });
+    expect(result.status).toBe('failed');
+    expect(result.reasons).toEqual([`invalid-flag: ${flag}`]);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('treats an explicit false the same as absent', async () => {
+    const { dispatch } = scenario();
+    const { result } = await runWorkflow({
+      args: { issue: 7, close: false, reportOnly: false },
+      dispatch,
+    });
+    expect(result.status).toBe('done');
+  });
+});
+
 describe('runtime: --close', () => {
-  const main = sha(500);
-  const closeArgs = { issue: 7, close: true, pr: 12, mainHead: main };
-  const closeScenario = (overrides = {}) =>
-    scenario({
-      'gate-checker': () => envelope({ facts: { head: main, dirtyFiles: [] } }),
-      'bug-reporter': () =>
-        envelope({
+  const EVIDENCE = 'docs/test-reports/bugs/7/pass.txt';
+  /** A close scenario: bug-reporter commits `files` and returns `evidencePaths`. */
+  const closeScenario = ({ files = [EVIDENCE], reporter = {}, overrides = {} } = {}) => {
+    const built = scenario({
+      'bug-reporter': (_prompt, c) => {
+        if (files.length > 0) c.git.commit('docs(bugs): re-run on main passes', files);
+        return envelope({
           issueNumber: 7,
           duplicateOf: null,
-          evidencePaths: ['docs/test-reports/bugs/7/pass.txt'],
+          evidencePaths: [EVIDENCE],
           labels: [],
-        }),
+          ...reporter,
+        });
+      },
       ...overrides,
     });
+    return { ...built, args: { issue: 7, close: true, pr: 12, mainHead: built.git.head() } };
+  };
 
-  it('verifies on main with bug-reporter, then syncs with pm-sync, and asks the caller to close', async () => {
-    const { dispatch } = closeScenario();
-    const { result, calls } = await runWorkflow({ args: closeArgs, dispatch });
-    expect(agentTypes(calls)).toEqual(['gate-checker', 'bug-reporter', 'pm-sync']);
+  it('verifies on main with bug-reporter, proves the evidence with gate-checker, then syncs with pm-sync', async () => {
+    const { dispatch, args } = closeScenario();
+    const { result, calls } = await runWorkflow({ args, dispatch });
+    expect(agentTypes(calls)).toEqual(['gate-checker', 'bug-reporter', 'gate-checker', 'pm-sync']);
+    const check = callsOf(calls, 'gate-checker')[1].prompt;
+    expect(check).toBe(`MODE: check ${args.mainHead}\nTEST: none\nEXPECT: ${EVIDENCE}`);
     expect(result.status).toBe('verified');
     expect(result.issue).toBe(7);
     expect(result.pr).toBe(12);
     expect(result.closeIssue).toBe(true);
     expect(result.prBody).toBeNull();
-    expect(callsOf(calls, 'bug-reporter')[0].prompt).toContain(main);
+    expect(callsOf(calls, 'bug-reporter')[0].prompt).toContain(args.mainHead);
     expect(callsOf(calls, 'pm-sync')[0].prompt).toContain('Action: move');
   });
 
   it('never calls the analyst, test-automator or implementer', async () => {
-    const { dispatch } = closeScenario();
-    const { calls } = await runWorkflow({ args: closeArgs, dispatch });
+    const { dispatch, args } = closeScenario();
+    const { calls } = await runWorkflow({ args, dispatch });
     for (const type of ['bug-analyst', 'test-automator', 'implementer']) {
       expect(callsOf(calls, type), type).toHaveLength(0);
     }
   });
 
   it('refuses to verify unless HEAD is the main commit the caller named', async () => {
-    const { dispatch } = closeScenario({
-      'gate-checker': () => envelope({ facts: { head: sha(9), dirtyFiles: [] } }),
+    const { dispatch } = closeScenario();
+    const { result, calls } = await runWorkflow({
+      args: { issue: 7, close: true, pr: 12, mainHead: sha(500) },
+      dispatch,
     });
-    const { result, calls } = await runWorkflow({ args: closeArgs, dispatch });
     expect(result.status).toBe('failed');
     expect(result.reasons).toContain('not-on-main: HEAD is not the named main commit');
     expect(agentTypes(calls)).toEqual(['gate-checker']);
   });
 
   it('refuses to verify on a dirty tree', async () => {
-    const { dispatch } = closeScenario({
-      'gate-checker': () => envelope({ facts: { head: main, dirtyFiles: ['x.ts'] } }),
+    const { dispatch, args } = closeScenario({
+      overrides: {
+        'gate-checker': () => envelope({ facts: { head: sha(0), dirtyFiles: ['x.ts'] } }),
+      },
     });
-    const { result } = await runWorkflow({ args: closeArgs, dispatch });
+    const { result } = await runWorkflow({ args, dispatch });
     expect(result.status).toBe('failed');
     expect(result.reasons).toContain('dirty-start: x.ts');
   });
 
   it.each([
+    ['status failed', { files: [EVIDENCE], reporter: { status: 'failed' } }],
+    ['null', { files: [], reporter: null }],
+    ['no evidence paths', { files: [EVIDENCE], reporter: { evidencePaths: [] } }],
+    ['another issue', { files: [EVIDENCE], reporter: { issueNumber: 8 } }],
     [
-      'status failed',
-      () =>
-        envelope({
-          status: 'failed',
-          issueNumber: 7,
-          duplicateOf: null,
-          evidencePaths: ['docs/test-reports/bugs/7/fail.txt'],
-          labels: [],
-        }),
-    ],
-    ['null', () => null],
-    [
-      'no evidence',
-      () => envelope({ issueNumber: 7, duplicateOf: null, evidencePaths: [], labels: [] }),
+      'an evidence path outside the folder',
+      { files: [EVIDENCE], reporter: { evidencePaths: ['docs/x.txt'] } },
     ],
     [
-      'another issue',
-      () =>
-        envelope({
-          issueNumber: 8,
-          duplicateOf: null,
-          evidencePaths: ['docs/test-reports/bugs/8/x.txt'],
-          labels: [],
-        }),
+      'a claimed evidence file that was never committed (stale evidence from the report)',
+      { files: [], reporter: {} },
+    ],
+    [
+      'a commit that touches a file outside the evidence folder',
+      { files: [EVIDENCE, 'packages/engine/src/utilization.ts'], reporter: {} },
+    ],
+    [
+      'evidence committed but a different file than the one claimed',
+      { files: ['docs/test-reports/bugs/7/other.txt'], reporter: {} },
     ],
   ])(
-    'a failed re-run (%s) is verification-failed: the issue stays open and pm-sync is never called',
-    async (_name, handler) => {
-      const { dispatch } = closeScenario({ 'bug-reporter': handler });
-      const { result, calls } = await runWorkflow({ args: closeArgs, dispatch });
+    'a re-run that is not provably passing (%s) is verification-failed: the issue stays open and pm-sync is never called',
+    async (_name, { files, reporter }) => {
+      const built = closeScenario({ files, reporter: reporter ?? {} });
+      const dispatch =
+        reporter === null
+          ? async (prompt, options) =>
+              options.agentType === 'bug-reporter' ? null : built.dispatch(prompt, options)
+          : built.dispatch;
+      const args = built.args;
+      const { result, calls } = await runWorkflow({ args, dispatch });
       expect(result.status).toBe('verification-failed');
       expect(result.closeIssue).toBe(false);
       expect(callsOf(calls, 'pm-sync')).toHaveLength(0);
@@ -1207,13 +1584,14 @@ describe('runtime: --close', () => {
   );
 
   it('reports sync-failed, and still does not ask for a close, when pm-sync fails', async () => {
-    const { dispatch } = closeScenario({ 'pm-sync': () => null });
-    const { result } = await runWorkflow({ args: closeArgs, dispatch });
+    const { dispatch, args } = closeScenario({ overrides: { 'pm-sync': () => null } });
+    const { result } = await runWorkflow({ args, dispatch });
     expect(result.status).toBe('sync-failed');
     expect(result.closeIssue).toBe(false);
   });
 
   it('requires a valid issue, pr and a hex mainHead', async () => {
+    const main = sha(0);
     for (const bad of [
       { issue: 7, close: true, pr: 0, mainHead: main },
       { issue: 7, close: true, pr: 12, mainHead: 'main' },
@@ -1225,6 +1603,60 @@ describe('runtime: --close', () => {
       expect(result.status).toBe('failed');
       expect(calls).toHaveLength(0);
     }
+  });
+});
+
+describe('copies from feature-build stay in sync (workflow scripts cannot import)', () => {
+  const featureBuild = fs.readFileSync(
+    path.join(here, '../../../workflows/feature-build.workflow.js'),
+    'utf8',
+  );
+
+  /** The top-level declaration `name` from `text`, comments dropped, whitespace and labels normalized. */
+  function declaration(text, name) {
+    const lines = text.replace(/\r\n/g, '\n').split('\n');
+    const start = lines.findIndex((line) =>
+      new RegExp(`^(async )?function ${name}\\(|^const ${name} =`).test(line),
+    );
+    if (start < 0) throw new Error(`declaration ${name} not found`);
+    let end = start;
+    if (/=\s*$/.test(lines[start])) {
+      end = start + 1;
+      while (!/;\s*$/.test(lines[end])) end += 1;
+    } else if (!/;\s*$/.test(lines[start])) {
+      end = start + 1;
+      while (!/^[})\]]/.test(lines[end])) end += 1;
+    }
+    return lines
+      .slice(start, end + 1)
+      .filter((line) => !line.trim().startsWith('//'))
+      .join(' ')
+      .replace(/feature-build:|bugfix:/g, '<workflow>:')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  // The only intended differences are the log label (normalized above) and the constant's name.
+  it.each([
+    ['callAgent', 'callAgent'],
+    ['gateBrief', 'gateBrief'],
+    ['GOLDEN_EXAMPLES', 'GOLDEN_EXAMPLES'],
+    ['goldenExampleFor', 'goldenExampleFor'],
+    ['IMPLEMENTER_SCHEMA', 'IMPLEMENTER_SCHEMA'],
+    ['SHA_PATTERN', 'SHA_PATTERN'],
+    ['testCommandForFile', 'testCommandForFile'],
+  ])('%s is identical in both workflows', (ours, theirs) => {
+    expect(declaration(source, ours)).toBe(declaration(featureBuild, theirs));
+  });
+
+  it('SAFE_PATH_CHARS is the same expression as feature-build SAFE_TEST_PATH', () => {
+    const body = (text, name) => declaration(text, name).replace(/^const \w+ = /, '');
+    expect(body(source, 'SAFE_PATH_CHARS')).toBe(body(featureBuild, 'SAFE_TEST_PATH'));
+  });
+
+  it('the extractor really sees a difference (it is not vacuous)', () => {
+    expect(declaration(source, 'callAgent')).not.toBe(declaration(source, 'gateBrief'));
+    expect(() => declaration(source, 'noSuchDeclaration')).toThrow(/not found/);
   });
 });
 
@@ -1261,18 +1693,26 @@ describe('/bugfix and /bug commands', () => {
     expect(typeof meta['argument-hint']).toBe('string');
   });
 
-  it.each(['bugfix.md', 'bug.md'])(
-    '%s prefixes every gh call with the ShubhamU55 token',
-    (name) => {
-      const lines = read(name)
-        .split('\n')
-        .filter((line) => /\bgh (issue|pr|api|label|project|run)\b/.test(line));
-      if (name === 'bugfix.md') expect(lines.length).toBeGreaterThan(0);
-      for (const line of lines) {
-        expect(line, line).toContain('GH_TOKEN=');
-      }
-    },
-  );
+  const GH_PREFIX = 'GH_TOKEN=$(gh auth token --user ShubhamU55) ';
+  const GH_CALL = /\bgh (issue|pr|api|label|project|run)\b/g;
+
+  it('/bugfix writes the full runnable token prefix in front of every gh call, never a shorthand', () => {
+    const text = read('bugfix.md');
+    expect(text).not.toContain('GH_TOKEN=…');
+    const calls = [...text.matchAll(GH_CALL)];
+    expect(calls.length).toBeGreaterThanOrEqual(5);
+    for (const call of calls) {
+      const before = text.slice(Math.max(0, call.index - GH_PREFIX.length), call.index);
+      expect(before, text.slice(call.index, call.index + 40)).toBe(GH_PREFIX);
+    }
+  });
+
+  it('/bug runs no gh call itself and states the prefix rule for the agents it dispatches', () => {
+    const text = read('bug.md');
+    expect(text).toContain(GH_PREFIX.trim());
+    expect([...text.matchAll(GH_CALL)]).toHaveLength(0);
+    expect(text).not.toContain('GH_TOKEN=…');
+  });
 
   it('/bugfix opens the PR with Fixes #N, runs /pr-review, and documents --close', () => {
     const text = read('bugfix.md');
@@ -1301,12 +1741,71 @@ describe('/bugfix and /bug commands', () => {
     expect(text).toContain('fix/bug-<slug>');
   });
 
+  it('/bugfix pins the branch slug charset and validates the issue number before any command', () => {
+    const text = read('bugfix.md');
+    expect(text).toContain('^[a-z0-9-]{1,40}$');
+    expect(text).toContain('^[1-9][0-9]*$');
+    expect(text).toMatch(/never\s+(from\s+)?raw\s+issue\s+text/i);
+  });
+
+  it('/bug never lets $ARGUMENTS reach a shell command', () => {
+    expect(read('bug.md')).toMatch(/never (put|paste|pass)[^.]*\$ARGUMENTS[^.]*shell/i);
+  });
+
+  it('/bugfix --close comments are neutral about why verification failed, and sync-failed handles an auto-closed issue', () => {
+    const lines = read('bugfix.md').split(/\r?\n/);
+    const reopen = lines.filter((line) => /gh issue reopen/.test(line));
+    expect(reopen).toHaveLength(1);
+    expect(reopen[0]).not.toMatch(/failed|re-run/i);
+    const text = read('bugfix.md');
+    expect(text).toMatch(/sync-failed[\s\S]*already closed/i);
+  });
+
+  it('/bugfix --close documents exactly what verified rests on', () => {
+    const text = read('bugfix.md');
+    expect(text).toMatch(/gate-checker/);
+    expect(text).toMatch(/missingFiles|missing/);
+    expect(text).toMatch(/at least one commit|one commit/i);
+    expect(text).toMatch(/docs\/test-reports\/bugs\/<issue#>\//);
+  });
+
   it('/bug collects the fields from the owner before running the report phase only', () => {
     const text = read('bug.md');
     expect(text).toContain('reportOnly');
     expect(text).toMatch(/never fixes/i);
     for (const field of ['severity', 'steps', 'expected', 'actual', 'suspectedArea']) {
       expect(text).toContain(field);
+    }
+  });
+});
+
+describe('isProtectedPath', () => {
+  it('flags git internals, package scripts, CI, hook entry files and settings', () => {
+    for (const file of [
+      '.git/config',
+      '.husky/pre-commit',
+      'package.json',
+      'apps/admin/package.json',
+      'pnpm-lock.yaml',
+      '.github/workflows/ci.yml',
+      '.claude/settings.json',
+      '.claude/hooks/block-no-verify.cjs',
+      '.claude/hooks/lib/shell-scan.cjs',
+    ]) {
+      expect(isProtectedPath(file), file).toBe(true);
+    }
+  });
+
+  it('leaves ordinary source, tests and agent/workflow files editable', () => {
+    for (const file of [
+      FIX_FILE,
+      'apps/mobile/src/a.tsx',
+      '.claude/agents/implementer.md',
+      '.claude/workflows/qa.workflow.js',
+      '.claude/hooks/lib/plan-tasks.mjs',
+      '.claude/hooks/tests/workflows/qa.test.mjs',
+    ]) {
+      expect(isProtectedPath(file), file).toBe(false);
     }
   });
 });

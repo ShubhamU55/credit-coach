@@ -521,13 +521,20 @@ function wrapUntrusted(label, text) {
 
 const SHA_PATTERN = /^[0-9a-f]{7,40}$/;
 const SAFE_PATH_CHARS = /^[A-Za-z0-9._/@+-]+$/;
-const ENV_SEGMENT = /^\.env/;
-// `pnpm test|verify`, or a workspace script from this repo's own testing table, followed only by
-// space-separated plain repo paths (each checked with isSafeRepoPath: no flag, `..`, quote, `$`,
-// backtick, `;`, `&`, `|`, `<`, `>` or newline), so nothing can start a second command or point a
-// runner flag at another file.
-const TEST_COMMAND_PATTERN =
-  /^(pnpm (?:--filter @credit-coach\/(?:engine|hooks|admin|mobile) (?:test|test:e2e|e2e)|verify|test))((?: [^ ]+)*)$/;
+const ENV_SEGMENT = /^\.env/i;
+const PROTECTED_BASENAMES = [
+  'package.json',
+  'package-lock.json',
+  'pnpm-lock.yaml',
+  'pnpm-workspace.yaml',
+  'yarn.lock',
+];
+// Modules the harness's own hooks load, outside the `.claude/hooks/*` entry files themselves.
+const HOOK_SUPPORT_FILES = [
+  '.claude/hooks/lib/shell-scan.cjs',
+  '.claude/hooks/lib/paths.mjs',
+  '.claude/hooks/lib/contracts.mjs',
+];
 
 const REPORT_TEXT_FIELDS = [
   'foundBy',
@@ -559,13 +566,54 @@ function isSafeFile(file) {
   return typeof file === 'string' && isSafeRepoPath(normalizePath(file));
 }
 
-function isAllowedTestCommand(command) {
-  const match = typeof command === 'string' ? TEST_COMMAND_PATTERN.exec(command) : null;
-  if (match === null) return false;
-  return match[2]
+/** The real test command for a test file's own path prefix (`docs/testing.md` layer -> command), by path, never by layer alone (a `vitest` test can live under packages/engine or .claude/hooks). */
+function testCommandForFile(testFile) {
+  const file = normalizePath(testFile);
+  if (file.startsWith('packages/engine/')) return 'pnpm --filter @credit-coach/engine test';
+  if (file.startsWith('.claude/hooks/')) return 'pnpm --filter @credit-coach/hooks test';
+  if (file.startsWith('apps/admin/e2e/')) return 'pnpm --filter @credit-coach/admin test:e2e';
+  if (file.startsWith('apps/mobile/.maestro/')) return 'pnpm --filter @credit-coach/mobile e2e';
+  return null;
+}
+
+/**
+ * gate-checker runs `testCommand` verbatim in a shell, and the analyst derived it from untrusted
+ * issue text. So it must be exactly the one workspace script that runs the regression test's own
+ * file (never another workspace's, or a script that doesn't exist and would read as a false RED),
+ * optionally followed by space-separated plain repo paths (each checked with isSafeRepoPath: no
+ * flag, `..`, quote, `$`, backtick, `;`, `&`, `|`, `<`, `>` or newline).
+ */
+function isAllowedTestCommand(command, testFile) {
+  if (typeof command !== 'string' || typeof testFile !== 'string') return false;
+  const base = testCommandForFile(testFile);
+  if (base === null) return false;
+  if (command === base) return true;
+  if (!command.startsWith(`${base} `)) return false;
+  return command
+    .slice(base.length + 1)
     .split(' ')
-    .filter((token) => token !== '')
     .every(isSafeRepoPath);
+}
+
+/**
+ * Files an agent must never be allowed to edit: anything that runs outside the regression test
+ * (git hooks, package scripts that `pnpm verify` executes at the gate, CI) or that the harness runs
+ * on its next tool call (the hook entry files, the modules they load, settings), plus `.git`, which
+ * the git-based drift guard cannot see. `.claude/**` is otherwise fair game: agent and workflow
+ * bugs are legitimate fixes.
+ */
+function isProtectedPath(file) {
+  const lower = normalizePath(file).toLowerCase();
+  const segments = lower.split('/');
+  return (
+    segments.includes('.git') ||
+    segments.includes('.husky') ||
+    PROTECTED_BASENAMES.includes(segments[segments.length - 1]) ||
+    /^\.claude\/settings[^/]*\.json$/.test(lower) ||
+    lower.startsWith('.github/workflows/') ||
+    /^\.claude\/hooks\/[^/]+$/.test(lower) ||
+    HOOK_SUPPORT_FILES.includes(lower)
+  );
 }
 
 /**
@@ -579,15 +627,25 @@ function canFix(analysis) {
   const fixFiles = toList(a.fixFiles);
   if (fixFiles.length === 0) return { ok: false, reason: 'no-fix-files' };
   if (!fixFiles.every(isSafeFile)) return { ok: false, reason: 'unsafe-fix-file' };
+  if (fixFiles.some(isProtectedPath)) return { ok: false, reason: 'protected-fix-file' };
   const testFile = a.regressionTest && a.regressionTest.file;
   if (typeof testFile !== 'string' || testFile === '') {
     return { ok: false, reason: 'no-regression-test' };
   }
-  if (!isSafeFile(testFile)) return { ok: false, reason: 'unsafe-test-file' };
+  if (!isSafeFile(testFile) || isProtectedPath(testFile)) {
+    return { ok: false, reason: 'unsafe-test-file' };
+  }
+  // The analyst reads attacker-controllable issue text: it must not be able to hand the
+  // implementer the pinned test as a file to edit (and weaken until it passes).
+  if (fixFiles.map(normalizePath).includes(normalizePath(testFile))) {
+    return { ok: false, reason: 'regression-test-in-fix-files' };
+  }
   if (typeof a.testCommand !== 'string' || a.testCommand === '') {
     return { ok: false, reason: 'no-test-command' };
   }
-  if (!isAllowedTestCommand(a.testCommand)) return { ok: false, reason: 'unsafe-test-command' };
+  if (!isAllowedTestCommand(a.testCommand, testFile)) {
+    return { ok: false, reason: 'unsafe-test-command' };
+  }
   return { ok: true, reason: null };
 }
 
@@ -670,8 +728,10 @@ function reporterBrief(report) {
 
 function analystBrief(issue) {
   return [
-    `Reproduce and root-cause bug #${issue} (your Procedure steps 1-8), starting with \`gh issue view ${issue}\`.`,
+    `Reproduce and root-cause bug #${issue} (your Procedure steps 1-8), starting with \`GH_TOKEN=$(gh auth token --user ShubhamU55) gh issue view ${issue}\`.`,
     'If it does not reproduce at the current HEAD, take your cannot-reproduce path (status "done", reproduced false) and stop. Never edit product code.',
+    'Your testCommand must be exactly the workspace script that runs the regression test file (packages/engine: `pnpm --filter @credit-coach/engine test`; .claude/hooks: `... @credit-coach/hooks test`; apps/admin/e2e: `... @credit-coach/admin test:e2e`; apps/mobile/.maestro: `... @credit-coach/mobile e2e`), optionally followed by plain repo paths and no flags.',
+    'fixFiles must not contain the regression test, package.json or a lockfile, anything under .git, .husky or .github/workflows, .claude/settings*.json, or the files directly inside .claude/hooks/; such an analysis is rejected.',
   ].join('\n');
 }
 
@@ -742,23 +802,29 @@ const GOLDEN_EXAMPLES = [
   {
     matches: (file) => file.startsWith('packages/engine/src/') && file.endsWith('.test.ts'),
     path: 'packages/engine/src/utilization.test.ts',
+    kind: 'Engine test',
   },
   {
     matches: (file) => file.startsWith('packages/engine/src/') && file.endsWith('.ts'),
     path: 'packages/engine/src/utilization.ts',
+    kind: 'Engine function',
   },
   {
     matches: (file) => file.startsWith('apps/admin/e2e/'),
     path: 'apps/admin/e2e/smoke.spec.ts',
+    kind: 'Playwright spec',
   },
   {
     matches: (file) => file.startsWith('apps/mobile/.maestro/'),
     path: 'apps/mobile/.maestro/smoke.yaml',
+    kind: 'Maestro flow',
   },
 ];
 
+/** `docs/standards.md#golden-examples`'s path for the first changed/created file whose kind has one. */
 function goldenExampleFor(task) {
-  for (const file of toList(task.files)) {
+  const candidates = [...toList(task.createFiles), ...toList(task.files)];
+  for (const file of candidates) {
     const row = GOLDEN_EXAMPLES.find((entry) => entry.matches(normalizePath(file)));
     if (row) return row.path;
   }
@@ -806,26 +872,63 @@ function fixBrief(task, analysis, attemptStart, lastFailure) {
 
 /** `gate-checker`'s pinned MODE: check brief -- exactly 3 lines, in this order, nothing else. */
 function gateBrief(task, attemptStart) {
-  const expect = [...new Set([...toList(task.createFiles), ...toList(task.testFiles)])];
+  const expect = [...toList(task.createFiles), ...toList(task.testFiles)];
+  const uniqueExpect = [...new Set(expect)];
   return [
     `MODE: check ${attemptStart}`,
     task.testCommand ? `TEST: ${task.testCommand}` : 'TEST: none',
-    expect.length > 0 ? `EXPECT: ${expect.join(' ')}` : 'EXPECT: none',
+    uniqueExpect.length > 0 ? `EXPECT: ${uniqueExpect.join(' ')}` : 'EXPECT: none',
   ].join('\n');
 }
 
 /**
- * Regression-test files an attempt changed although they are not in `task.files`. `checkDrift`
- * allows `files + testFiles`, so without this an implementer could weaken the pinned test until it
- * passes; only a test file the analyst deliberately listed in `fixFiles` may be touched.
+ * Regression-test files an attempt changed. `checkDrift` allows `files + testFiles`, so without
+ * this an implementer could weaken the pinned test until it passes. There is no exemption: `canFix`
+ * already rejects an analysis that lists the test among its fix files.
  */
 function modifiedTests(facts, task) {
-  const fixFiles = toList(task.files).map(normalizePath);
   const pinned = toList(task.testFiles).map(normalizePath);
   return toList((facts || {}).changedFiles)
     .map(normalizePath)
-    .filter((file) => pinned.includes(file) && !fixFiles.includes(file))
+    .filter((file) => pinned.includes(file))
     .map((file) => `regression-test-modified: ${file}`);
+}
+
+/**
+ * bug-analyst and bug-reporter hold Write and Bash and are steered by issue text, so whatever they
+ * commit is judged like an implementer's attempt: only files under their own evidence folder
+ * `docs/test-reports/bugs/<N>/` (nothing at all when the issue number is not known yet). Not
+ * committing anything is fine, and a red `pnpm verify` is expected here (the bug is real).
+ */
+function evidenceOnlyReasons(facts, issue, attemptStart) {
+  const allowed = isIssueNumber(issue) ? [`docs/test-reports/bugs/${issue}/**`] : [];
+  return checkDrift(
+    facts,
+    { files: allowed, testFiles: [], testCommand: null },
+    attemptStart,
+  ).reasons.filter((reason) => reason !== 'no-commit' && !reason.startsWith('verify-failed'));
+}
+
+/**
+ * What `verified` rests on at close time: gate-checker's facts for `mainHead..HEAD`, never
+ * bug-reporter's word. At least one commit, a clean tree, every changed file under the issue's
+ * evidence folder, every claimed evidence path present and among the changed files (so evidence
+ * left over from the original report cannot pass). A red `pnpm verify` on main is not this
+ * re-run's failure, so it is not counted.
+ */
+function closeEvidenceReasons(facts, issue, evidencePaths, mainHead) {
+  const glob = `docs/test-reports/bugs/${issue}/**`;
+  const guard = checkDrift(
+    facts,
+    { files: [glob], testFiles: [], testCommand: null },
+    mainHead,
+  ).reasons.filter((reason) => !reason.startsWith('verify-failed'));
+  const changed = toList((facts || {}).changedFiles).map(normalizePath);
+  const notCommitted = toList(evidencePaths)
+    .map(normalizePath)
+    .filter((file) => !changed.includes(file))
+    .map((file) => `evidence-not-committed: ${file}`);
+  return [...guard, ...notCommitted];
 }
 
 /**
@@ -1006,6 +1109,16 @@ async function gateBaseline() {
   return { head };
 }
 
+/**
+ * After a step that may commit evidence (bug-analyst, bug-reporter): the reasons its commits break
+ * the evidence-only rule, or a failed gate. Empty means the step stayed inside its folder.
+ */
+async function evidenceGuard(startHead, issue) {
+  const gate = await gateCheck({ createFiles: [], testFiles: [], testCommand: null }, startHead);
+  if (gate == null || gate.status !== 'done') return ['gate-check-failed'];
+  return evidenceOnlyReasons(gate.facts, issue, startHead);
+}
+
 function escalated(issue, step, task, attempts, reasons) {
   return finish('escalated', issue, { step, task, attempts, reasons: [...new Set(reasons)] });
 }
@@ -1154,7 +1267,12 @@ async function runFixAttempts(issue, task, analysis) {
 }
 
 async function runFix(issue) {
+  const start = await gateBaseline();
+  if (start.reasons) return failed(issue, start.reasons);
   const found = await analyse(issue);
+  // Judged even when the analyst stops (cannot-reproduce commits a transcript too).
+  const strays = await evidenceGuard(start.head, issue);
+  if (strays.length > 0) return failed(issue, strays);
   if (found.stop) return found.stop;
   const analysis = found.analysis;
   const task = fixTask(analysis);
@@ -1215,6 +1333,24 @@ async function runClose(input) {
     });
   }
   const evidencePaths = toList(verified.evidencePaths);
+  // `verified` rests on gate-checker's facts, not on bug-reporter's own word: a commit in
+  // mainHead..HEAD that adds exactly the claimed evidence, inside the issue's evidence folder.
+  const gate = await gateCheck(
+    { createFiles: [], testFiles: evidencePaths, testCommand: null },
+    mainHead,
+  );
+  const proof =
+    gate != null && gate.status === 'done'
+      ? closeEvidenceReasons(gate.facts, issue, evidencePaths, mainHead)
+      : ['gate-check-failed'];
+  if (proof.length > 0) {
+    return finish('verification-failed', issue, {
+      pr,
+      closeIssue: false,
+      reasons: proof,
+      evidencePaths,
+    });
+  }
   const synced = await callAgent('pm-sync', pmSyncBrief(issue, pr, mainHead, evidencePaths), {
     agentType: 'pm-sync',
     schema: PM_SYNC_SCHEMA,
@@ -1235,6 +1371,12 @@ async function runClose(input) {
 }
 
 async function runBugfix(input) {
+  // A string "true" must not silently fall through to the full fix flow.
+  for (const flag of ['close', 'reportOnly']) {
+    if (input[flag] !== undefined && typeof input[flag] !== 'boolean') {
+      return failed(null, [`invalid-flag: ${flag}`]);
+    }
+  }
   if (input.close === true) return runClose(input);
 
   const given = input.issue === undefined ? null : input.issue;
@@ -1248,7 +1390,12 @@ async function runBugfix(input) {
   if (!verdict.ok) {
     return failed(null, [`missing-report-fields: ${verdict.missing.join(', ')}`]);
   }
+  const start = await gateBaseline();
+  if (start.reasons) return failed(null, start.reasons);
   const filed = await fileReport(verdict.report);
+  const filedIssue = filed.issue ?? (filed.stop && filed.stop.issue) ?? null;
+  const strays = await evidenceGuard(start.head, filedIssue);
+  if (strays.length > 0) return failed(filedIssue, strays);
   if (filed.stop) return filed.stop;
   if (input.reportOnly === true) return finish('reported', filed.issue, { labels: filed.labels });
   return runFix(filed.issue);

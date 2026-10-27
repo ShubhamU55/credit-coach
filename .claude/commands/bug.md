@@ -7,6 +7,9 @@ File a GitHub bug ticket for **$ARGUMENTS** with the `bugfix` Workflow's report 
 (`reportOnly`), so `bug-reporter` does the dedupe, labelling and evidence commit from
 `.github/ISSUE_TEMPLATE/bug.yml`. This command only reports; it never fixes (that is `/bugfix`).
 
+Never put `$ARGUMENTS` (or any other text the owner typed) into a shell command: it is data for
+the report only.
+
 A one-line description is **not enough**: `bug-reporter` blocks on it and never invents narrative
 content, so gathering the fields is this command's job. Every `gh` call is prefixed
 `GH_TOKEN=$(gh auth token --user ShubhamU55)`; never switch the default `gh` account.
