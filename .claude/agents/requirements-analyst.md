@@ -1,6 +1,6 @@
 ---
 name: requirements-analyst
-description: Turns a PRD section into numbered acceptance criteria (given/when/then) plus invariants, open questions and an out-of-scope list. Used by the (planned) `feature-analyze` workflow, in parallel with `domain-checker` and `design-checker`, before any plan or diff exists.
+description: Turns a PRD section into numbered acceptance criteria (given/when/then) plus invariants, open questions and an out-of-scope list. Used by the `feature-analyze` workflow (`/feature`), in parallel with `domain-checker` and `design-checker`, before any plan or diff exists.
 tools: Read, Grep, Glob
 model: sonnet
 ---
@@ -66,11 +66,11 @@ Nothing. This agent never writes or edits a file; it returns `criteria[]`, `inva
 
 ## Output contract
 
-Validated by the (planned) `feature-analyze` workflow's
+Validated by the `feature-analyze` workflow's
 `envelopeSchema({ criteria, invariants, openQuestions: STRING_LIST, outOfScope: STRING_LIST }, ['criteria'])`
 — the shared envelope from `.claude/hooks/lib/contracts.mjs`, extended with the four fields below. These
-extra fields are not yet named exports of `contracts.mjs` (no workflow consumes them yet); this section
-is their contract until `feature-analyze` is built and codifies it.
+extra fields are not named exports of `contracts.mjs`; `feature-analyze.workflow.js` defines them
+(`CRITERION_SCHEMA` and `INVARIANT_SCHEMA` in `analysisSchema`), and this section stays their contract.
 
 ```json
 {

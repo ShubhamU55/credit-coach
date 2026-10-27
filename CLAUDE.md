@@ -16,25 +16,48 @@
 
 ## Workflow (Think → Build → Test → Review → Learn)
 
-For every feature, use `/feature <PRD section>`:
+Each command below starts a Workflow script in `.claude/workflows/`. `docs/ai-system.md` explains the whole system. The owner starts every command and approves every plan and escalation.
+
+1. **`/feature <PRD section>`**: `feature-analyze` turns the section into acceptance criteria, risks and open questions. Read the PRD section and the `credit-domain` skill, write the plan with superpowers `writing-plans` (`planner` is an optional second opinion), then **stop for owner approval**. This command plans; it does not build.
+2. **`/build <plan path>`**: `feature-build` runs each task test-first. The order is `implementer`, then the `gate-checker` drift guard (at most 2 retries, then escalate), then the reviewers, then `finding-verifier`, then one fix pass. `qa` runs after the last task.
+3. **`/qa <scope>`**: testers are picked by the changed paths. Only findings that `finding-verifier` confirms count.
+4. **`/pr-review <PR#>`**: the G8 review. `pr-reviewer` posts the `pr-review` commit status. Before a plan's PR, run `/pr-review end-of-plan <plan path>`.
+5. **Record:** `/journal` adds an entry in `docs/journal/`, and each run gets a ledger in `docs/agent-runs/`. This is evidence for the judges, so don't skip it.
+
+Also:
+
+- **`/bugfix <issue#>`**: root cause, then a RED regression test, then the fix, then a PR with `Fixes #N` and `/pr-review`. Use `--close` after the merge. **`/bug "<description>"`** only files the ticket.
+- **`/retro`**: proposes agent-prompt edits from the run ledgers. The owner approves each one.
+- **`/tidy`** and **`/worktrees`**: read-only reports.
+- **`/verify`**: run it before every commit.
+
+**Without a workflow** (a small change, or the Workflow runtime is unavailable), use the manual loop:
 
 1. Read the PRD section and the `credit-domain` skill.
-2. Plan: superpowers `writing-plans` (the ECC `planner` agent is an optional second opinion).
-3. Build test-first: superpowers `test-driven-development`.
-4. Review: `typescript-reviewer`; plus `react-reviewer` for `.tsx`; plus `security-reviewer` when auth, PII, network or secrets are touched; `silent-failure-hunter` for error paths.
-5. Verify: `/verify`.
-6. Record: `/journal`, which adds an entry in `docs/journal/`. This is evidence for the judges, so don't skip it.
+2. Plan with `writing-plans`.
+3. Build test-first with superpowers `test-driven-development`.
+4. Review with `typescript-reviewer`. Add `react-reviewer` for `.tsx`, `security-reviewer` when auth, PII, network or secrets are touched, and `silent-failure-hunter` for error paths.
+5. Run `/verify`.
+6. Run `/journal`.
 
 ## Who owns what
 
-| Phase                                           | Owner                                                                                                                                                |
-| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Brainstorm, plans, TDD, execution, verification | superpowers plugin (user-level)                                                                                                                      |
-| Specialist review                               | `.claude/agents/`: code-reviewer, typescript-reviewer, react-reviewer, security-reviewer, silent-failure-hunter, planner (adapted from affaan-m/ECC) |
-| Domain knowledge                                | `credit-domain` skill                                                                                                                                |
-| Android E2E                                     | `maestro-android-e2e` skill                                                                                                                          |
-| Admin E2E                                       | `e2e-testing` skill (Playwright)                                                                                                                     |
-| Process evidence                                | `process-journal` skill and `/journal`                                                                                                               |
+| Phase                                        | Owner                                                                                                                                                                                      |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Brainstorm, plans, TDD, verification         | superpowers plugin (user-level)                                                                                                                                                            |
+| Orchestration                                | `.claude/workflows/` (6 Workflow scripts), started only by `.claude/commands/`                                                                                                             |
+| Analysis                                     | `.claude/agents/`: requirements-analyst, domain-checker, design-checker                                                                                                                    |
+| Build and gates                              | implementer, gate-checker, test-automator; build-error-resolver (no workflow dispatches it yet)                                                                                            |
+| Testing (they propose; test-automator lands) | functional-tester, edge-case-hunter, api-tester, ui-tester, integration-tester, security-reviewer                                                                                          |
+| Review and verification                      | code-reviewer, consistency-reviewer, typescript-reviewer, react-reviewer, silent-failure-hunter, pr-test-analyzer, finding-verifier, pr-reviewer (posts G8), planner (plan second opinion) |
+| Bugs                                         | bug-reporter, bug-analyst                                                                                                                                                                  |
+| Ops and records                              | pm-sync (GitHub issues and board), journal-writer (ledgers and journal)                                                                                                                    |
+| Domain knowledge                             | `credit-domain` skill                                                                                                                                                                      |
+| Android E2E                                  | `maestro-android-e2e` skill                                                                                                                                                                |
+| Admin E2E                                    | `e2e-testing` skill (Playwright)                                                                                                                                                           |
+| Process evidence                             | `process-journal` skill, `/journal`, `docs/agent-runs/`                                                                                                                                    |
+
+Several of the agents are adapted from affaan-m/ECC (MIT); see ADR 0002.
 
 ## Repo map
 
@@ -44,7 +67,7 @@ For every feature, use `/feature <PRD section>`:
 | `apps/mobile`     | Expo / React Native Android app (`com.creditcoach.app`)                                   |
 | `apps/admin`      | Next.js admin control center (Playwright tests in `e2e/`)                                 |
 | `supabase/`       | Migrations, seed and Edge Functions (hosted project, CLI-managed)                         |
-| `.claude/`        | Agents, skills, rules, hooks and commands for this project                                |
+| `.claude/`        | Agents, workflows, skills, rules, hooks and commands for this project                     |
 | `docs/`           | PRD, tech stack, ADRs, plans, journal, test reports                                       |
 
 ## Commands

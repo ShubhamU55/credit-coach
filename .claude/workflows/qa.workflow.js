@@ -553,7 +553,7 @@ function splitDeviceBound(testers) {
  * QaResult always see the exact same deduped findings in the exact same order -- never two
  * separate `dedupeFindings` calls that could silently drift apart.
  *
- * `result == null` (the agent file doesn't exist yet, or the call errored) and
+ * `result == null` (the agent file is missing, or the call errored) and
  * `result.status !== 'done'` both count as a failed tester -- a blocked tester's findings/
  * proposals are never trusted, but it is never silently dropped either (Review Focus #2: a null
  * or malformed result must never read as success).
@@ -631,9 +631,9 @@ function summarizeQa(results, verdicts, notApplicable = []) {
  * content (the same status `implementerBrief`/`reviewerPrompt` already give task text in
  * feature-build.workflow.js), never wrapped in `wrapUntrusted` like the finding/diff below it.
  * Without this, a tester or finding-verifier can flag plan-compliant behavior as a defect with no
- * way to be caught first (the same gap ae9c8fc closed for feature-build's task-level reviewers --
- * carried forward in docs/status.md as still open here, since api-tester/ui-tester/
- * integration-tester (W3-2) exercise exactly this path).
+ * way to be caught first (the same gap ae9c8fc closed for feature-build's task-level reviewers;
+ * closed here in 3485e8c, before Wave 3's api-tester/ui-tester/integration-tester landed on
+ * this path).
  */
 function planConflictGuidance(planText) {
   if (!planText) return [];
@@ -751,7 +751,7 @@ function testerPrompt(tester, scope, base, head, diff, criteria, planText) {
   ].join('\n');
 }
 
-/** A tester agent that doesn't exist yet, or that errors, is a null result -- never a thrown workflow. */
+/** A tester agent that is missing, or that errors, is a null result -- never a thrown workflow. */
 async function runTester(tester, scope, base, head, diff, criteria, planText) {
   try {
     const result = await agent(testerPrompt(tester, scope, base, head, diff, criteria, planText), {

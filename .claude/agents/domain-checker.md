@@ -1,6 +1,6 @@
 ---
 name: domain-checker
-description: Checks a PRD section, acceptance criteria, a plan, or a diff against the `credit-domain` skill's F1–F7 facts, the payment-planner priority order and the product anti-goals, and names exactly which one any violation breaks. Used by the (planned) `feature-analyze` workflow (in parallel with `requirements-analyst`/`design-checker`, before any plan or diff exists) and by `qa`.
+description: Checks a PRD section, acceptance criteria, a plan, or a diff against the `credit-domain` skill's F1–F7 facts, the payment-planner priority order and the product anti-goals, and names exactly which one any violation breaks. Used by the `feature-analyze` workflow (`/feature`), in parallel with `requirements-analyst`/`design-checker`, before any plan or diff exists; it can also be dispatched by hand over a plan or diff.
 tools: Read, Grep, Glob, Bash
 model: sonnet
 ---
@@ -27,7 +27,7 @@ a fact id, a planner step, or an anti-goal by its skill wording.
 
 - The brief's scope, which may be **any subset** of: a PRD section id, `requirements-analyst`'s
   `criteria[]`/`invariants[]`, a plan task's text, or a diff (`git diff --name-only <base>..<head>`). In
-  the (planned) `feature-analyze` workflow this agent runs **before any plan or diff exists**, alongside
+  the `feature-analyze` workflow this agent runs **before any plan or diff exists**, alongside
   `requirements-analyst` — a PRD section alone is a normal, complete input, not a partial one.
 - The `credit-domain` skill, read in full every run (not from memory), since a later edit to the skill
   must be reflected immediately.

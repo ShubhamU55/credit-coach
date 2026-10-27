@@ -2,6 +2,99 @@
 
 > Read this first when starting a new session. Update it at the end of every session (newest entry on top).
 
+## 2026-10-27 (Plan 1c Waves 3 and 4 done; W4-5 judge docs; Wave 5 is next and owner-gated)
+
+### State at handoff
+
+- **`main` is at `fd7f0a6`.** W4-1..W4-4 are all merged fast-forward under the bootstrap rule (no push before W5-1).
+- **Branch `feat/1c-w4-5-judge-docs`** (worktree `../cc-1c-w4-5`) adds 2 commits on top: `c5f3405` (Wave 4 ledger) and this ticket's commit, `docs: explain the agentic system for judges`. It is not merged yet; merge it fast-forward the same way.
+- **`pnpm verify` is green on the branch:** 1555 hooks tests across 26 files, and 30 engine tests at 98.76% line coverage.
+- **Nothing is pushed.** No remote-tracking branch exists locally.
+- **The owner has two unmerged branches:** `chore/ai-setup-docs-drift` and `chore/ai-setup-command-policy`.
+- **Superseded:** the 2026-10-26 entry below says "Wave 3 is next". Waves 3 and 4 are done.
+- **Why Waves 3 and 4 have no entries of their own here:** neither wave's hotspot table named a `docs/status.md` owner until W4-5, so under the parallel-wave exception their handoffs went into the run ledgers. This entry summarizes both.
+
+### What Waves 3 and 4 delivered
+
+- **Wave 3** (`3485e8c..9c719c0`, ledger `docs/agent-runs/2026-10-27-plan-1c-wave-3.md`, journal 002) added 12 agents, taking the roster from 14 to 26:
+  - analysis
+  - API, UI and integration testers
+  - the bug agents and `bug.yml`
+  - `pr-reviewer`, `pr-test-analyzer`, `pm-sync` and `journal-writer`
+
+  The `pr-reviewer` worked-example shell script had a remote-code-execution path. It was caught and fixed in 3 rounds.
+
+- **Wave 4** (`6322f2f..fd7f0a6`, ledger `docs/agent-runs/2026-10-27-plan-1c-wave-4.md`, journal 003) added:
+  - the `feature-analyze`, `pr-review`, `bugfix` and `retro` workflows
+  - the commands `/feature` (rewired), `/pr-review`, `/bugfix`, `/bug`, `/retro`, `/tidy` and `/worktrees`
+  - the scripts `.claude/hooks/bin/tidy.mjs` and `worktrees.cjs`
+  - `--no-renames` in `gate-checker`
+
+  The reviews caught several fail-open gates, all fixed before merge.
+
+- **W4-5** (this ticket) added `docs/ai-system.md`, ADR 0003 and journal 003, and updated `CLAUDE.md` and `README.md` (CI and Sonar badges). It also documented `planText` in `/qa` and reworded the stale "planned" lines in the 3 analyst agents and in `qa.workflow.js`'s comments.
+
+### Next steps, in order
+
+1. Merge `feat/1c-w4-5-judge-docs`.
+2. Run the final whole-wave review (opus) over `c84e390..HEAD`.
+3. Wave 5 (owner-gated): W5-1 push, Sonar and branch protection, then W5-2 board.
+
+### The live Workflow runtime is mostly untested
+
+- `feature-build` and `qa` ran live once, in the W2-2 dry run (`docs/agent-runs/2026-10-26-dry-run-plan-4a-task-2.md`). Fixes landed after that run (`3485e8c`, the Wave 4 `--no-renames`) and were only unit-tested.
+- `feature-analyze`, `pr-review`, `bugfix` and `retro` have only run on the `vm` fake runtime in `.claude/hooks/tests/workflows/`.
+- Not yet observed:
+  - whether the real runtime enforces `schema` so that a malformed `done` result becomes null
+  - the `model: 'opus'` per-call option
+  - real `gh` posting by `pr-reviewer`
+- **The first real `/feature` → `/build` → `/qa` → `/pr-review` run is the real test.** Budget time for it.
+
+### Open items (not fixed; each needs a ticket or an owner call)
+
+- **The screenshot commit happens after the fix pass (ruling W4-0a, carried from W3-2).** Nothing commits `ui-tester`'s screenshots before `feature-build`'s post-task gate. The first mobile `/build` with an emulator attached will hit a loud dirty-start failure. The fix belongs in `feature-build.workflow.js`.
+- **`journal-writer` must emit an `## Agent stats` table (ruling W4-4a).** Until it does, `/retro` has no data (`diagnostics.withoutStats` equals `total`). The format is in `.claude/commands/retro.md`.
+- **Ruling W4-3f:**
+  - (a) `apps/mobile/.maestro/config.yaml|yml` is not on `bugfix`'s `isProtectedPath` list, so an analyst-steered `fixFiles` could exclude the pinned Maestro flow.
+  - (b) A `protected-fix-file` rejection doesn't name the file. `bugfix.md`'s `failed` row gives no route, and `bug-analyst.md`'s Stop rules don't say to return `blocked` with the file named.
+- **A missing verifier verdict fails closed only in `pr-review` (found while writing W4-5's docs).** `feature-build` and `qa` pass a null verdict (verifier crashed) to `applyVerifierPolicy`, which refutes a non-security `high` finding. So a crashed verifier silently drops it. Decide whether to apply `pr-review`'s rule in the workflow bodies (not in the contracts block).
+- **`build-error-resolver` is not wired up.** No workflow dispatches it (`feature-build.workflow.js` says so), although `/build` and `CLAUDE.md` name it.
+- **Spec and owner calls carried from Wave 3:**
+  - `integration-tester` is never dispatched on a mobile-only diff.
+  - Confirm `pm-sync`'s generic field resolution against the real W5-2 board.
+- **Deferred minors are not copied here.** See the Wave 4 ledger (the W4-1 M1–M5 list, Addendum 5's "Deferred minors", Addendum 6, and Addendum 7's W4-3f "Other deferred minors") and the Wave 3 ledger's "Carry-forwards".
+
+### Stale lines left on `main` on purpose (ruling W4-5a: the owner's branches own these files)
+
+- **`.claude/rules/agents.md`:**
+  - the `## Planned roster` heading and its "planned, not yet built" text (lines 35–37)
+  - line 51 says `pr-reviewer` "drives the `pr-review` fan-out". It only posts; the `pr-review` workflow drives the fan-out.
+- **`.claude/rules/development-workflow.md`:**
+  - `## Planned pipeline` and its "planned, not yet built" text (lines 17–19)
+  - line 27: `/retro` is not run by pm-sync or journal-writer; `retro` dispatches only `planner`
+  - line 28: `/tidy` is described as lint, format and dead code
+  - `/worktrees` is missing
+- **`chore/ai-setup-docs-drift`** (`git diff main...chore/ai-setup-docs-drift -- .claude/rules`) covers the Planned roster, the `pr-reviewer` line and the Planned pipeline, and adds `/worktrees`. Two lines in it still look wrong:
+  - its `/retro` bullet still names pm-sync and journal-writer
+  - its `/qa` bullet says `test-automator` lands proposals, but only `feature-build` does that (a bare `/qa` only reports them), and it leaves out `security-reviewer`
+- **Outside this ticket's files:**
+  - `.claude/commands/build.md`: lines 43 ("landing in W3-3") and 56–57 ("until `journal-writer` exists")
+  - `.claude/commands/pr-review.md` line 96 ("not built yet")
+  - `.claude/agents/bug-reporter.md:144` says `pm-sync` closes the ticket, but the `/bugfix --close` command does
+  - `docs/agent-runs/2026-10-27-plan-1c-wave-3.md` says "14 new agent files" where there were 12
+  - `docs/journal/README.md`'s index table is empty
+  - `docs/adr/` has no index README
+
+### Owner actions still open
+
+- `gh auth refresh -h github.com -u ShubhamU55 -s workflow,project`. The token still has only `repo`.
+- SonarQube Cloud: create the org, import the repo, and set `SONAR_TOKEN` and `SONAR_REQUIRED` (W5-1). `sonar-project.properties` uses project key `ShubhamU55_credit-coach` and org `shubhamu55`; W5-1 corrects them if the real keys differ. The README badges use that project key.
+- `npx supabase login`, then create the project.
+- Install Docker Desktop (needed by `api-tester`, Plan 3).
+- When convenient, toggle `config-protection` off briefly to fix the 5 locked-file security gaps (see the Wave-1-complete entry below), including the `PowerShell` tool not being hooked.
+- Decide whether to commit or `.gitignore` `.design/` and `ai-audit/`. Both are untracked in the main checkout.
+- Merge or close `chore/ai-setup-docs-drift` and `chore/ai-setup-command-policy`.
+
 ## 2026-10-26 (W2-2 done and merged — Wave 2 complete; a real pipeline defect was found and fixed)
 
 ### State at handoff — clean, nothing running

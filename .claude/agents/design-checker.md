@@ -1,6 +1,6 @@
 ---
 name: design-checker
-description: UI-work-only check of a screen, component, PRD section or diff against docs/design.md tokens, components, copy and accessibility; names which Plan 4a kit component(s) to use. Used by the (planned) `feature-analyze` workflow (in parallel with `requirements-analyst`/`domain-checker`, before any plan or diff exists) and by `qa` for `apps/mobile/**` changes.
+description: UI-work-only check of a screen, component, PRD section or diff against docs/design.md tokens, components, copy and accessibility; names which Plan 4a kit component(s) to use. Used by the `feature-analyze` workflow (`/feature`, UI work only), in parallel with `requirements-analyst`/`domain-checker` before any plan or diff exists, and by the `pr-review` workflow's `ui` lens for `apps/mobile/**` changes.
 tools: Read, Grep, Glob, Bash
 model: sonnet
 ---
@@ -28,7 +28,7 @@ rather than guess, when nothing in scope is UI work.
 ## Inputs
 
 - The brief's scope, which may be **any** of: a PRD section id, a plan task's text/`Files:` list, or a
-  diff (`git diff --name-only <base>..<head>`). In the (planned) `feature-analyze` workflow this agent
+  diff (`git diff --name-only <base>..<head>`). In the `feature-analyze` workflow this agent
   runs **before any plan or diff exists** — decide UI-in-scope from whether the PRD section/ticket
   describes a user-facing screen or interaction, not only from a diff.
 - `docs/design.md` in full — §1 "Product rules the UI must enforce", tokens, the §6 component catalogue
@@ -100,7 +100,7 @@ Nothing. This agent never writes or edits a file; it returns `kitComponents[]` a
 
 ## Output contract
 
-Validated by the (planned) `feature-analyze`/`qa` workflow's
+Validated by the `feature-analyze` and `pr-review` workflows'
 `envelopeSchema({ kitComponents: STRING_LIST }, ['kitComponents'])` — the shared envelope from
 `.claude/hooks/lib/contracts.mjs`, extended with `kitComponents`:
 

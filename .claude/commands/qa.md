@@ -38,13 +38,22 @@ id, a PRD section, or free text; it's passed straight through as `args.scope` an
      "head": "<from step 1>",
      "changedFiles": ["<from step 1>"],
      "diff": "<from step 1>",
-     "criteria": ["<from step 2, if any>"]
+     "criteria": ["<from step 2, if any>"],
+     "planText": "<the approved plan's own text for this scope, if any>"
    }
    ```
 
+   **`planText`** (optional) is the approved plan's literal text for what this run covers, such as
+   the plan task's own text. It must be a string, or the Workflow throws. It is **trusted**: the
+   Workflow places it unfenced, ahead of the untrusted diff and finding fences, in every tester and
+   `finding-verifier` prompt. That way a tester can't flag behaviour the plan explicitly requires
+   as a defect (the W2-2 dry run's silent plan override). Pass it whenever this scope comes from a
+   plan. Omit it only when there is no plan text, for example a bare `/qa <scope>` on free text, and
+   say in the summary that the run had no plan text.
+
 4. **Report the result.** Show: the testers that ran and the testers in `failedTesters` (and why,
-   if known — e.g. "not built yet" for `ui-tester`/`integration-tester`/`api-tester` before
-   W3-2, or "no acceptance criteria" for `functional-tester`), the `confirmed` findings (severity,
+   if known — e.g. the agent returned `blocked` or errored), the testers in `notApplicable` (never
+   dispatched — e.g. `functional-tester` with no acceptance criteria), the `confirmed` findings (severity,
    file, title), the `counts` object, and the test `proposals` — note that nothing is committed
    yet; proposals land only when `test-automator` runs (the `feature-build` workflow's own
    after-QA phase does this automatically; a bare `/qa` run only reports them).
