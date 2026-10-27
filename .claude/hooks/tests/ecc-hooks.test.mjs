@@ -1,8 +1,9 @@
 // Adapted from affaan-m/ECC (MIT) @ 90606c8
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
@@ -307,6 +308,100 @@ describe('config-protection.cjs: spawned stdin fallback', () => {
       });
     },
   );
+});
+
+// Linux CI regression: the case-variant cases above passed on Windows/macOS
+// only because a case-insensitive filesystem reports `.claude/Settings.json`
+// as existing (it IS settings.json there). On a case-sensitive filesystem the
+// variant is a distinct, absent path, and the hook's "first-time creation is
+// allowed" existence check let it through with exit 0. These tests emulate a
+// case-sensitive filesystem on ANY host by making `fs.lstatSync` resolve each
+// path segment by exact name, so they fail without the fix on every OS.
+describe('config-protection.cjs: case variants on a case-sensitive filesystem', () => {
+  const requireCjs = createRequire(import.meta.url);
+
+  function enoent(filePath) {
+    const error = new Error(`ENOENT: no such file or directory, lstat '${filePath}'`);
+    error.code = 'ENOENT';
+    return error;
+  }
+
+  // Throws ENOENT unless every segment below the root exists with this exact
+  // spelling, which is how a case-sensitive filesystem looks a path up.
+  function assertExactCaseExists(filePath) {
+    const resolved = path.resolve(String(filePath));
+    const { root } = path.parse(resolved);
+    let current = root;
+    for (const segment of resolved.slice(root.length).split(path.sep).filter(Boolean)) {
+      if (!fs.readdirSync(current).includes(segment)) throw enoent(filePath);
+      current = path.join(current, segment);
+    }
+  }
+
+  function runCaseSensitive(filePath) {
+    const { run } = requireCjs(configProtectionScriptPath);
+    const realLstat = fs.lstatSync;
+    const lstatSpy = vi.spyOn(fs, 'lstatSync').mockImplementation((target, ...rest) => {
+      assertExactCaseExists(target);
+      return realLstat(target, ...rest);
+    });
+    try {
+      const result = run(JSON.stringify({ tool_input: { file_path: filePath } }));
+      return { result, lstatCalls: lstatSpy.mock.calls.length };
+    } finally {
+      lstatSpy.mockRestore();
+    }
+  }
+
+  it('the emulation reports a case variant of settings.json as absent', () => {
+    expect(() =>
+      assertExactCaseExists(path.join(repoRoot, '.claude', 'settings.json')),
+    ).not.toThrow();
+    expect(() => assertExactCaseExists(path.join(repoRoot, '.claude', 'Settings.json'))).toThrow(
+      /ENOENT/,
+    );
+  });
+
+  it.each([
+    ['a different case basename', path.join(repoRoot, '.claude', 'Settings.json')],
+    ['a different case directory', path.join(repoRoot, '.CLAUDE', 'settings.json')],
+    ['all-caps basename', path.join(repoRoot, '.claude', 'SETTINGS.JSON')],
+    [
+      'a different case guard script',
+      path.join(repoRoot, '.claude', 'hooks', 'Config-Protection.cjs'),
+    ],
+  ])(
+    'blocks %s even though the variant path itself does not exist (exit 2)',
+    (_label, variantPath) => {
+      const { result, lstatCalls } = runCaseSensitive(variantPath);
+      expect(lstatCalls).toBeGreaterThan(0);
+      expect(result.exitCode).toBe(2);
+    },
+  );
+
+  // The canonical-path check must not remove the bootstrap escape hatch: in a
+  // repo with no settings.json yet, creating one (in any case) stays allowed.
+  it('still allows first-time creation of settings.json in a repo that has none (exit 0)', () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'config-protection-test-'));
+    try {
+      const tempHooksDir = path.join(tempRoot, '.claude', 'hooks');
+      fs.mkdirSync(tempHooksDir, { recursive: true });
+      const tempScriptPath = path.join(tempHooksDir, 'config-protection.cjs');
+      fs.copyFileSync(configProtectionScriptPath, tempScriptPath);
+
+      for (const name of ['settings.json', 'Settings.json']) {
+        const result = spawnSync(process.execPath, [tempScriptPath], {
+          input: JSON.stringify({
+            tool_input: { file_path: path.join(tempRoot, '.claude', name) },
+          }),
+          encoding: 'utf8',
+        });
+        expect(result.status).toBe(0);
+      }
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('config-protection.cjs: no stdin listener attaches on require (module guard)', () => {
