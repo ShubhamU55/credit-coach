@@ -30,6 +30,11 @@ supabase/.branches/
 # superpowers execution scratch
 .superpowers/
 
+# local agent config
+CLAUDE.local.md
+.claude/settings.local.json
+.mcp.json
+
 # os / editors
 .DS_Store
 Thumbs.db
