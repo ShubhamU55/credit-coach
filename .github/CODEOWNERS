@@ -1,0 +1,8 @@
+# Code owners. Solo project: the owner reviews every change to the files that steer the agents
+# and to the review path itself. Keep each path real; a test fails on a pattern that matches nothing.
+/CLAUDE.md @ShubhamU55
+/.claude/ @ShubhamU55
+/apps/*/AGENTS.md @ShubhamU55
+/apps/mobile/.claude/ @ShubhamU55
+/.github/ @ShubhamU55
+/docs/ai-policy.md @ShubhamU55
