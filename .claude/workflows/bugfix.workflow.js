@@ -522,11 +522,12 @@ function wrapUntrusted(label, text) {
 const SHA_PATTERN = /^[0-9a-f]{7,40}$/;
 const SAFE_PATH_CHARS = /^[A-Za-z0-9._/@+-]+$/;
 const ENV_SEGMENT = /^\.env/;
-// `pnpm test|verify`, or a workspace script from this repo's own testing table, plus plain
-// path/flag arguments. No quote, `$`, backtick, `;`, `&`, `|`, `<`, `>`, whitespace other than a
-// single space, or newline can match, so nothing here can start a second command.
+// `pnpm test|verify`, or a workspace script from this repo's own testing table, followed only by
+// space-separated plain repo paths (each checked with isSafeRepoPath: no flag, `..`, quote, `$`,
+// backtick, `;`, `&`, `|`, `<`, `>` or newline), so nothing can start a second command or point a
+// runner flag at another file.
 const TEST_COMMAND_PATTERN =
-  /^pnpm (?:--filter @credit-coach\/(?:engine|hooks|admin|mobile) (?:test|test:e2e|e2e)|verify|test)(?: [A-Za-z0-9._/=@:-]+)*$/;
+  /^(pnpm (?:--filter @credit-coach\/(?:engine|hooks|admin|mobile) (?:test|test:e2e|e2e)|verify|test))((?: [^ ]+)*)$/;
 
 const REPORT_TEXT_FIELDS = [
   'foundBy',
@@ -559,7 +560,12 @@ function isSafeFile(file) {
 }
 
 function isAllowedTestCommand(command) {
-  return typeof command === 'string' && TEST_COMMAND_PATTERN.test(command);
+  const match = typeof command === 'string' ? TEST_COMMAND_PATTERN.exec(command) : null;
+  if (match === null) return false;
+  return match[2]
+    .split(' ')
+    .filter((token) => token !== '')
+    .every(isSafeRepoPath);
 }
 
 /**
@@ -806,6 +812,20 @@ function gateBrief(task, attemptStart) {
     task.testCommand ? `TEST: ${task.testCommand}` : 'TEST: none',
     expect.length > 0 ? `EXPECT: ${expect.join(' ')}` : 'EXPECT: none',
   ].join('\n');
+}
+
+/**
+ * Regression-test files an attempt changed although they are not in `task.files`. `checkDrift`
+ * allows `files + testFiles`, so without this an implementer could weaken the pinned test until it
+ * passes; only a test file the analyst deliberately listed in `fixFiles` may be touched.
+ */
+function modifiedTests(facts, task) {
+  const fixFiles = toList(task.files).map(normalizePath);
+  const pinned = toList(task.testFiles).map(normalizePath);
+  return toList((facts || {}).changedFiles)
+    .map(normalizePath)
+    .filter((file) => pinned.includes(file) && !fixFiles.includes(file))
+    .map((file) => `regression-test-modified: ${file}`);
 }
 
 /**
@@ -1118,6 +1138,7 @@ async function runFixAttempts(issue, task, analysis) {
       ...(implResult == null ? ['implementer-returned-null'] : []),
       ...(blockedReason ? [`blocked: ${blockedReason}`] : []),
       ...drift.reasons,
+      ...modifiedTests(gate && gate.facts, task),
     ];
     const attempt = {
       n: attempts.length + 1,

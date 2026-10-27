@@ -30,6 +30,7 @@ const {
   fixBrief,
   gateBrief,
   buildPrBody,
+  modifiedTests,
   closeVerifyBrief,
   pmSyncBrief,
 } = loadBlocks(source, [
@@ -46,6 +47,7 @@ const {
   'fixBrief',
   'gateBrief',
   'buildPrBody',
+  'modifiedTests',
   'closeVerifyBrief',
   'pmSyncBrief',
 ]);
@@ -167,10 +169,29 @@ describe('isAllowedTestCommand', () => {
     }
   });
 
+  it('rejects any flag argument, so a runner option cannot load a file from elsewhere in the repo', () => {
+    for (const extra of [
+      '--config=../../docs/test-reports/bugs/7/x.mjs',
+      '--run',
+      '-t',
+      '../x.test.ts',
+      '/etc/passwd',
+    ]) {
+      expect(isAllowedTestCommand(`${ENGINE_TEST} ${extra}`), extra).toBe(false);
+    }
+    expect(canFix(analysis({ testCommand: `${ENGINE_TEST} --config=../x.mjs` })).reason).toBe(
+      'unsafe-test-command',
+    );
+  });
+
   it('accepts plain path arguments but not shell metacharacters or non-string input', () => {
     expect(isAllowedTestCommand(`${ENGINE_TEST} src/utilization.regression.test.ts`)).toBe(true);
     expect(isAllowedTestCommand(`${ENGINE_TEST} "a b"`)).toBe(false);
     expect(isAllowedTestCommand(`${ENGINE_TEST} --reporter=$HOME`)).toBe(false);
+    expect(
+      isAllowedTestCommand(`${ENGINE_TEST} extra
+rm -rf .`),
+    ).toBe(false);
     expect(isAllowedTestCommand(undefined)).toBe(false);
     expect(isAllowedTestCommand(42)).toBe(false);
   });
@@ -439,6 +460,32 @@ describe('checkRed', () => {
 
   it('does not allow the product fix files to change while landing the test', () => {
     expect(checkRed(facts({ changedFiles: [FIX_FILE] }), task, start).ok).toBe(false);
+  });
+});
+
+describe('modifiedTests', () => {
+  const task = fixTask(analysis());
+
+  it('flags a pinned regression test an attempt changed', () => {
+    expect(modifiedTests({ changedFiles: [FIX_FILE, TEST_FILE] }, task)).toEqual([
+      `regression-test-modified: ${TEST_FILE}`,
+    ]);
+  });
+
+  it('normalizes Windows separators before comparing', () => {
+    expect(
+      modifiedTests(
+        { changedFiles: ['packages\\engine\\src\\utilization.regression.test.ts'] },
+        task,
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('is empty for a fix-only change, and when the analyst listed the test as a fix file', () => {
+    expect(modifiedTests({ changedFiles: [FIX_FILE] }, task)).toEqual([]);
+    const listed = fixTask(analysis({ fixFiles: [FIX_FILE, TEST_FILE] }));
+    expect(modifiedTests({ changedFiles: [TEST_FILE] }, listed)).toEqual([]);
+    expect(modifiedTests(undefined, task)).toEqual([]);
   });
 });
 
@@ -900,6 +947,28 @@ describe('runtime: fix attempts, retry and escalation', () => {
     expect(callsOf(calls, 'implementer')).toHaveLength(3);
   });
 
+  it('fails an attempt that edits the pinned regression test, even though checkDrift allows testFiles', async () => {
+    let attempt = 0;
+    const { dispatch, git } = scenario({
+      implementer: (prompt) => {
+        attempt += 1;
+        const reset = prompt.match(/^RESET TO ([0-9a-f]{40})/);
+        if (reset) git.resetTo(reset[1]);
+        const files = attempt === 1 ? [FIX_FILE, TEST_FILE] : [FIX_FILE];
+        const commit = git.commit('fix: resolve bug #7', files);
+        return envelope({ commit, predictedFiles: files });
+      },
+    });
+    const { result, calls } = await runWorkflow({ args: { issue: 7 }, dispatch });
+    expect(result.attempts[0].ok).toBe(false);
+    expect(result.attempts[0].reasons).toEqual([`regression-test-modified: ${TEST_FILE}`]);
+    expect(callsOf(calls, 'implementer')[1].prompt).toContain(
+      `- regression-test-modified: ${TEST_FILE}`,
+    );
+    expect(result.status).toBe('done');
+    expect(result.attempts).toHaveLength(2);
+  });
+
   it('treats a null implementer as a failed attempt, never success', async () => {
     const { dispatch } = scenario({ implementer: () => null });
     const { result } = await runWorkflow({ args: { issue: 7 }, dispatch });
@@ -1214,6 +1283,22 @@ describe('/bugfix and /bug commands', () => {
     expect(text).toMatch(/pm-sync/);
     expect(text).toMatch(/stay open/i);
     expect(text).toMatch(/never closes/i);
+  });
+
+  it('/bugfix never puts agent output (reasons, evidencePaths) into a gh command line', () => {
+    const ghLines = read('bugfix.md')
+      .split(/\r?\n/)
+      .filter((line) => /gh (issue (close|reopen)|pr create)/.test(line));
+    expect(ghLines.length).toBeGreaterThanOrEqual(3);
+    for (const line of ghLines) {
+      expect(line, line).not.toMatch(/reasons|evidencePaths|summary/);
+    }
+  });
+
+  it('/bugfix with only a description gathers the report and passes issue: null (ruling W4-3a)', () => {
+    const text = read('bugfix.md');
+    expect(text).toContain('"issue": null');
+    expect(text).toContain('fix/bug-<slug>');
   });
 
   it('/bug collects the fields from the owner before running the report phase only', () => {
