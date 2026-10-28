@@ -23,7 +23,14 @@ export type PlannerStep = 'overdue' | 'minimum' | 'statement' | 'prepay';
 /** The PRD §5.3 default priority order. */
 export const PLANNER_STEPS: readonly PlannerStep[] = ['overdue', 'minimum', 'statement', 'prepay'];
 
-/** One credit card as the engine sees it. */
+/**
+ * One credit card as the engine sees it.
+ *
+ * The statement figures (`lastStatementBalance`, `minimumDue`, `paidSinceStatement`) are read as
+ * belonging to the cycle derived from `today` and `statementDay`: the last statement is the most
+ * recent `statementDay` on or before today. On the statement day itself the engine already treats
+ * a new statement as issued, so callers must roll these figures over to the new cycle that day.
+ */
 export interface Card {
   id: string;
   /** Display name, e.g. `HDFC Millennia`. */

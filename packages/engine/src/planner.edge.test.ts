@@ -88,6 +88,62 @@ describe('planPayments boundaries', () => {
     const off = planPayments(input(cards, 100000));
 
     expect(on.items.map((i) => i.amount)).toEqual(off.items.map((i) => i.amount));
+    // Same amount; at 30% the card is at or under both lines (30 and 40), so the switch-on code is
+    // excellent, and the switch-off code is threshold
+    expect(on.items.map((i) => i.reason.code)).toEqual(['prepay_excellent']);
+    expect(off.items.map((i) => i.reason.code)).toEqual(['prepay_threshold']);
+  });
+
+  it('never calls a card "excellent" while it ends above the threshold (excellent line above it)', () => {
+    // 50% card, threshold 10, excellent 30, ₹25,000 leaves it at 25%: under 30 but over 10
+    const cards = [card({ id: 'a', lastStatementBalance: 0, minimumDue: 0, outstanding: 50000 })];
+
+    const plan = planPayments(
+      input(cards, 25000, { aimFor10: true, thresholdPct: 10, excellentPct: 30 }),
+    );
+
+    expect(plan.items.map((i) => [i.amount, i.utilizationAfter])).toEqual([[25000, 25]]);
+    expect(plan.items[0]?.reason.code).toBe('prepay_partial');
+  });
+
+  it('a fractional threshold has no float off-by-one: 999 of 3,000 is exactly 33.3%', () => {
+    // 3000 * 33.3 / 100 is 998.9999999999999 in floating point
+    const cards = [
+      card({ id: 'a', limit: 3000, lastStatementBalance: 0, minimumDue: 0, outstanding: 999 }),
+    ];
+
+    const plan = planPayments(input(cards, 5000, { thresholdPct: 33.3 }));
+
+    expect(plan.items).toEqual([]);
+    expect(plan.withinThreshold).toBe(true);
+  });
+
+  it('a reordered step order never hides a minimum: a prepay before it pays by the due date', () => {
+    // Statement 15 Oct, due 4 Nov, minimum ₹500 unpaid; prepay runs first under this order
+    const cards = [
+      card({ id: 'a', outstanding: 90000, lastStatementBalance: 10000, minimumDue: 500 }),
+    ];
+
+    const plan = planPayments(
+      input(cards, 1000, { plannerStepOrder: ['prepay', 'statement', 'minimum', 'overdue'] }),
+    );
+
+    expect(plan.items.map((i) => [i.kind, i.amount, i.payBy])).toEqual([
+      ['prepay', 1000, '2026-11-04'],
+    ]);
+    expect(plan.shortfalls).toEqual([]);
+  });
+
+  it('cash equal to the minimums leaves the rest of the statement unpaid with no shortfall (deliberate: PRD §5.3 shortfalls are for minimums only)', () => {
+    const cards = [
+      card({ id: 'a', outstanding: 50000, lastStatementBalance: 40000, minimumDue: 2000 }),
+    ];
+
+    const plan = planPayments(input(cards, 2000));
+
+    expect(plan.items.map((i) => [i.kind, i.amount])).toEqual([['minimum', 2000]]);
+    expect(plan.shortfalls).toEqual([]);
+    expect(plan.leftover).toBe(0);
   });
 
   it('a 0% threshold pays a card down to nothing', () => {

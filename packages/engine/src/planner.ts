@@ -71,8 +71,19 @@ interface Prepaid {
   outstandingBefore: Rupees;
 }
 
-/** The most a card may carry and stay at or under `pct`, in whole rupees. */
-const capAt = (s: CardState, pct: number): Rupees => Math.floor((s.card.limit * pct) / PERCENT);
+/** Percentages are resolved to hundredths of a percent before any rupee math. */
+const PCT_SCALE = 100;
+
+/**
+ * The most a card may carry and stay at or under `pct`, in whole rupees. The percentage is
+ * scaled to integer hundredths first, so `3000 × 33.3%` is exactly 999 rather than the float
+ * 998.9999999999999. The integer product stays exact while limit × 10,000 < 2^53 (limits up to
+ * about ₹9 lakh crore).
+ */
+const capAt = (s: CardState, pct: number): Rupees => {
+  const pctHundredths = Math.round(pct * PCT_SCALE);
+  return Math.floor((s.card.limit * pctHundredths) / (PERCENT * PCT_SCALE));
+};
 
 /**
  * The cycle's due date. Only called for a card that owes a minimum or statement balance, which
@@ -120,16 +131,33 @@ const statementPayBy = (s: CardState, run: Run): IsoDate =>
 const prepayPayBy = (s: CardState, run: Run): IsoDate =>
   run.rules.reportingBasis === 'statement' ? s.point.payBy : weeklyPayBy(s, run);
 
+/**
+ * While a card still owes part of its minimum (before this item), no item on it may pay by later
+ * than its due date (never before today). With a reordered step order a prepay or statement item
+ * can run before the minimum step and absorb the minimum; its pay-by must then keep that deadline.
+ */
+const keepDueDeadline = (s: CardState, run: Run, payBy: IsoDate): IsoDate => {
+  const owesMinimum = s.cycle.dueDate !== null && s.cycle.remainingMinimum - s.paidInPlan > 0;
+  return owesMinimum ? laterOf(earlierOf(payBy, dueOf(s)), run.today) : payBy;
+};
+
 function pay(
   run: Run,
   s: CardState,
   item: { kind: PlanItem['kind']; amount: Rupees; payBy: IsoDate; reason: Reason },
 ): void {
   const utilizationBefore = utilOf(s);
+  const payBy = keepDueDeadline(s, run, item.payBy);
   s.outstanding -= item.amount;
   s.paidInPlan += item.amount;
   run.cash -= item.amount;
-  run.items.push({ ...item, cardId: s.card.id, utilizationBefore, utilizationAfter: utilOf(s) });
+  run.items.push({
+    ...item,
+    payBy,
+    cardId: s.card.id,
+    utilizationBefore,
+    utilizationAfter: utilOf(s),
+  });
 }
 
 /** Steps 1 and 2: fund minimums in due-date order; record every minimum the cash cannot cover. */
@@ -192,9 +220,13 @@ function lowerTo(run: Run, states: CardState[], pct: number, paid: Map<CardState
   }
 }
 
+/** 'excellent' only when the card ends at or under both lines (the excellent line may be set higher). */
 const prepayOutcome = (s: CardState, rules: CoachRules): PrepayOutcome => {
-  if (rules.aimFor10 && s.outstanding <= capAt(s, rules.excellentPct)) return 'excellent';
-  return s.outstanding <= capAt(s, rules.thresholdPct) ? 'threshold' : 'partial';
+  const withinThreshold = s.outstanding <= capAt(s, rules.thresholdPct);
+  if (rules.aimFor10 && withinThreshold && s.outstanding <= capAt(s, rules.excellentPct)) {
+    return 'excellent';
+  }
+  return withinThreshold ? 'threshold' : 'partial';
 };
 
 /**
@@ -210,12 +242,13 @@ function prepay(run: Run, states: CardState[]): void {
   for (const [s, { amount, outstandingBefore }] of paid) {
     const utilizationBefore = validUtil(outstandingBefore, s);
     const utilizationAfter = validUtil(s.outstanding, s);
+    const payBy = keepDueDeadline(s, run, prepayPayBy(s, run));
     s.paidInPlan += amount;
     run.items.push({
       kind: 'prepay',
       cardId: s.card.id,
       amount,
-      payBy: prepayPayBy(s, run),
+      payBy,
       reason: prepayReason(
         prepayOutcome(s, run.rules),
         s.point.date,

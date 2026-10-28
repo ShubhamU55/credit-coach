@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import fc from 'fast-check';
 import { planPayments } from './planner';
-import { addDays } from './reporting';
-import { PLANNER_STEPS, type Card, type PlanInput } from './types';
+import { addDays, cardCycle } from './reporting';
+import { DEFAULT_COACH_RULES, PLANNER_STEPS, type Card, type PlanInput } from './types';
 
 /**
  * Generators stay at or under ₹1,00,00,00,000 (1e9) per amount, so every integer product the
@@ -129,6 +129,73 @@ describe('planPayments properties', () => {
         const plan = planPayments(input);
         expect(planPayments(input)).toEqual(plan);
         expect(planPayments({ ...input, cards: [...input.cards].reverse() })).toEqual(plan);
+      }),
+    );
+  });
+});
+
+const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
+
+describe('planPayments properties: fix round 1', () => {
+  it('a card exactly at a one-decimal threshold gets no pre-payment (no float off-by-one)', () => {
+    // pct = k/10; outstanding = limit × pct / 100 is a whole number when limit × k is a multiple of 1000
+    const atThresholdArb = fc.integer({ min: 1, max: 1000 }).chain((k) => {
+      const step = 1000 / gcd(k, 1000);
+      return fc
+        .integer({ min: 1, max: Math.floor(1_000_000 / step) })
+        .map((m) => ({ k, limit: m * step }));
+    });
+    fc.assert(
+      fc.property(atThresholdArb, ({ k, limit }) => {
+        const outstanding = (limit * k) / 1000;
+        const plan = planPayments({
+          cards: [
+            {
+              id: 'a',
+              name: 'a',
+              issuer: 'Bank',
+              limit,
+              outstanding,
+              lastStatementBalance: 0,
+              statementDay: 15,
+              dueDay: 4,
+              minimumDue: 0,
+              paidSinceStatement: 0,
+            },
+          ],
+          cash: limit,
+          today: '2026-10-21',
+          rules: { ...DEFAULT_COACH_RULES, thresholdPct: k / 10 },
+        });
+        expect(plan.items).toEqual([]);
+      }),
+    );
+  });
+
+  it('while a card still owes its minimum, no item on it pays by later than its due date', () => {
+    // Keep minimums unpaid (paid since statement < half the minimum) so random step orders often
+    // put a statement or prepay item ahead of the minimum on the same card.
+    const unpaidMinimumArb = inputArb.map((input) => ({
+      ...input,
+      cards: input.cards.map((c) => ({
+        ...c,
+        paidSinceStatement: Math.min(c.paidSinceStatement, Math.floor(c.minimumDue / 2)),
+      })),
+    }));
+    fc.assert(
+      fc.property(unpaidMinimumArb, (input) => {
+        const plan = planPayments(input);
+        const paidSoFar = new Map<string, number>();
+        for (const item of plan.items) {
+          const card = input.cards.find((c) => c.id === item.cardId) as Card;
+          const cycle = cardCycle(card, input.today);
+          const before = paidSoFar.get(item.cardId) ?? 0;
+          if (cycle.dueDate !== null && cycle.remainingMinimum - before > 0) {
+            const deadline = cycle.dueDate > input.today ? cycle.dueDate : input.today;
+            expect(item.payBy <= deadline).toBe(true);
+          }
+          paidSoFar.set(item.cardId, before + item.amount);
+        }
       }),
     );
   });
