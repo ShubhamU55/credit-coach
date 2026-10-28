@@ -9,9 +9,15 @@ appId: com.creditcoach.app
 ---
 - launchApp:
     clearState: true
+- extendedWaitUntil:
+    visible:
+      id: 'welcome-screen'
+    timeout: 20000
 - openLink: creditcoach://kit
-- assertVisible:
-    id: 'kit-buttons-title'
+- extendedWaitUntil:
+    visible:
+      id: 'kit-buttons-title'
+    timeout: 20000
 
 # Buttons
 - scrollUntilVisible:
@@ -20,7 +26,7 @@ appId: com.creditcoach.app
 - assertVisible:
     id: 'kit-buttons-title'
 - scroll
-- takeScreenshot: ../../docs/test-reports/ui-kit/kit-buttons-1
+- takeScreenshot: kit-buttons-1
 
 # Form controls
 - scrollUntilVisible:
@@ -29,7 +35,7 @@ appId: com.creditcoach.app
 - assertVisible:
     id: 'kit-form-title'
 - scroll
-- takeScreenshot: ../../docs/test-reports/ui-kit/kit-form-1
+- takeScreenshot: kit-form-1
 
 # Information blocks
 - scrollUntilVisible:
@@ -38,7 +44,7 @@ appId: com.creditcoach.app
 - assertVisible:
     id: 'kit-info-title'
 - scroll
-- takeScreenshot: ../../docs/test-reports/ui-kit/kit-info-1
+- takeScreenshot: kit-info-1
 
 # Card surfaces
 - scrollUntilVisible:
@@ -47,7 +53,7 @@ appId: com.creditcoach.app
 - assertVisible:
     id: 'kit-cards-title'
 - scroll
-- takeScreenshot: ../../docs/test-reports/ui-kit/kit-cards-1
+- takeScreenshot: kit-cards-1
 
 # Plan visuals
 - scrollUntilVisible:
@@ -56,7 +62,7 @@ appId: com.creditcoach.app
 - assertVisible:
     id: 'kit-plan-title'
 - scroll
-- takeScreenshot: ../../docs/test-reports/ui-kit/kit-plan-1
+- takeScreenshot: kit-plan-1
 
 # Score visuals
 - scrollUntilVisible:
@@ -68,16 +74,18 @@ appId: com.creditcoach.app
 - assertVisible:
     id: 'kit-range-xl'
     text: '708–736'
-- takeScreenshot: ../../docs/test-reports/ui-kit/kit-score-1
+- takeScreenshot: kit-score-1
 
 # App chrome
 - scrollUntilVisible:
     element:
       id: 'kit-chrome-title'
+    speed: 30
+    visibilityPercentage: 50
 - assertVisible:
     id: 'kit-chrome-title'
 - scroll
-- takeScreenshot: ../../docs/test-reports/ui-kit/kit-chrome-1
+- takeScreenshot: kit-chrome-1
 
 # The bottom sheet: open it, check the fixed note, close it
 - scrollUntilVisible:
@@ -87,7 +95,7 @@ appId: com.creditcoach.app
     id: 'kit-open-sheet'
 - assertVisible: 'MARK AS PAID'
 - assertVisible: 'This only records it here. Pay in your bank or UPI app.'
-- takeScreenshot: ../../docs/test-reports/ui-kit/kit-chrome-sheet
+- takeScreenshot: kit-chrome-sheet
 - tapOn: 'Close'
 - assertNotVisible: 'This only records it here. Pay in your bank or UPI app.'
 
