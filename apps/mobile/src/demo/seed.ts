@@ -116,7 +116,7 @@ function parseProfile(raw: unknown): DemoProfile {
 export function parseSeed(raw: unknown): DemoSeed {
   const root = asObject(raw, 'seed');
   if (!Array.isArray(root.cards)) fail('cards', 'an array');
-  const cards = root.cards.map(parseCard);
+  const cards = root.cards.map((card, index) => parseCard(card, index));
   const ids = new Set<string>();
   for (const card of cards) {
     if (ids.has(card.id)) throw new Error(`Invalid demo seed: duplicate card id ${card.id}`);
