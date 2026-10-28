@@ -2,7 +2,7 @@ import { utilization } from '@credit-coach/engine';
 import { router } from 'expo-router';
 import { Pressable, Text } from 'react-native';
 
-import { StubScreen } from '../shell/StubScreen';
+import { StubScreen, stubTarget } from '../shell/StubScreen';
 import { useDemoRepository } from '../state/DemoRepositoryContext';
 
 // Stub: PD-8 replaces this body with the real Welcome screen. Keep the route file name and
@@ -12,7 +12,8 @@ export default function WelcomeRoute() {
 
   function trySampleProfile() {
     repository.reset();
-    router.push('/home');
+    // replace, not push: Android back from Home must not return to Welcome.
+    router.replace('/home');
   }
 
   return (
@@ -22,6 +23,8 @@ export default function WelcomeRoute() {
         accessibilityRole="button"
         accessibilityLabel="Try sample profile"
         testID="welcome-try-sample"
+        style={stubTarget}
+        hitSlop={8}
         onPress={trySampleProfile}
       >
         <Text>Try sample profile</Text>

@@ -6,6 +6,8 @@ appId: com.creditcoach.app
     clearState: true
 - assertVisible:
     id: 'welcome-screen'
+# The visible label itself (PRD copy), not only the testID.
+- assertVisible: 'Try sample profile'
 - tapOn:
     id: 'welcome-try-sample'
 - assertVisible:
