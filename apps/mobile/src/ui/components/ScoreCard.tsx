@@ -1,4 +1,5 @@
 import { View } from 'react-native';
+import { DashedRule } from '../primitives/DashedRule';
 import { percentStyle } from '../primitives/percent';
 import { Text } from '../primitives/Text';
 import { color, scoreZone, space } from '../theme';
@@ -24,11 +25,6 @@ const BAR_HEIGHT = 14;
 const NOW_HEIGHT = 24;
 const GAP = 3;
 const ZONE_KEYS = ['poor', 'fair', 'good', 'excellent'] as const;
-
-const hidden = {
-  accessibilityElementsHidden: true,
-  importantForAccessibility: 'no-hide-descendants',
-} as const;
 
 /** Zone colour by name (Poor, Fair, Good, Excellent); an unknown name falls back to its position. */
 function zoneColor(name: string, index: number): string {
@@ -123,12 +119,7 @@ function PlanLane({
 }) {
   return (
     <View style={{ gap: 12 }}>
-      <View testID="score-card-rule" {...hidden} style={{ height: 1, overflow: 'hidden' }}>
-        <View
-          testID="score-card-rule-line"
-          style={{ height: 4, borderWidth: 1, borderStyle: 'dashed', borderColor: color.rule }}
-        />
-      </View>
+      <DashedRule color={color.rule} testID="score-card-rule" />
       <View testID="score-card-plan" style={{ gap: 8 }}>
         <View style={{ height: BAR_HEIGHT, backgroundColor: color.hairline }}>
           {scale.span > 0 ? (
