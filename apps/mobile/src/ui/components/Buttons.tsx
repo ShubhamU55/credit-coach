@@ -1,6 +1,7 @@
 import { Pressable } from 'react-native';
 import { PopPressable } from '../primitives/PopPressable';
 import { Text } from '../primitives/Text';
+import { usePressed } from '../primitives/usePressed';
 import { color, space } from '../theme';
 
 type BaseButtonProps = {
@@ -8,6 +9,9 @@ type BaseButtonProps = {
   onPress: () => void;
   testID?: string;
 };
+
+// A disabled control is dimmed as well as recoloured, so the state is not colour alone.
+const DISABLED_OPACITY = 0.5;
 
 export type PopButtonProps = BaseButtonProps & {
   /** `screen` = 56 tall screen CTA; `list` = 48 tall inside a list. */
@@ -37,7 +41,8 @@ export function PopButton({
       accessibilityLabel={label}
       testID={testID}
       style={{
-        height: size === 'list' ? space.touch : 56,
+        // minHeight, not height: the label must not clip at 200% font scale.
+        minHeight: size === 'list' ? space.touch : 56,
         alignSelf: 'stretch',
         flexDirection: 'row',
         alignItems: 'center',
@@ -50,7 +55,12 @@ export function PopButton({
         {label.toUpperCase()}
       </Text>
       {trailingArrow ? (
-        <Text variant="button" color={labelColor} accessible={false} importantForAccessibility="no">
+        <Text
+          variant="button"
+          color={labelColor}
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+        >
           →
         </Text>
       ) : null}
@@ -60,13 +70,17 @@ export function PopButton({
 
 export type SecondaryButtonProps = BaseButtonProps & { disabled?: boolean };
 
-/** Secondary button (design.md 6.2): transparent, 1px `line` border, ink label, 48 tall, no shadow. */
+/**
+ * Secondary button (design.md 6.2): transparent, 1px `line` border, ink label, 48 tall, no shadow.
+ * Pressed = 2px border; disabled = dashed border and dimmed (neither is colour alone).
+ */
 export function SecondaryButton({
   label,
   onPress,
   disabled = false,
   testID = 'secondary-button',
 }: SecondaryButtonProps) {
+  const { pressed, handlers } = usePressed();
   return (
     <Pressable
       accessibilityRole="button"
@@ -74,17 +88,20 @@ export function SecondaryButton({
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}
+      {...handlers}
       testID={testID}
-      style={({ pressed }) => ({
-        height: space.touch,
+      style={{
+        minHeight: space.touch,
         minWidth: space.touch,
         alignItems: 'center',
         justifyContent: 'center',
         paddingHorizontal: space.cardPad,
-        borderWidth: 1,
+        borderWidth: pressed && !disabled ? 2 : 1,
         borderColor: color.line,
-        backgroundColor: pressed ? color.surface2 : 'transparent',
-      })}
+        borderStyle: disabled ? 'dashed' : 'solid',
+        opacity: disabled ? DISABLED_OPACITY : 1,
+        backgroundColor: pressed && !disabled ? color.surface2 : 'transparent',
+      }}
     >
       <Text variant="buttonS" color={disabled ? 'muted' : 'ink'}>
         {label.toUpperCase()}
@@ -96,29 +113,43 @@ export function SecondaryButton({
 export type TextActionProps = BaseButtonProps & {
   /** True when sitting on a card finish: ink instead of link. */
   onFinish?: boolean;
+  disabled?: boolean;
 };
 
-/** Text action (design.md 6.3): uppercase button text in `link` (`ink` on a card finish), no underline. */
+/**
+ * Text action (design.md 6.3): uppercase button text in `link` (`ink` on a card finish).
+ * No underline at rest; pressed shows an underline; disabled is dimmed.
+ */
 export function TextAction({
   label,
   onPress,
   onFinish = false,
+  disabled = false,
   testID = 'text-action',
 }: TextActionProps) {
+  const { pressed, handlers } = usePressed();
   return (
     <Pressable
       accessibilityRole="link"
       accessibilityLabel={label}
+      accessibilityState={{ disabled }}
+      disabled={disabled}
       onPress={onPress}
+      {...handlers}
       testID={testID}
       style={{
         minHeight: space.touch,
         minWidth: space.touch,
         justifyContent: 'center',
         alignItems: 'flex-start',
+        opacity: disabled ? DISABLED_OPACITY : 1,
       }}
     >
-      <Text variant="buttonS" color={onFinish ? 'ink' : 'link'}>
+      <Text
+        variant="buttonS"
+        color={onFinish ? 'ink' : 'link'}
+        style={{ textDecorationLine: pressed && !disabled ? 'underline' : 'none' }}
+      >
         {label.toUpperCase()}
       </Text>
     </Pressable>

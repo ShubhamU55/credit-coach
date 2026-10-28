@@ -90,6 +90,18 @@ describe('PopPressable', () => {
     expect(screen.getByTestId('pop')).toBeDisabled();
   });
 
+  test("forwards the caller's onPressIn and onPressOut", async () => {
+    const onPressIn = jest.fn();
+    const onPressOut = jest.fn();
+    await renderPop({ onPressIn, onPressOut });
+
+    await fireEvent(screen.getByTestId('pop'), 'pressIn');
+    await fireEvent(screen.getByTestId('pop'), 'pressOut');
+
+    expect(onPressIn).toHaveBeenCalledTimes(1);
+    expect(onPressOut).toHaveBeenCalledTimes(1);
+  });
+
   test('enforces a 48dp minimum touch target', async () => {
     await renderPop();
 

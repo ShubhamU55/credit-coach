@@ -14,6 +14,10 @@ export type TextProps = RNTextProps & {
 const MUTED_VARIANTS: readonly TypeRole[] = ['caption', 'overline', 'micro'];
 const BODY_VARIANTS: readonly TypeRole[] = ['body', 'bodyS', 'voice'];
 
+// Screen headings. `title` is deliberately not here: it is also the row title inside switches and
+// choice rows. Callers pass accessibilityRole="header" for a section title.
+const HEADER_VARIANTS: readonly TypeRole[] = ['display', 'h1'];
+
 function defaultColor(variant: TypeRole): TextColor {
   if (MUTED_VARIANTS.includes(variant)) return 'muted';
   if (BODY_VARIANTS.includes(variant)) return 'body';
@@ -26,7 +30,7 @@ export function Text({ variant, color: colorToken, tabular, style, ...rest }: Te
   const isTabular = tabular ?? variant.startsWith('num');
   return (
     <RNText
-      accessibilityRole={variant === 'h1' ? 'header' : undefined}
+      accessibilityRole={HEADER_VARIANTS.includes(variant) ? 'header' : undefined}
       {...rest}
       style={StyleSheet.flatten([
         type[variant],

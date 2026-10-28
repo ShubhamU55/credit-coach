@@ -53,4 +53,38 @@ describe('useReduceMotion', () => {
 
     expect(remove).toHaveBeenCalled();
   });
+
+  test('a change event that arrives before the initial read wins over the stale initial value', async () => {
+    let resolveInitial: (enabled: boolean) => void = () => {};
+    let listener: Listener = () => {};
+    jest.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockReturnValue(
+      new Promise<boolean>((resolve) => {
+        resolveInitial = resolve;
+      }),
+    );
+    jest.spyOn(AccessibilityInfo, 'addEventListener').mockImplementation(((
+      _event: string,
+      handler: Listener,
+    ) => {
+      listener = handler;
+      return { remove: jest.fn() };
+    }) as never);
+    const { result } = await renderHook(() => useReduceMotion());
+
+    await act(async () => listener(true));
+    await act(async () => resolveInitial(false));
+
+    expect(result.current).toBe(true);
+  });
+
+  test('stays false (motion allowed) when reading the setting fails', async () => {
+    jest.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockRejectedValue(new Error('no'));
+    jest
+      .spyOn(AccessibilityInfo, 'addEventListener')
+      .mockImplementation((() => ({ remove: jest.fn() })) as never);
+
+    const { result } = await renderHook(() => useReduceMotion());
+
+    expect(result.current).toBe(false);
+  });
 });

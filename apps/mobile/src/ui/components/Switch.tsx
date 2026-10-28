@@ -1,5 +1,6 @@
-import { Pressable, View } from 'react-native';
+import { AccessibilityInfo, Pressable, View } from 'react-native';
 import { Text } from '../primitives/Text';
+import { usePressed } from '../primitives/usePressed';
 import { color, shadow, space } from '../theme';
 
 export type SwitchRowProps = {
@@ -10,6 +11,7 @@ export type SwitchRowProps = {
   captionOff: string;
   value: boolean;
   onValueChange: (value: boolean) => void;
+  disabled?: boolean;
   testID?: string;
 };
 
@@ -23,22 +25,34 @@ const THUMB_LEFT_OFF = INSET;
 const THUMB_LEFT_ON = TRACK_WIDTH - 2 * BORDER - THUMB - INSET;
 const THUMB_TOP = (TRACK_HEIGHT - 2 * BORDER - THUMB) / 2;
 
-/** Switch row (design.md 6.10): the whole row is the control; the caption says what changes. */
+/**
+ * Switch row (design.md 6.10): the whole row is the control; the caption says what changes.
+ * Toggling announces the new caption. Pressed = underlined title; disabled = dimmed.
+ */
 export function SwitchRow({
   title,
   captionOn,
   captionOff,
   value,
   onValueChange,
+  disabled = false,
   testID = 'switch-row',
 }: SwitchRowProps) {
+  const { pressed, handlers } = usePressed();
+  const toggle = () => {
+    const next = !value;
+    onValueChange(next);
+    AccessibilityInfo.announceForAccessibility(next ? captionOn : captionOff);
+  };
   return (
     <Pressable
       accessibilityRole="switch"
       accessibilityLabel={title}
       accessibilityHint={value ? captionOn : captionOff}
-      accessibilityState={{ checked: value }}
-      onPress={() => onValueChange(!value)}
+      accessibilityState={{ checked: value, disabled }}
+      disabled={disabled}
+      onPress={toggle}
+      {...handlers}
       testID={testID}
       style={{
         minHeight: 72,
@@ -46,10 +60,16 @@ export function SwitchRow({
         alignItems: 'center',
         gap: space.cardPad,
         paddingVertical: space.grid,
+        opacity: disabled ? 0.5 : 1,
       }}
     >
       <View style={{ flex: 1 }}>
-        <Text variant="title">{title}</Text>
+        <Text
+          variant="title"
+          style={{ textDecorationLine: pressed && !disabled ? 'underline' : 'none' }}
+        >
+          {title}
+        </Text>
         <Text variant="bodyS" color="muted">
           {value ? captionOn : captionOff}
         </Text>

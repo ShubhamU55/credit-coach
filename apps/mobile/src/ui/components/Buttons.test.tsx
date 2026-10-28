@@ -28,8 +28,10 @@ describe('PopButton', () => {
       </>,
     );
 
-    expect(styleOf('a').height).toBe(56);
-    expect(styleOf('b').height).toBe(48);
+    // minHeight, not height: labels must not clip at 200% font scale.
+    expect(styleOf('a').minHeight).toBe(56);
+    expect(styleOf('b').minHeight).toBe(48);
+    expect(styleOf('a').height).toBeUndefined();
   });
 
   test('is accent filled with an onAccent label and the pop shadow', async () => {
@@ -73,9 +75,11 @@ describe('PopButton', () => {
     expect(StyleSheet.flatten(screen.getByText('GO').props.style).color).toBe(color.muted);
   });
 
-  test('trailingArrow adds a decorative arrow that is not read out', async () => {
+  test('trailingArrow adds an arrow that is hidden from screen readers', async () => {
     await render(<PopButton label="Continue" trailingArrow onPress={() => {}} />);
 
+    // Hidden elements are excluded by default, so this fails if the arrow is exposed.
+    expect(screen.queryByText('→')).toBeNull();
     expect(screen.getByText('→', { includeHiddenElements: true })).toBeOnTheScreen();
     expect(screen.getByRole('button', { name: 'Continue' })).toBeOnTheScreen();
   });
@@ -91,7 +95,8 @@ describe('SecondaryButton', () => {
   test('has a 1px line border, no shadow and is 48 tall', async () => {
     await render(<SecondaryButton label="Undo" onPress={() => {}} testID="s" />);
 
-    expect(styleOf('s')).toMatchObject({ borderWidth: 1, borderColor: color.line, height: 48 });
+    expect(styleOf('s')).toMatchObject({ borderWidth: 1, borderColor: color.line, minHeight: 48 });
+    expect(styleOf('s').height).toBeUndefined();
     expect(styleOf('s').boxShadow).toBeUndefined();
   });
 
@@ -119,7 +124,49 @@ describe('SecondaryButton', () => {
   });
 });
 
+describe('SecondaryButton states beyond colour', () => {
+  test('pressing thickens the border', async () => {
+    await render(<SecondaryButton label="Undo" onPress={() => {}} testID="s" />);
+
+    await fireEvent(screen.getByTestId('s'), 'pressIn');
+
+    expect(styleOf('s').borderWidth).toBe(2);
+    await fireEvent(screen.getByTestId('s'), 'pressOut');
+    expect(styleOf('s').borderWidth).toBe(1);
+  });
+
+  test('disabled has a dashed border and reduced opacity, not just a muted label', async () => {
+    await render(<SecondaryButton label="Undo" disabled onPress={() => {}} testID="s" />);
+
+    expect(styleOf('s')).toMatchObject({ borderStyle: 'dashed', opacity: 0.5 });
+  });
+});
+
 describe('TextAction', () => {
+  test('pressing underlines the label, and releasing removes it', async () => {
+    await render(<TextAction label="Manage" onPress={() => {}} testID="t" />);
+
+    await fireEvent(screen.getByTestId('t'), 'pressIn');
+    expect(StyleSheet.flatten(screen.getByText('MANAGE').props.style).textDecorationLine).toBe(
+      'underline',
+    );
+    await fireEvent(screen.getByTestId('t'), 'pressOut');
+    expect(StyleSheet.flatten(screen.getByText('MANAGE').props.style).textDecorationLine).not.toBe(
+      'underline',
+    );
+  });
+
+  test('disabled does not fire, reports disabled and is dimmed', async () => {
+    const onPress = jest.fn();
+    await render(<TextAction label="Manage" disabled onPress={onPress} testID="t" />);
+
+    await fireEvent.press(screen.getByTestId('t'));
+
+    expect(onPress).not.toHaveBeenCalled();
+    expect(screen.getByTestId('t')).toBeDisabled();
+    expect(styleOf('t').opacity).toBe(0.5);
+  });
+
   test('has the link role and a touch target of at least 48', async () => {
     await render(<TextAction label="View full plan" onPress={() => {}} testID="t" />);
 

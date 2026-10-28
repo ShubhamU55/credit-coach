@@ -44,6 +44,28 @@ describe('Text', () => {
     expect(screen.getByRole('header')).toBeOnTheScreen();
   });
 
+  test('display is a header too', async () => {
+    await render(<Text variant="display">Welcome</Text>);
+
+    expect(screen.getByRole('header')).toBeOnTheScreen();
+  });
+
+  test('a caller can mark any variant as a header (section titles)', async () => {
+    await render(
+      <Text variant="title" accessibilityRole="header">
+        Coming up
+      </Text>,
+    );
+
+    expect(screen.getByRole('header')).toBeOnTheScreen();
+  });
+
+  test('title is not a header by default (it is also used for row titles inside controls)', async () => {
+    await render(<Text variant="title">Row</Text>);
+
+    expect(screen.queryByRole('header')).toBeNull();
+  });
+
   test('other variants have no header role', async () => {
     await render(<Text variant="body">Hello</Text>);
 
