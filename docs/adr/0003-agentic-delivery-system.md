@@ -73,9 +73,13 @@ These are recorded so that nobody mistakes them for the spec's behaviour.
   - The PR's `Fixes #N` line already closes the issue at merge. The command reopens it if close-time verification fails.
   - `verified` rests on `bug-reporter` returning `done`, plus a gate proof that fresh evidence was committed. The gate does not re-run the test itself (W4-3e).
 - **The Wave 4 workflows have run only on a fake runtime.**
-  - `feature-analyze`, `pr-review`, `bugfix` and `retro` were tested on a `vm`-based fake of the Workflow runtime, never on the live runtime.
+  - `feature-analyze`, `pr-review`, `bugfix` and `retro` were tested on a `vm`-based fake of the Workflow runtime. Only `pr-review` has since run live, once, on a one-file scratch PR (2026-10-27, PR #3, closed unmerged): all six lenses ran clean and `pr-reviewer` posted its review and status. That proves the plumbing, not review quality on a real change. The other three have never run live.
   - An earlier version of `feature-build` and `qa` ran live once, in the W2-2 dry run. Every later change is unit-tested only: `6316f15`, `ae9c8fc`, `3485e8c`, `d37f0a8` and `fd7f0a6` (no live re-run was performed).
   - Whether the live runtime enforces `schema` the same way is still unproven.
+- **G8 is self-attested, so `pr-review` is advisory and not a required check.**
+  - `pr-reviewer` posts its COMMENT review and the `pr-review` status with the same `ShubhamU55` token that opens the PRs. The first live run (PR #3) did exactly that, and the harness flagged it as self-approval.
+  - The gate records a review; it does not prove an independent one, because the same token could post any status. Branch protection requires the CI gates (G1, G2, G4 to G7, G9) plus `changes` and `hold-check`, and does not require `pr-review`.
+  - Making G8 independent needs a separate identity for `pr-reviewer` (a second account or a GitHub App). That is not done.
 
 ## Consequences
 

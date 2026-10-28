@@ -37,7 +37,8 @@ default `gh` account.
 4. **Compute the diff** the same way `/qa` does (the `gate-checker` `MODE: diff` equivalent):
 
    ```
-   git merge-base main HEAD
+   git fetch origin main
+   git merge-base origin/main HEAD
    git -c core.quotePath=false diff --name-only <base>..HEAD
    git diff <base>..HEAD
    ```
@@ -45,8 +46,10 @@ default `gh` account.
    Keep `-c core.quotePath=false` on the `--name-only` call: without it git wraps a path containing
    non-ASCII characters in quotes with octal escapes, which a PR author could use to hide a
    `apps/mobile/` file from the `ui` lens (the Workflow also strips a leading quote as a backstop).
-   The merge-base sha is passed as `base` in step 7. An empty diff stops the run (the Workflow
-   refuses to review nothing).
+   Use `origin/main`, never the local `main` ref. A stale local `main` (common in a ticket worktree)
+   makes the diff include changes that already merged, so the verdict would describe code the PR
+   does not contain; this happened on the first live run (PR #3). The merge-base sha is passed as
+   `base` in step 7. An empty diff stops the run (the Workflow refuses to review nothing).
 
 5. **specPaths.** The documents the PR claims to satisfy: the PRD file, `docs/design.md` for
    `apps/mobile/**` changes, and the ticket's plan file. At least one is required (the spec and
