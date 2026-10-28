@@ -271,8 +271,4 @@ if (!apiKey) {
 
 ## E2E Testing
 
-Use **Playwright** as the E2E testing framework for critical user flows.
-
-## Agent Support
-
-- **e2e-runner** - Playwright E2E testing specialist
+Use **Playwright** for `apps/admin` E2E (see the `e2e-testing` skill). The mobile app uses Maestro instead; see `CLAUDE.md` and the `maestro-android-e2e` skill.

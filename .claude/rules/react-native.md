@@ -126,7 +126,6 @@ Treat everything shipped in the app as readable by an attacker. A mobile binary 
 ## Dependencies
 
 - Run `expo-doctor` and `npm audit` regularly; keep the Expo SDK and native deps current.
-- Use `/security-scan` (AgentShield) on the agent configuration itself.
 
 ## React Native / Expo Testing
 
