@@ -45,7 +45,7 @@ export function StatTile({
       <Text variant="overline">{overline}</Text>
       <Text
         variant="numM"
-        color={over ? "warning" : "ink"}
+        color={over ? 'warning' : 'ink'}
         numberOfLines={1}
         // A value in a half-width tile cannot wrap or shrink, so it stops growing early (design.md 3).
         maxFontSizeMultiplier={1.1}

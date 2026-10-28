@@ -155,7 +155,9 @@ describe('PaymentTimelineStrip', () => {
     );
     expect(screen.getByText('You pay', { includeHiddenElements: true })).toBeOnTheScreen();
     expect(screen.getByText('Due', { includeHiddenElements: true })).toBeOnTheScreen();
-    expect(screen.getByText('Statement (reported)', { includeHiddenElements: true })).toBeOnTheScreen();
+    expect(
+      screen.getByText('Statement (reported)', { includeHiddenElements: true }),
+    ).toBeOnTheScreen();
   });
 
   test('draws an accent line for today', async () => {

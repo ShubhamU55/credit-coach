@@ -296,4 +296,3 @@ describe('DateBlockTimeline', () => {
     expect(screen.queryAllByRole('button')).toHaveLength(0);
   });
 });
-
