@@ -28,3 +28,12 @@ export type {
   Shortfall,
   Plan,
 } from './types';
+export {
+  addDays,
+  cardCycle,
+  lastStatementDate,
+  nextStatementDate,
+  nextWeeklySnapshot,
+  nextReportingPoint,
+  payByFor,
+} from './reporting';
