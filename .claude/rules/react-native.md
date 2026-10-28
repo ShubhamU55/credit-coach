@@ -124,7 +124,7 @@ Treat everything shipped in the app as readable by an attacker. A mobile binary 
 
 ## Dependencies
 
-- Run `expo-doctor` and `npm audit` regularly; keep the Expo SDK and native deps current.
+- Run `expo-doctor` and `pnpm audit` regularly; keep the Expo SDK and native deps current.
 
 ## React Native / Expo Testing
 
