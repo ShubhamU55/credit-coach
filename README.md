@@ -3,7 +3,7 @@
 [![CI](https://github.com/ShubhamU55/credit-coach/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ShubhamU55/credit-coach/actions/workflows/ci.yml)
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=ShubhamU55_credit-coach&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=ShubhamU55_credit-coach)
 
-These are live-status badges. They show nothing useful until `main` is pushed and SonarQube Cloud is set up (Plan 1c Wave 5).
+These are live-status badges for `main`: CI (lint, typecheck, tests, secrets, dependency audit, CodeQL) and the SonarQube Cloud quality gate.
 
 **Your credit coach: what to pay, where, and when, every month.**
 
@@ -61,6 +61,7 @@ If the emulator shows `offline` in `adb devices` after restoring a snapshot, col
 This project was built with AI as the development partner. All of the evidence is in the repo:
 
 - **[`docs/ai-system.md`](docs/ai-system.md) is the one-page overview for judges.** It covers the agentic delivery system: commands, workflows, agents and gates, the drift guard, retries and escalation, the verifier and token policies, and its known limits.
+- **[The Credit Coach project board](https://github.com/users/ShubhamU55/projects/1)** shows planning and execution: one issue per Plan 1c ticket (W0-1 to W5-2), grouped by wave, with the delivering commits and run ledgers linked. `scripts/pm/bootstrap-board.sh` creates the board, fields, milestones and labels idempotently.
 - [`CLAUDE.md`](CLAUDE.md) is the agent guide: workflow, ownership and non-negotiables.
 - [`.claude/`](.claude/) holds the project's AI setup:
   - agents (analysis, build, test, review, bugs, ops)

@@ -2,9 +2,19 @@
 
 > Read this first when starting a new session. Update it at the end of every session (newest entry on top).
 
+## 2026-10-28 (W5-2 board built and backfilled; the AI-setup hardening series landed; Plan 1c is done)
+
+Newest entry. Where it differs from the entries below, this one wins.
+
+- **The board exists and is public:** https://github.com/users/ShubhamU55/projects/1 (user-owned Projects v2). Status columns Backlog, Ready, In progress, Review, Done, Blocked; fields `Plan`, `Task #`, `Wave`, `Agent`, `Attempts`, `Est. vs actual`; 8 milestones; 70 labels. Created by `scripts/pm/bootstrap-board.sh` (idempotent; the second run created nothing).
+- **Backfilled with one issue per Plan 1c ticket** (#13 to #36, W0-1 to W5-2) by the one-off `scripts/pm/backfill-plan-1c.mjs`, not by `pm-sync` (which has never run live): 24 issues, 0 failures, each linking its delivering commits (exact subject match against `git log`, never guessed) and run ledger. `Attempts` is blank because the ledgers state fix rounds, not attempts. W5-1 has no single matching commit, so it links its ledger. Merging this PR closes #36.
+- **CI went red on 2026-10-28 for a reason outside the PRs:** OSV-Scanner began reporting GHSA-gcqx-w48m-w2h4 (`deepmerge` up to 4.3.1, no patched version, Medium). It is allow-listed in `osv-scanner.toml` until 2026-11-21 (PR #12), as the other no-patch advisories are. Re-review the allow-list by that date.
+- **Seven owner PRs landed** (#5 to #11, squash, in the handoff's order): path-safe guard hooks with PowerShell coverage and a stop-gate, docs-drift fixes, command frontmatter and a block on self-started write commands, the Expo plugin ADR, the AI usage policy, CODEOWNERS and a PR template, and the rule-text trim. `main` stayed green after the last one. The `chore/ai-setup-*` local branches are obsolete and can be deleted.
+- **Open:** `THIRD_PARTY_NOTICES.md` (ECC's MIT text) is not added; the owner has not decided on a licence for the project's own code; the other `npm audit` mentions live in ECC-adapted agent and skill files and were left as they are; `pm-sync` is still untested live; `pr-review` is still advisory (see the entry below).
+
 ## 2026-10-27 (later: Wave 5 W5-1 done — pushed, CI green, `main` protected; W5-2 board still open)
 
-Newest entry. The entry below it describes the state before the first push; where they differ, this one wins.
+Superseded by the entry above where they differ. The entry below it describes the state before the first push; where they differ, this one wins.
 
 ### State at handoff
 
