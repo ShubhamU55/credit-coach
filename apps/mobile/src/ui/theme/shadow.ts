@@ -9,6 +9,12 @@ export const shadow = {
   hero: '6px 6px 0px #5A3FD6', // hero payment card
   nav: '4px 4px 0px #000000', // floating nav
   logo: '3px 3px 0px #9F86FF', // monogram
+  // Switch thumb (design.md 6.10): off = rule colour, on = accentEdge.
+  switchThumbOff: '2px 2px 0px #3A3A44',
+  switchThumbOn: '2px 2px 0px #5A3FD6',
 } as const;
+
+/** The pressed state of a pop element: the shadow is gone (design.md 4). */
+export const noShadow = 'none';
 
 export type ShadowKind = keyof typeof shadow;
