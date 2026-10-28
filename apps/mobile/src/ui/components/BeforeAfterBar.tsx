@@ -92,7 +92,13 @@ export function BeforeAfterBar({
           ))}
         </View>
       </View>
-      <Text variant="caption" color="body" numberOfLines={1} style={{ flexShrink: 0 }}>
+      <Text
+        variant="caption"
+        color="body"
+        numberOfLines={1}
+        maxFontSizeMultiplier={1.3}
+        style={{ flexShrink: 0 }}
+      >
         {label}
       </Text>
     </View>

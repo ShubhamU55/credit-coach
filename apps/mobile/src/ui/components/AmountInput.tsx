@@ -70,7 +70,7 @@ function borderWidthFor(inline: boolean, status: AmountStatus): number {
 /**
  * Amount input (design.md 6.12). Integer rupees, `number-pad`, status via a 2px border plus a message.
  * The whole field (prefix and edges included) is a 48dp+ target that focuses the input. The message
- * sits in an always-mounted live region and is also the input's hint, so focusing it reads the error.
+ * sits in an always-mounted polite live region, so an error that appears is read once. It is deliberately not also the input's accessibilityHint (that would read it twice).
  */
 export function AmountInput({
   label,
@@ -110,7 +110,6 @@ export function AmountInput({
         <TextInput
           ref={inputRef}
           accessibilityLabel={`${label}, in rupees`}
-          accessibilityHint={message || undefined}
           keyboardType="number-pad"
           value={value}
           onChangeText={(text) => {

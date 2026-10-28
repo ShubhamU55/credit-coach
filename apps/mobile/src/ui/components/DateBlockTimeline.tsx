@@ -58,7 +58,7 @@ export function DateBlockTimeline({ items, onPressItem }: DateBlockTimelineProps
   return (
     <View testID="date-block-timeline">
       {items.map((item, index) => (
-        <View key={`${item.day}-${item.date}-${item.month}-${item.title}`}>
+        <View key={`row-${index}`}>
           {index > 0 ? (
             <View
               testID="date-block-connector"
@@ -91,7 +91,12 @@ export function DateBlockTimeline({ items, onPressItem }: DateBlockTimelineProps
                 {item.reason}
               </Text>
             </View>
-            <Text variant="numXS" numberOfLines={1} style={{ flexShrink: 0 }}>
+            <Text
+              variant="numXS"
+              numberOfLines={1}
+              maxFontSizeMultiplier={1.3}
+              style={{ flexShrink: 0 }}
+            >
               {item.amount}
             </Text>
           </Pressable>

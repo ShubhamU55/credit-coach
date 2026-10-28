@@ -73,7 +73,7 @@ function ZoneBar({ props, scale }: { props: ScoreCardProps; scale: Scale }) {
         <View style={{ flexDirection: 'row', height: BAR_HEIGHT }}>
           {zones.map((zone, i) => (
             <View
-              key={zone.name}
+              key={`zone-${i}`}
               testID={`score-zone-${i}`}
               style={{
                 flex: Math.max(0, zone.to - zone.from),
@@ -100,11 +100,20 @@ function ZoneBar({ props, scale }: { props: ScoreCardProps; scale: Scale }) {
         ) : null}
       </View>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 12 }}>
-        {zones.map((zone) => (
-          <Text key={zone.name} variant="micro" color={zone.name === currentZone ? 'ink' : 'muted'}>
-            {zone.name}
-          </Text>
-        ))}
+        {zones.map((zone, i) => {
+          const current = zone.name === currentZone;
+          return (
+            <Text
+              key={`zone-label-${i}`}
+              variant="micro"
+              color={current ? 'ink' : 'muted'}
+              // Underline marks the current zone so it is not colour alone (the sentence label also says it).
+              style={{ textDecorationLine: current ? 'underline' : 'none' }}
+            >
+              {zone.name}
+            </Text>
+          );
+        })}
       </View>
     </View>
   );
@@ -140,6 +149,7 @@ function PlanLane({
           variant="numXS"
           color="link"
           numberOfLines={1}
+          maxFontSizeMultiplier={1.3}
           testID="score-range-plan"
           style={{ flexShrink: 0 }}
         >

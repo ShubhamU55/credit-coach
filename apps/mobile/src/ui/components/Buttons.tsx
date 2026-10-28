@@ -6,6 +6,8 @@ import { color, space } from '../theme';
 
 type BaseButtonProps = {
   label: string;
+  /** Overrides the screen-reader name when the visible label alone is ambiguous (for example "Mark as paid" on five steps). */
+  accessibilityLabel?: string;
   onPress: () => void;
   testID?: string;
 };
@@ -25,6 +27,7 @@ export type PopButtonProps = BaseButtonProps & {
 /** Primary "pop" button (design.md 6.1). One per view. Accent fill, hard offset shadow, square corners. */
 export function PopButton({
   label,
+  accessibilityLabel,
   onPress,
   size,
   onHero,
@@ -38,7 +41,7 @@ export function PopButton({
       shadowKind={onHero ? 'popOnHero' : 'pop'}
       disabled={disabled}
       onPress={onPress}
-      accessibilityLabel={label}
+      accessibilityLabel={accessibilityLabel ?? label}
       testID={testID}
       style={{
         // minHeight, not height: the label must not clip at 200% font scale.
@@ -76,6 +79,7 @@ export type SecondaryButtonProps = BaseButtonProps & { disabled?: boolean };
  */
 export function SecondaryButton({
   label,
+  accessibilityLabel,
   onPress,
   disabled = false,
   testID = 'secondary-button',
@@ -84,7 +88,7 @@ export function SecondaryButton({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={label}
+      accessibilityLabel={accessibilityLabel ?? label}
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}
@@ -122,6 +126,7 @@ export type TextActionProps = BaseButtonProps & {
  */
 export function TextAction({
   label,
+  accessibilityLabel,
   onPress,
   onFinish = false,
   disabled = false,
@@ -131,7 +136,7 @@ export function TextAction({
   return (
     <Pressable
       accessibilityRole="link"
-      accessibilityLabel={label}
+      accessibilityLabel={accessibilityLabel ?? label}
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}

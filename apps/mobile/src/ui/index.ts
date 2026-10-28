@@ -39,7 +39,7 @@ export type { AmountInputHandle, AmountStatus } from './components/AmountInput';
 // components: information blocks
 export { StatusChip } from './components/StatusChip';
 export type { StatusChipProps, StatusChipVariant } from './components/StatusChip';
-export { Disclaimer, DISCLAIMER_TEXT } from './components/Disclaimer';
+export { Disclaimer, DISCLAIMER_TEXT, RECORD_NOTE } from './components/Disclaimer';
 export { SampleStrip } from './components/SampleStrip';
 export { AIExplanation, AI_LABEL, TEMPLATE_LABEL } from './components/AIExplanation';
 export { ReasonRow } from './components/ReasonRow';
@@ -61,6 +61,12 @@ export { ScoreRangeText } from './components/ScoreRangeText';
 export { ScoreCard } from './components/ScoreCard';
 export type { ScoreCardProps, ScoreZoneSpec } from './components/ScoreCard';
 export { WhatIfTile } from './components/WhatIfTile';
+export {
+  WhatIfResult,
+  CLOSE_CARD_AGE_WARNING,
+  CLOSE_CARD_LIMIT_WARNING,
+} from './components/WhatIfResult';
+export type { WhatIfDirection, WhatIfResultProps } from './components/WhatIfResult';
 
 // components: card surfaces
 export { ChipGlyph } from './components/ChipGlyph';

@@ -40,6 +40,7 @@ const FUNCTIONS = [
   'ScoreRangeText',
   'ScoreCard',
   'WhatIfTile',
+  'WhatIfResult',
   // part B: card surfaces
   'ChipGlyph',
   'CardTile',
@@ -63,7 +64,15 @@ const OBJECTS = [
   'kitShadow',
 ];
 
-const STRINGS = ['DISCLAIMER_TEXT', 'AI_LABEL', 'TEMPLATE_LABEL', 'noShadow'];
+const STRINGS = [
+  'RECORD_NOTE',
+  'CLOSE_CARD_AGE_WARNING',
+  'CLOSE_CARD_LIMIT_WARNING',
+  'DISCLAIMER_TEXT',
+  'AI_LABEL',
+  'TEMPLATE_LABEL',
+  'noShadow',
+];
 
 describe('ui barrel', () => {
   test.each(FUNCTIONS)('exports %s as a function', (name) => {

@@ -50,7 +50,12 @@ function PaidBody({ props, testID }: { props: PlanStepCardProps; testID: string 
         <Text variant="overline" color="success" numberOfLines={1}>
           {paidLabel ? `✓ PAID · ${paidLabel}` : '✓ PAID'}
         </Text>
-        <SecondaryButton label="Undo" onPress={onUndo} testID={`${testID}-undo`} />
+        <SecondaryButton
+          label="Undo"
+          accessibilityLabel={`Undo ${cardName}`}
+          onPress={onUndo}
+          testID={`${testID}-undo`}
+        />
       </View>
     </View>
   );
@@ -65,7 +70,12 @@ function OpenBody({ props, testID }: { props: PlanStepCardProps; testID: string 
         <Text variant="title" style={{ flexShrink: 1 }}>
           {cardName}
         </Text>
-        <Text variant="numS" numberOfLines={1} style={{ flexShrink: 0 }}>
+        <Text
+          variant="numS"
+          numberOfLines={1}
+          maxFontSizeMultiplier={1.3}
+          style={{ flexShrink: 0 }}
+        >
           {amount}
         </Text>
       </View>
@@ -84,12 +94,18 @@ function OpenBody({ props, testID }: { props: PlanStepCardProps; testID: string 
       {state === 'primary' ? (
         <PopButton
           label="Mark as paid"
+          accessibilityLabel={`Mark ${cardName} ${amount} as paid`}
           size="list"
           onPress={onMarkPaid}
           testID={`${testID}-mark-paid`}
         />
       ) : (
-        <SecondaryButton label="Mark as paid" onPress={onMarkPaid} testID={`${testID}-mark-paid`} />
+        <SecondaryButton
+          label="Mark as paid"
+          accessibilityLabel={`Mark ${cardName} ${amount} as paid`}
+          onPress={onMarkPaid}
+          testID={`${testID}-mark-paid`}
+        />
       )}
     </View>
   );

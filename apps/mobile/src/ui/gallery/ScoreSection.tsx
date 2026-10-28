@@ -1,6 +1,7 @@
 import { View } from 'react-native';
 import { ScoreCard } from '../components/ScoreCard';
 import { ScoreRangeText } from '../components/ScoreRangeText';
+import { WhatIfResult } from '../components/WhatIfResult';
 import { WhatIfTile } from '../components/WhatIfTile';
 import { Text } from '../primitives/Text';
 import { space } from '../theme';
@@ -37,6 +38,9 @@ export function ScoreSection() {
         footer={FOOTER}
         testID="kit-score-card-plan"
       />
+      <StateLabel>What-if result: standard, and Close a card with both warnings</StateLabel>
+      <WhatIfResult variant="standard" range="724–752" direction="improves" />
+      <WhatIfResult variant="closeCard" range="676–704" direction="lowers" />
       <StateLabel>What-if tiles: the first is suggested</StateLabel>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.grid }}>
         {WHAT_IFS.map((item, index) => (

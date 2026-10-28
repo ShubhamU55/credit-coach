@@ -1,5 +1,6 @@
-import type { ReactNode } from 'react';
-import { Modal, Pressable, ScrollView, View } from 'react-native';
+import { useEffect, useRef, type ComponentRef, type ReactNode, type RefObject } from 'react';
+import { AccessibilityInfo, Modal, Pressable, ScrollView, View } from 'react-native';
+import { announce } from '../primitives/announce';
 import { Text } from '../primitives/Text';
 import { useReduceMotion } from '../primitives/useReduceMotion';
 import { color, space } from '../theme';
@@ -11,6 +12,8 @@ export type BottomSheetProps = {
   /** For example `Axis Neo · due Thu, 22 Oct`. */
   subtitle?: string;
   onClose: () => void;
+  /** The element that opened the sheet. When given, screen-reader focus returns to it on close. */
+  returnFocusRef?: RefObject<ComponentRef<typeof View> | null>;
   children: ReactNode;
 };
 
@@ -19,8 +22,29 @@ export type BottomSheetProps = {
  * Close comes first in render order, so it is first in focus order. Slides in; with reduce motion
  * on it fades instead (design.md 10: no slide).
  */
-export function BottomSheet({ visible, title, subtitle, onClose, children }: BottomSheetProps) {
+export function BottomSheet({
+  visible,
+  title,
+  subtitle,
+  onClose,
+  returnFocusRef,
+  children,
+}: BottomSheetProps) {
   const reduceMotion = useReduceMotion();
+  const titleRef = useRef<ComponentRef<typeof View>>(null);
+  const wasVisible = useRef(false);
+  // Open: move screen-reader focus to the title and announce it. Close: give focus back to the
+  // trigger, if the caller supplied one. Only a change of `visible` should re-run this.
+  useEffect(() => {
+    if (visible) {
+      announce(subtitle ? `${title}, ${subtitle}` : title);
+      if (titleRef.current) AccessibilityInfo.sendAccessibilityEvent(titleRef.current, 'focus');
+    } else if (wasVisible.current && returnFocusRef?.current) {
+      AccessibilityInfo.sendAccessibilityEvent(returnFocusRef.current, 'focus');
+    }
+    wasVisible.current = visible;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
   return (
     <Modal
       testID="bottom-sheet-modal"
@@ -90,10 +114,15 @@ export function BottomSheet({ visible, title, subtitle, onClose, children }: Bot
                 ✕
               </Text>
             </Pressable>
-            <View style={{ flex: 1 }}>
-              <Text variant="overline" accessibilityRole="header">
-                {title}
-              </Text>
+            <View
+              ref={titleRef}
+              testID="bottom-sheet-title"
+              accessible
+              accessibilityRole="header"
+              accessibilityLabel={subtitle ? `${title}, ${subtitle}` : title}
+              style={{ flex: 1 }}
+            >
+              <Text variant="overline">{title}</Text>
               {subtitle ? <Text variant="title">{subtitle}</Text> : null}
             </View>
           </View>

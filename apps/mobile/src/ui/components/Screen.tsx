@@ -53,7 +53,8 @@ export function Screen({ children, scroll = false }: ScreenProps) {
         backgroundColor: color.bg,
         paddingTop: topInset(),
         paddingHorizontal: space.gutter,
-        paddingBottom: space.section,
+        // The floating nav is pinned over the bottom 88dp, so non-scroll screens clear it too.
+        paddingBottom: space.navClearance,
         gap: space.section,
       }}
     >

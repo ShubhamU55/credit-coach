@@ -198,3 +198,23 @@ describe('TextAction', () => {
     );
   });
 });
+
+describe('accessibilityLabel override', () => {
+  test('PopButton and SecondaryButton can name themselves with context; the visible text is unchanged', async () => {
+    await render(
+      <>
+        <PopButton
+          label="Mark as paid"
+          accessibilityLabel="Mark Axis Neo ₹620 as paid"
+          onPress={() => {}}
+        />
+        <SecondaryButton label="Undo" accessibilityLabel="Undo Axis Neo" onPress={() => {}} />
+      </>,
+    );
+
+    expect(screen.getByRole('button', { name: 'Mark Axis Neo ₹620 as paid' })).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Undo Axis Neo' })).toBeOnTheScreen();
+    expect(screen.getByText('MARK AS PAID')).toBeOnTheScreen();
+    expect(screen.getByText('UNDO')).toBeOnTheScreen();
+  });
+});

@@ -44,10 +44,11 @@ describe('KitGallery', () => {
     await render(<KitGallery />);
 
     const ranges = screen.getAllByTestId('score-range');
-    expect(ranges.length).toBeGreaterThanOrEqual(2);
+    expect(ranges.length).toBeGreaterThanOrEqual(4);
+    expect(ranges.some((r) => r.props.children === '708–736')).toBe(true);
     for (const range of ranges) {
       expect(range).toHaveProp('numberOfLines', 1);
-      expect(range).toHaveTextContent('708–736', { exact: true });
+      expect(range).toHaveTextContent(/^[0-9]{3}–[0-9]{3}$/);
     }
   });
 

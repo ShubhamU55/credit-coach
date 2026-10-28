@@ -342,10 +342,11 @@ describe('AmountInput', () => {
     expect(screen.getByTestId('ai-message')).toHaveProp('accessibilityLiveRegion', 'polite');
   });
 
-  test('the message is also the input hint, so focusing the field reads the error', async () => {
+  test('the error is read once: the live region carries it and the input has no duplicate hint', async () => {
     await render(<AmountInput {...baseProps} status="error" message="Enter the amount." />);
-
-    expect(screen.getByTestId('ai')).toHaveProp('accessibilityHint', 'Enter the amount.');
+    expect(screen.getByTestId('ai').props.accessibilityHint).toBeUndefined();
+    expect(screen.getByTestId('ai-message')).toHaveProp('accessibilityLiveRegion', 'polite');
+    expect(screen.getByTestId('ai-message')).toHaveTextContent('Enter the amount.');
   });
 
   test.each([

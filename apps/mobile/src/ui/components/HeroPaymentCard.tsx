@@ -114,6 +114,7 @@ export function HeroPaymentCard({
         numberOfLines={1}
         // An amount must never lose a digit: if it is too wide it shrinks, it never truncates.
         adjustsFontSizeToFit
+        maxFontSizeMultiplier={1.3}
         minimumFontScale={0.6}
       >
         {amount}

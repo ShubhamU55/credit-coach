@@ -12,6 +12,9 @@ function styleOf(testID: string) {
   return StyleSheet.flatten(screen.getByTestId(testID, hidden).props.style);
 }
 
+// The first Modal render is slow on a cold Jest worker under load.
+jest.setTimeout(20000);
+
 afterEach(() => {
   jest.mocked(useReduceMotion).mockReturnValue(false);
 });

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { View } from 'react-native';
 import { BottomSheet } from '../components/BottomSheet';
+import { RECORD_NOTE } from '../components/Disclaimer';
 import { PopButton } from '../components/Buttons';
 import { FloatingNav, type NavTab } from '../components/FloatingNav';
 import { Header } from '../components/Header';
@@ -47,7 +48,7 @@ export function ChromeSection() {
         <Text variant="numL" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
           ₹12,400
         </Text>
-        <Text variant="bodyS">This only records it here. Pay in your bank or UPI app.</Text>
+        <Text variant="bodyS">{RECORD_NOTE}</Text>
         <PopButton
           label="Confirm payment"
           onPress={() => {

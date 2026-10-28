@@ -127,7 +127,7 @@ describe('PlanStepCard', () => {
       borderColor: color.accent,
       boxShadow: kitShadow.stepPrimary,
     });
-    const button = screen.getByRole('button', { name: 'Mark as paid' });
+    const button = screen.getByRole('button', { name: 'Mark Axis Neo ₹620 as paid' });
     expect(button).toHaveProp('testID', 'plan-step-0-mark-paid');
     expect(StyleSheet.flatten(button.props.style).backgroundColor).toBe(color.accent);
 
@@ -149,7 +149,7 @@ describe('PlanStepCard', () => {
       borderWidth: 1,
     });
     expect(styleOf('plan-step-0-card').boxShadow).toBeUndefined();
-    const button = screen.getByRole('button', { name: 'Mark as paid' });
+    const button = screen.getByRole('button', { name: 'Mark Axis Neo ₹620 as paid' });
     const style = StyleSheet.flatten(button.props.style);
     expect(style.borderColor).toBe(color.line);
     expect(style.boxShadow).toBeUndefined();
@@ -159,7 +159,7 @@ describe('PlanStepCard', () => {
     const onUndo = jest.fn();
     await render(<PlanStepCard {...base} state="paid" paidLabel="21 OCT" onUndo={onUndo} />);
 
-    expect(screen.queryByRole('button', { name: 'Mark as paid' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Mark Axis Neo ₹620 as paid' })).toBeNull();
     expect(screen.getByText('✓ PAID · 21 OCT')).toBeOnTheScreen();
     expect(StyleSheet.flatten(screen.getByText('✓ PAID · 21 OCT').props.style).color).toBe(
       color.success,
@@ -171,7 +171,7 @@ describe('PlanStepCard', () => {
     });
     expect(summary).toHaveProp('accessibilityLabel', 'Axis Neo, ₹620, paid');
 
-    await fireEvent.press(screen.getByRole('button', { name: 'Undo' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Undo Axis Neo' }));
     expect(onUndo).toHaveBeenCalledTimes(1);
   });
 
@@ -186,7 +186,7 @@ describe('PlanStepCard', () => {
   test('only the paid state offers Undo', async () => {
     await render(<PlanStepCard {...base} state="primary" />);
 
-    expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Undo Axis Neo' })).toBeNull();
   });
 
   test('a soon pay-by date gets the warning glyph in a due-soon chip', async () => {

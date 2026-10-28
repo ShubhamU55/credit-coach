@@ -95,9 +95,11 @@ function Lane({ lane, todayIso, index }: { lane: TimelineLane; todayIso: string;
               variant="micro"
               color="link"
               numberOfLines={1}
+              maxFontSizeMultiplier={1.3}
               style={{
                 position: 'absolute',
                 top: 0,
+                flexShrink: 0,
                 ...(pay > LABEL_SIDE_SWITCH
                   ? { right: percentStyle(100 - pay) }
                   : { left: percentStyle(pay) }),
@@ -198,7 +200,7 @@ export function PaymentTimelineStrip({ todayIso, lanes, a11yLabel }: PaymentTime
     >
       <View style={{ gap: 8 }}>
         {lanes.map((lane, index) => (
-          <Lane key={lane.cardName} lane={lane} todayIso={todayIso} index={index} />
+          <Lane key={`lane-${index}`} lane={lane} todayIso={todayIso} index={index} />
         ))}
         <View
           testID="timeline-today"
