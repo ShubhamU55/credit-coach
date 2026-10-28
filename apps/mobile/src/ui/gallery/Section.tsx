@@ -14,7 +14,7 @@ export type SectionProps = {
 export function Section({ id, title, children }: SectionProps) {
   return (
     <View testID={`kit-${id}`} collapsable={false} style={{ gap: space.cardPad }}>
-      <Text variant="overline" accessibilityRole="header">
+      <Text variant="overline" accessibilityRole="header" testID={`kit-${id}-title`}>
         {title}
       </Text>
       {children}

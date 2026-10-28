@@ -1,7 +1,11 @@
 appId: com.creditcoach.app
-# Plan 4a task 11: scroll the kit gallery section by section and take one screenshot each, for the
+# Plan 4a task 11: walk the kit gallery section by section and take three screenshots of each, for the
 # visual review against docs/design.md. Needs a release build (pnpm --filter @credit-coach/mobile
 # android:release) with Metro stopped. Screenshots land in docs/test-reports/ui-kit/.
+#
+# Most sections are taller than one screen, so the flow scrolls to a small title anchor
+# (kit-<section>-title), which can be fully visible, then scrolls and shoots three times.
+# NOT YET RUN ON A DEVICE: the scroll distances and the screenshot base path need confirming.
 ---
 - launchApp:
     clearState: true
@@ -10,65 +14,101 @@ appId: com.creditcoach.app
     id: 'engine-check'
     text: 'Engine OK: 30%'
 
-# 1. Buttons
+# Buttons
 - scrollUntilVisible:
     element:
-      id: 'kit-buttons'
+      id: 'kit-buttons-title'
 - assertVisible:
-    id: 'kit-buttons'
-- takeScreenshot: ../../docs/test-reports/ui-kit/kit-buttons
+    id: 'kit-buttons-title'
+- scroll
+- takeScreenshot: ../../docs/test-reports/ui-kit/kit-buttons-1
+- scroll
+- takeScreenshot: ../../docs/test-reports/ui-kit/kit-buttons-2
+- scroll
+- takeScreenshot: ../../docs/test-reports/ui-kit/kit-buttons-3
 
-# 2. Form controls
+# Form controls
 - scrollUntilVisible:
     element:
-      id: 'kit-form'
+      id: 'kit-form-title'
 - assertVisible:
-    id: 'kit-form'
-- takeScreenshot: ../../docs/test-reports/ui-kit/kit-form
+    id: 'kit-form-title'
+- scroll
+- takeScreenshot: ../../docs/test-reports/ui-kit/kit-form-1
+- scroll
+- takeScreenshot: ../../docs/test-reports/ui-kit/kit-form-2
+- scroll
+- takeScreenshot: ../../docs/test-reports/ui-kit/kit-form-3
 
-# 3. Information blocks
+# Information blocks
 - scrollUntilVisible:
     element:
-      id: 'kit-info'
+      id: 'kit-info-title'
 - assertVisible:
-    id: 'kit-info'
-- assertVisible: 'Estimates only. Not your official CIBIL score. Not financial advice.'
-- takeScreenshot: ../../docs/test-reports/ui-kit/kit-info
+    id: 'kit-info-title'
+- scroll
+- takeScreenshot: ../../docs/test-reports/ui-kit/kit-info-1
+- scroll
+- takeScreenshot: ../../docs/test-reports/ui-kit/kit-info-2
+- scroll
+- takeScreenshot: ../../docs/test-reports/ui-kit/kit-info-3
 
-# 4. Card surfaces
+# Card surfaces
 - scrollUntilVisible:
     element:
-      id: 'kit-cards'
+      id: 'kit-cards-title'
 - assertVisible:
-    id: 'kit-cards'
-- takeScreenshot: ../../docs/test-reports/ui-kit/kit-cards
+    id: 'kit-cards-title'
+- scroll
+- takeScreenshot: ../../docs/test-reports/ui-kit/kit-cards-1
+- scroll
+- takeScreenshot: ../../docs/test-reports/ui-kit/kit-cards-2
+- scroll
+- takeScreenshot: ../../docs/test-reports/ui-kit/kit-cards-3
 
-# 5. Plan visuals
+# Plan visuals
 - scrollUntilVisible:
     element:
-      id: 'kit-plan'
+      id: 'kit-plan-title'
 - assertVisible:
-    id: 'kit-plan'
-- takeScreenshot: ../../docs/test-reports/ui-kit/kit-plan
+    id: 'kit-plan-title'
+- scroll
+- takeScreenshot: ../../docs/test-reports/ui-kit/kit-plan-1
+- scroll
+- takeScreenshot: ../../docs/test-reports/ui-kit/kit-plan-2
+- scroll
+- takeScreenshot: ../../docs/test-reports/ui-kit/kit-plan-3
 
-# 6. Score visuals: the range must show whole, on one line
+# Score visuals
 - scrollUntilVisible:
     element:
-      id: 'kit-score'
+      id: 'kit-score-title'
 - assertVisible:
-    id: 'kit-score'
+    id: 'kit-score-title'
+- scroll
 - assertVisible:
-    id: 'score-range'
+    id: 'kit-range-xl'
     text: '708–736'
-- takeScreenshot: ../../docs/test-reports/ui-kit/kit-score
+- takeScreenshot: ../../docs/test-reports/ui-kit/kit-score-1
+- scroll
+- takeScreenshot: ../../docs/test-reports/ui-kit/kit-score-2
+- scroll
+- takeScreenshot: ../../docs/test-reports/ui-kit/kit-score-3
 
-# 7. App chrome, then the bottom sheet
+# App chrome
 - scrollUntilVisible:
     element:
-      id: 'kit-chrome'
+      id: 'kit-chrome-title'
 - assertVisible:
-    id: 'kit-chrome'
-- takeScreenshot: ../../docs/test-reports/ui-kit/kit-chrome
+    id: 'kit-chrome-title'
+- scroll
+- takeScreenshot: ../../docs/test-reports/ui-kit/kit-chrome-1
+- scroll
+- takeScreenshot: ../../docs/test-reports/ui-kit/kit-chrome-2
+- scroll
+- takeScreenshot: ../../docs/test-reports/ui-kit/kit-chrome-3
+
+# The bottom sheet: open it, check the fixed note, close it
 - scrollUntilVisible:
     element:
       id: 'kit-open-sheet'
@@ -79,3 +119,8 @@ appId: com.creditcoach.app
 - takeScreenshot: ../../docs/test-reports/ui-kit/kit-chrome-sheet
 - tapOn: 'Close'
 - assertNotVisible: 'This only records it here. Pay in your bank or UPI app.'
+
+# The gallery ends with the fixed disclaimer (Screen always renders it last)
+- scrollUntilVisible:
+    element:
+      text: 'Estimates only. Not your official CIBIL score. Not financial advice.'

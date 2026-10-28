@@ -20,7 +20,7 @@ Finish the mobile UI kit so every screen stream can build from tested parts: the
 ## Tests added
 
 - Jest in `apps/mobile`: 11 new suites. Info blocks 36, plan visuals 42 (two files), score visuals 34, cards 26, chrome 25, bottom sheet 10, barrel 54, gallery 24 (including a check that every section id in `kit-gallery.yaml` exists in the gallery), tokens and percent helpers 9, plus 24 more cases in the part-A raw-colour scan (one per new source file). Whole mobile suite at the end: 20 suites, 490 tests, 0 failed.
-- New Maestro flow `apps/mobile/.maestro/kit-gallery.yaml` (7 section screenshots plus the open sheet). **Not run**: no emulator in this session. The coordinator's evidence runner does the device run with `docs/test-reports/ui-kit/CHECKLIST.md`.
+- New Maestro flow `apps/mobile/.maestro/kit-gallery.yaml` (three screenshots per section plus the open sheet, anchored on small title nodes because `scrollUntilVisible` wants the whole element visible). **Not run**: no emulator in this session. The coordinator's evidence runner does the device run with `docs/test-reports/ui-kit/CHECKLIST.md`.
 
 ## Review findings & fixes
 

@@ -9,22 +9,25 @@ From `apps/mobile`, with Metro stopped:
 1. `pnpm --filter @credit-coach/mobile android:release` (builds and installs the standalone release APK on the running emulator).
 2. `maestro test .maestro` (runs `smoke.yaml` and `kit-gallery.yaml`).
 
-Screenshot paths in `kit-gallery.yaml` are relative to the working directory (`apps/mobile`), so `../../docs/test-reports/ui-kit/<name>` lands in this folder.
+Assumptions to confirm on the first device run (the implementer could not test them):
 
-Expected: both flows pass and this folder holds **8 PNGs**:
+- `takeScreenshot` paths are resolved from the directory `maestro` runs in (`apps/mobile`), so `../../docs/test-reports/ui-kit/<name>` lands in this folder. If Maestro resolves them from the flow file instead, the PNGs land in `apps/docs/` (wrong): fix the relative prefix.
+- `scrollUntilVisible` needs the whole element visible (its default `visibilityPercentage` is 100), and most sections are taller than one screen. So the flow scrolls to a small title anchor (`kit-<section>-title`), not to the section, then does `scroll` plus a screenshot three times. How far one `scroll` moves is a guess; adjust the number of shots or add `swipe` steps so each section is fully covered with no gaps.
 
-| File                   | Section testID   | What it shows                                                                            |
-| ---------------------- | ---------------- | ---------------------------------------------------------------------------------------- |
-| `kit-buttons.png`      | `kit-buttons`    | pop buttons (screen, list, disabled, on a finish), secondary, text actions               |
-| `kit-form.png`         | `kit-form`       | switch (off, on, disabled), choice rows, amount inputs (default, error, warning, inline) |
-| `kit-info.png`         | `kit-info`       | chips, utilization labels, stat tiles, reason rows, AI blocks, sample strip, disclaimer  |
-| `kit-cards.png`        | `kit-cards`      | hero payment card (plum), card tile carousel (graphite, navy, plum)                      |
-| `kit-plan.png`         | `kit-plan`       | before/after bar, step cards (primary, secondary, paid), date blocks, timeline strip     |
-| `kit-score.png`        | `kit-score`      | score range XL and M, score card with and without the plan lane, what-if tiles           |
-| `kit-chrome.png`       | `kit-chrome`     | header (two states), floating nav, the "Open bottom sheet" button                        |
-| `kit-chrome-sheet.png` | `kit-open-sheet` | the bottom sheet open (scrim, grabber, Close first, Confirm payment)                     |
+Expected: both flows pass and this folder holds **22 PNGs**: `kit-<section>-1.png`, `-2.png`, `-3.png` for each of the seven sections, plus `kit-chrome-sheet.png`.
 
-Some sections are taller than one screen. If a screenshot cuts a component in half, add a scroll and a second shot rather than shrinking the gallery.
+| Section (title anchor)                | What it shows                                                                            |
+| ------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `kit-buttons` (`kit-buttons-title`)   | pop buttons (screen, list, disabled, on a finish), secondary, text actions               |
+| `kit-form` (`kit-form-title`)         | switch (off, on, disabled), choice rows, amount inputs (default, error, warning, inline) |
+| `kit-info` (`kit-info-title`)         | chips, utilization labels, stat tiles, reason rows, AI blocks, sample strip, disclaimer  |
+| `kit-cards` (`kit-cards-title`)       | hero payment card (plum), card tile carousel (graphite, navy, plum)                      |
+| `kit-plan` (`kit-plan-title`)         | before/after bar, step cards (primary, secondary, paid), date blocks, timeline strip     |
+| `kit-score` (`kit-score-title`)       | score range XL and M, score card with and without the plan lane, what-if tiles           |
+| `kit-chrome` (`kit-chrome-title`)     | header (two states), floating nav, the "Open bottom sheet" button                        |
+| `kit-chrome-sheet` (`kit-open-sheet`) | the bottom sheet open (scrim, grabber, Close first, Confirm payment)                     |
+
+The flow also asserts the XL range `708–736` (`kit-range-xl`) is visible, and ends by scrolling to the fixed disclaimer.
 
 ## What to check on each screenshot (against `docs/design.md`)
 
