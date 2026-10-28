@@ -68,7 +68,8 @@ export interface WhatIfOutcome {
 
 export interface WhatIfError {
   ok: false;
-  error: 'unknown-card' | 'invalid-amount';
+  /** `duplicate-card-id`: two cards share an id, so a scenario can't tell them apart. */
+  error: 'unknown-card' | 'invalid-amount' | 'duplicate-card-id';
 }
 
 export type WhatIfResult = WhatIfOutcome | WhatIfError;
@@ -99,6 +100,10 @@ interface Applied {
 
 const UNKNOWN_CARD: WhatIfError = { ok: false, error: 'unknown-card' };
 const INVALID_AMOUNT: WhatIfError = { ok: false, error: 'invalid-amount' };
+const DUPLICATE_CARD_ID: WhatIfError = { ok: false, error: 'duplicate-card-id' };
+
+const hasDuplicateIds = (cards: ReadonlyArray<WhatIfCard>): boolean =>
+  new Set(cards.map((c) => c.id)).size !== cards.length;
 
 const isRupeeAmount = (n: number): boolean => Number.isSafeInteger(n) && n > 0;
 
@@ -257,7 +262,8 @@ const applyScenario = (
 /**
  * Runs one what-if scenario (PRD §5.5) and returns the estimate before and after, the reasons
  * that moved, the utilization change and any warnings. Applications also carry the guard (§5.6).
- * Expected domain problems (an unknown card, an invalid amount) come back as `{ ok: false }`.
+ * Expected domain problems (an unknown card, an invalid amount, two cards sharing an id) come back
+ * as `{ ok: false }`.
  * @throws {RangeError} on input that `predictScore` rejects (malformed dates, non-finite numbers).
  */
 export function runWhatIf(
@@ -265,6 +271,7 @@ export function runWhatIf(
   scenario: WhatIfScenario,
   config: WhatIfConfig = DEFAULT_WHATIF_CONFIG,
 ): WhatIfResult {
+  if (hasDuplicateIds(context.cards)) return DUPLICATE_CARD_ID;
   const applied = applyScenario(context, scenario, config);
   if ('ok' in applied) return applied;
   const { input } = context;

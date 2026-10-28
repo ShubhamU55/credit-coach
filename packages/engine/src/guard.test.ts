@@ -89,6 +89,12 @@ describe('checkApplicationGuard (PRD §5.6)', { timeout: PROPERTY_TIMEOUT_MS }, 
     ).toThrow(RangeError);
   });
 
+  it('rejects an impact spread so large the points range would not be finite', () => {
+    const huge = { ...DEFAULT_GUARD_CONFIG, impactSpread: { low: 1, high: 1e308 } };
+    expect(() => checkApplicationGuard(AARAV, huge)).toThrow(RangeError);
+    expect(() => checkApplicationGuard(AARAV, huge)).toThrow('impactSpread.high');
+  });
+
   it('always gives an impact range with 0 <= low < high, and never a higher estimate', () => {
     fc.assert(
       fc.property(

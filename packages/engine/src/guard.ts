@@ -1,6 +1,9 @@
 import { estimateShift, predictScore, type PredictorInput, type ScoreEstimate } from './predictor';
 import { DEFAULT_PREDICTOR_CONFIG, type PredictorConfig } from './predictor-config';
 
+/** The largest possible model drop: the whole 300–900 scale. Bounds the impact spread. */
+const MAX_DROP_POINTS = 600;
+
 /** Application guard rules (PRD §5.6). Admin-adjustable (IA W2: N in 1–6). */
 export interface GuardConfig {
   /** Warn when the last 6 months already hold at least this many hard inquiries (N). */
@@ -44,6 +47,11 @@ const validateGuardConfig = ({ minHardInquiries6m, impactSpread }: GuardConfig):
   const { low, high } = impactSpread;
   if (!Number.isFinite(low) || !Number.isFinite(high) || low < 0 || high < low) {
     throw new RangeError(`impactSpread must satisfy 0 <= low <= high, got ${low}..${high}`);
+  }
+  if (!Number.isFinite(Math.round(high * MAX_DROP_POINTS))) {
+    throw new RangeError(
+      `impactSpread.high is too large to give a finite points range, got ${high}`,
+    );
   }
 };
 

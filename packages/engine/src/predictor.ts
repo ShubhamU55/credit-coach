@@ -5,6 +5,7 @@ import {
   type FactorInputs,
   type PredictorConfig,
   type ScoreFactor,
+  validatePredictorConfig,
 } from './predictor-config';
 
 /** Lowest valid CIBIL score (F6). */
@@ -16,6 +17,8 @@ const EPSILON = 1e-9;
 /** Number of reasons shown (PRD §5.5: top 3). */
 const TOP_REASONS = 3;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+/** An anchor may be dated this many days after `today` (time-zone skew) and still count as fresh. */
+const FUTURE_ANCHOR_TOLERANCE_DAYS = 1;
 /** `YYYY-MM-DD` with a 4-digit year. */
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -192,9 +195,12 @@ const zoneFor = (score: number, config: PredictorConfig): string => {
 };
 
 const halfWidth = (anchorDate: string, today: string, config: PredictorConfig): number => {
-  const days = Math.max(0, isoToDayNumber(today) - isoToDayNumber(anchorDate));
+  const days = isoToDayNumber(today) - isoToDayNumber(anchorDate);
+  if (days < -FUTURE_ANCHOR_TOLERANCE_DAYS) {
+    throw new RangeError(`anchor.date ${anchorDate} is more than 1 day after today ${today}`);
+  }
   const { baseHalfWidth, widenPerDay, maxHalfWidth } = config.range;
-  return Math.min(maxHalfWidth, Math.round(baseHalfWidth + widenPerDay * days));
+  return Math.min(maxHalfWidth, Math.round(baseHalfWidth + widenPerDay * Math.max(0, days)));
 };
 
 /** A `center ± half` window slid (not clipped) inside 300–900, so its width never collapses. */
@@ -256,26 +262,39 @@ const topReasons = (f: FactorInputs, config: PredictorConfig): ScoreReason[] => 
     );
 };
 
+/** Last guard for non-negotiable 3: an estimate is always a real range inside 300–900. */
+const assertRange = (estimate: ScoreEstimate): ScoreEstimate => {
+  const { low, high } = estimate;
+  const isRange =
+    Number.isInteger(low) && Number.isInteger(high) && low >= SCORE_MIN && high <= SCORE_MAX;
+  if (!isRange || low >= high) {
+    throw new RangeError(`estimate must be a range with low < high in 300-900, got ${low}-${high}`);
+  }
+  return estimate;
+};
+
 /**
  * Estimates the score as a range plus the top 3 reasons (PRD §5.5).
  * With an anchor, the range is centred near the anchor and widens with days since it.
  * Without one, it is the coarse band the model lands in, flagged `isRoughBand`.
- * @throws {RangeError} on a malformed date, a non-finite number, or invalid weights.
+ * @throws {RangeError} on a malformed date, an anchor dated more than 1 day after today, a
+ * non-finite number, or an invalid config (see `validatePredictorConfig`).
  */
 export function predictScore(
   input: PredictorInput,
   config: PredictorConfig = DEFAULT_PREDICTOR_CONFIG,
 ): ScoreEstimate {
+  validatePredictorConfig(config);
   const factors = normalizeFactors(input);
   const center = estimateCenter(input, config);
   const reasons = topReasons(factors, config);
   const band = zoneFor(center, config);
   if (input.anchor === undefined) {
     isoToDayNumber(input.today);
-    return { ...roughBand(center, config), band, reasons, isRoughBand: true };
+    return assertRange({ ...roughBand(center, config), band, reasons, isRoughBand: true });
   }
   const half = halfWidth(input.anchor.date, input.today, config);
-  return { ...slideWindow(center, half), band, reasons, isRoughBand: false };
+  return assertRange({ ...slideWindow(center, half), band, reasons, isRoughBand: false });
 }
 
 /**
@@ -287,6 +306,7 @@ export function compareReasons(
   after: FactorInputs,
   config: PredictorConfig = DEFAULT_PREDICTOR_CONFIG,
 ): ScoreReason[] {
+  validatePredictorConfig(config);
   const from = normalizeFactors(before);
   const to = normalizeFactors(after);
   return rankedGaps(from, to, config)
@@ -305,12 +325,14 @@ export function compareReasons(
 
 /**
  * How far the estimate's centre moves from `before` to `after`, in points (negative = lower).
- * A difference, not a score; the guard turns it into an impact range.
+ * A difference, not a score; the guard turns it into an impact range. Engine-internal: it is
+ * deliberately not exported from `index.ts`, so no screen can render it.
  */
 export function estimateShift(
   before: PredictorInput,
   after: PredictorInput,
   config: PredictorConfig = DEFAULT_PREDICTOR_CONFIG,
 ): number {
+  validatePredictorConfig(config);
   return estimateCenter(after, config) - estimateCenter(before, config);
 }

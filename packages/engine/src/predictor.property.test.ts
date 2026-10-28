@@ -1,18 +1,24 @@
 import { describe, it, expect } from 'vitest';
 import fc from 'fast-check';
 import { predictScore, type PredictorInput, type ScoreEstimate } from './predictor';
+import { DEFAULT_PREDICTOR_CONFIG } from './predictor-config';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const EPOCH_2020 = Date.UTC(2020, 0, 1);
 const isoFromDay = (day: number): string =>
   new Date(EPOCH_2020 + day * MS_PER_DAY).toISOString().slice(0, 10);
 
-const utilPct = fc.oneof(
-  fc.double({ min: -5, max: 35, noNaN: true, noDefaultInfinity: true }),
-  fc.double({ min: -20, max: 200, noNaN: true, noDefaultInfinity: true }),
-);
+/**
+ * A percentage drawn uniformly in tenths over [min, max]. `fc.double` is NOT used here: it draws
+ * uniformly over IEEE-754 bit patterns, so nearly every value lands next to 0 and the 10–100%
+ * stretch of the curves is barely sampled. That once let a curve inversion at 30–40% pass.
+ */
+const tenths = (min: number, max: number): fc.Arbitrary<number> =>
+  fc.integer({ min: min * 10, max: max * 10 }).map((n) => n / 10);
+
+const utilPct = fc.oneof(tenths(-5, 105), tenths(-20, 200));
 /** A small non-negative step, so pairs land close together on every part of the curve. */
-const step = fc.double({ min: 0, max: 15, noNaN: true, noDefaultInfinity: true });
+const step = tenths(0, 15);
 const count = fc.integer({ min: 0, max: 60 });
 
 /** Arbitrary predictor inputs, half with an anchor and half without (rough band mode). */
@@ -21,7 +27,7 @@ const inputArb: fc.Arbitrary<PredictorInput> = fc
     hasAnchor: fc.boolean(),
     anchorScore: fc.integer({ min: 300, max: 900 }),
     anchorDay: fc.integer({ min: 0, max: 2000 }),
-    daysSince: fc.integer({ min: -30, max: 1500 }),
+    daysSince: fc.integer({ min: -1, max: 1500 }),
     onTimePayments: fc.integer({ min: 0, max: 240 }),
     missedPayments: fc.integer({ min: 0, max: 24 }),
     overallUtilizationPct: utilPct,
@@ -72,6 +78,28 @@ describe('predictScore properties (PRD §5.5 acceptance)', { timeout: PROPERTY_T
           predictScore({ ...input, maxCardUtilizationPct: higher }),
         );
       }),
+    );
+  });
+
+  // With modelShare 1 and an anchor, the estimate tracks the model 1:1, so a curve inversion can't
+  // hide behind the 0.25 blend's rounding or the 50-point rough bands.
+  it('with modelShare 1, lower utilization (overall or max card) never lowers an anchored estimate', () => {
+    const direct = { ...DEFAULT_PREDICTOR_CONFIG, modelShare: 1 };
+    const anchor = { score: 600, date: '2026-10-02' };
+    fc.assert(
+      fc.property(
+        inputArb,
+        tenths(-5, 105),
+        step,
+        fc.boolean(),
+        (input, lower, delta, isOverall) => {
+          const field = isOverall ? 'overallUtilizationPct' : 'maxCardUtilizationPct';
+          const at = (pct: number): ScoreEstimate =>
+            predictScore({ ...input, anchor, today: '2026-10-02', [field]: pct }, direct);
+          expectNotLower(at(lower), at(lower + delta));
+        },
+      ),
+      { numRuns: 500 },
     );
   });
 

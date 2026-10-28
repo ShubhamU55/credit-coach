@@ -9,7 +9,7 @@ export {
   maskPan,
   formatBeforeAfter,
 } from './format';
-export { predictScore, compareReasons, estimateShift } from './predictor';
+export { predictScore, compareReasons } from './predictor';
 export type {
   PredictorInput,
   ScoreAnchor,

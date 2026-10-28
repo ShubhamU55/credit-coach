@@ -120,8 +120,13 @@ describe('predictScore: range width and time since the anchor', () => {
     expect(width(predictScore({ ...AARAV, today: '2030-01-01' }))).toBe(120);
   });
 
-  it('treats an anchor dated after today as fresh, not as a negative age', () => {
-    expect(width(predictScore({ ...AARAV, today: '2026-09-01' }))).toBe(20);
+  it('tolerates an anchor dated 1 day after today (time-zone skew) as fresh', () => {
+    expect(width(predictScore({ ...AARAV, today: '2026-10-01' }))).toBe(20);
+  });
+
+  it('rejects an anchor dated more than 1 day after today', () => {
+    expect(() => predictScore({ ...AARAV, today: '2026-09-30' })).toThrow(RangeError);
+    expect(() => predictScore({ ...AARAV, today: '2026-09-30' })).toThrow('anchor.date');
   });
 
   it('handles a leap day anchor', () => {
@@ -288,5 +293,13 @@ describe('predictScore: input validation', () => {
     const none = predictScore({ ...AARAV, onTimePayments: 0, missedPayments: 0 });
     const one = predictScore({ ...AARAV, onTimePayments: 1, missedPayments: 0 });
     expect(none.low).toBeLessThan(one.low);
+  });
+});
+
+describe('engine public surface', () => {
+  it('keeps estimateShift internal (a points difference, not for screens)', async () => {
+    const engine = await import('./index');
+    expect('estimateShift' in engine).toBe(false);
+    expect('predictScore' in engine).toBe(true);
   });
 });

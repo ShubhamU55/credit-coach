@@ -128,6 +128,27 @@ describe('runWhatIf: pay an amount on a card', () => {
       error: 'unknown-card',
     });
   });
+
+  it('rejects cards that share an id instead of letting the last one overwrite the first', () => {
+    // Arrange: a second card with the id 'hdfc'
+    const second: WhatIfCard = {
+      id: 'hdfc',
+      limit: 50000,
+      outstanding: 0,
+      ageMonths: 2,
+      isSecured: false,
+    };
+    const dup: WhatIfContext = { ...CONTEXT, cards: [...CARDS, second] };
+
+    // Act / Assert
+    for (const scenario of [
+      { kind: 'pay-card' as const, cardId: 'hdfc', amount: 1000 },
+      { kind: 'follow-plan' as const, payments: planPayments(2400) },
+      { kind: 'close-card' as const, cardId: 'hdfc' },
+    ]) {
+      expect(runWhatIf(dup, scenario)).toEqual({ ok: false, error: 'duplicate-card-id' });
+    }
+  });
 });
 
 describe('runWhatIf: miss a payment', () => {

@@ -177,3 +177,99 @@ export const DEFAULT_PREDICTOR_CONFIG: PredictorConfig = {
     unsecuredAccounts: 3,
   },
 };
+
+/** Score scale bounds (F6), used to bound config values. */
+const SCALE_MIN = 300;
+const SCALE_MAX = 900;
+
+const fail = (field: string, rule: string, value: unknown): never => {
+  throw new RangeError(`${field} must be ${rule}, got ${String(value)}`);
+};
+
+const requireFinite = (field: string, value: number, min: number, max: number, rule: string) => {
+  if (!Number.isFinite(value) || value < min || value > max) fail(field, rule, value);
+};
+
+/** Direction each subscore curve must follow, so every factor moves the estimate one way only. */
+const CURVE_DIRECTIONS: Record<
+  keyof PredictorConfig['curves'],
+  'non-increasing' | 'non-decreasing'
+> = {
+  overallUtilization: 'non-increasing',
+  maxCardUtilization: 'non-increasing',
+  hardInquiries: 'non-increasing',
+  creditAge: 'non-decreasing',
+  openAccounts: 'non-decreasing',
+};
+
+const validateCurve = (
+  name: keyof PredictorConfig['curves'],
+  curve: Curve,
+  direction: 'non-increasing' | 'non-decreasing',
+): void => {
+  const field = `curves.${name}`;
+  if (curve.length === 0) fail(field, 'a non-empty list of points', '[]');
+  curve.forEach(([x, y], i) => {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) fail(`${field}[${i}]`, 'finite', `${x},${y}`);
+    if (y < 0 || y > 1) fail(`${field}[${i}]`, 'a subscore in 0..1', y);
+    if (i === 0) return;
+    const [px, py] = curve[i - 1] as readonly [number, number];
+    if (x <= px) fail(`${field}[${i}]`, 'strictly increasing in its input', x);
+    const wrongWay = direction === 'non-increasing' ? y > py : y < py;
+    if (wrongWay) fail(`${field}[${i}]`, direction, `${py} -> ${y}`);
+  });
+};
+
+/**
+ * Checks every rule in a (possibly admin-edited) predictor config, so a bad value can never yield
+ * a NaN, an inverted range or a single exact score (non-negotiable 3).
+ * @throws {RangeError} naming the first invalid field.
+ */
+export function validatePredictorConfig(config: PredictorConfig): void {
+  validateWidths(config);
+  requireFinite('missedPaymentPenalty', config.missedPaymentPenalty, 0, 1, 'in 0..1');
+  requireFinite('noHistoryPaymentSubscore', config.noHistoryPaymentSubscore, 0, 1, 'in 0..1');
+  requireFinite('olderInquiryFactor', config.olderInquiryFactor, 0, 1, 'in 0..1');
+  for (const key of ['both', 'single', 'none'] as const) {
+    requireFinite(`creditMixSubscores.${key}`, config.creditMixSubscores[key], 0, 1, 'in 0..1');
+  }
+  for (const [name, direction] of Object.entries(CURVE_DIRECTIONS) as Array<
+    [keyof PredictorConfig['curves'], 'non-increasing' | 'non-decreasing']
+  >) {
+    validateCurve(name, config.curves[name], direction);
+  }
+  if (config.zones.length === 0) fail('zones', 'a non-empty list', '[]');
+  for (const zone of config.zones) {
+    if (!Number.isFinite(zone.min)) fail('zones', 'finite minimums', zone.min);
+  }
+}
+
+/** The range, rough-band and blend settings: the ones that could collapse a range to one score. */
+function validateWidths(config: PredictorConfig): void {
+  const { range } = config;
+  requireFinite(
+    'range.baseHalfWidth',
+    range.baseHalfWidth,
+    1,
+    SCALE_MAX - SCALE_MIN,
+    'finite and >= 1',
+  );
+  requireFinite('range.widenPerDay', range.widenPerDay, 0, Number.MAX_VALUE, 'finite and >= 0');
+  requireFinite(
+    'range.maxHalfWidth',
+    range.maxHalfWidth,
+    range.baseHalfWidth,
+    Number.MAX_VALUE,
+    'finite and >= range.baseHalfWidth',
+  );
+  if (
+    !Number.isInteger(config.roughBandWidth) ||
+    config.roughBandWidth < 2 ||
+    config.roughBandWidth > SCALE_MAX - SCALE_MIN
+  ) {
+    fail('roughBandWidth', 'a whole number in 2..600', config.roughBandWidth);
+  }
+  if (!Number.isFinite(config.modelShare) || config.modelShare <= 0 || config.modelShare > 1) {
+    fail('modelShare', 'in (0, 1]', config.modelShare);
+  }
+}
