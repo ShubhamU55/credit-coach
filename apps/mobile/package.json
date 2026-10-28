@@ -4,14 +4,22 @@
   "main": "index.ts",
   "dependencies": {
     "@credit-coach/engine": "workspace:*",
+    "@expo-google-fonts/fraunces": "^0.4.1",
+    "@expo-google-fonts/plus-jakarta-sans": "^0.4.2",
     "expo": "~58.0.16",
+    "expo-font": "~58.0.10",
     "expo-status-bar": "~58.0.3",
     "react": "19.3.0",
     "react-native": "0.88.0"
   },
   "devDependencies": {
+    "@testing-library/react-native": "^14.1.0",
+    "@types/jest": "30.0.0",
+    "@types/node": "^26.6.5",
     "@types/react": "~19.3.0",
     "eslint-config-expo": "~58.0.4",
+    "jest": "~30.5.2",
+    "jest-expo": "~58.0.12",
     "typescript": "~6.0.3"
   },
   "scripts": {
@@ -20,7 +28,17 @@
     "android:release": "expo run:android --variant release",
     "e2e": "maestro test .maestro",
     "lint": "expo lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "jest"
   },
-  "private": true
+  "private": true,
+  "jest": {
+    "preset": "jest-expo",
+    "testMatch": [
+      "**/src/**/*.test.ts?(x)"
+    ],
+    "transformIgnorePatterns": [
+      "node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@credit-coach/engine)"
+    ]
+  }
 }
