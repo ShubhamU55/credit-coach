@@ -1,4 +1,5 @@
 import { Pressable, View } from 'react-native';
+import { percentStyle } from '../primitives/percent';
 import { Text } from '../primitives/Text';
 import { color, space } from '../theme';
 
@@ -16,8 +17,6 @@ export type StatTileProps = {
   onPress?: () => void;
   testID?: string;
 };
-
-const clampPercent = (n: number) => `${Math.min(100, Math.max(0, n))}%` as const;
 
 const tileStyle = {
   padding: space.cardPad,
@@ -56,7 +55,7 @@ export function StatTile({
           testID={`${testID}-bar-fill`}
           style={{
             height: 6,
-            width: clampPercent(barPercent),
+            width: percentStyle(barPercent),
             backgroundColor: over ? color.warning : color.ink,
           }}
         />
@@ -67,7 +66,7 @@ export function StatTile({
             top: 0,
             bottom: 0,
             width: 2,
-            left: clampPercent(targetPercent),
+            left: percentStyle(targetPercent),
             backgroundColor: color.ink,
           }}
         />
