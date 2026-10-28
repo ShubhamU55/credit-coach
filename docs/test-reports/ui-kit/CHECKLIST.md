@@ -7,7 +7,7 @@
 From `apps/mobile`, with Metro stopped:
 
 1. `pnpm --filter @credit-coach/mobile android:release` (builds and installs the standalone release APK on the running emulator).
-2. `maestro test .maestro` (runs `smoke.yaml` and `kit-gallery.yaml`).
+2. The gallery flow is parked in `apps/mobile/.maestro-pending/kit-gallery.yaml` (CI runs every flow in `.maestro/`, and nothing renders the gallery until PD-4 lands expo-router). After PD-4 merges, add a `/kit` route (`src/app/kit.tsx` rendering `KitGallery`) and move the flow back to `.maestro/`. Then `maestro test .maestro`.
 
 Assumptions to confirm on the first device run (the implementer could not test them):
 

@@ -12,7 +12,7 @@ import { ScoreSection } from './ScoreSection';
 /**
  * Every kit component in every state, one section per component group, with the Aarav fixture
  * from docs/design.md section 8. Maestro scrolls to each `kit-<section>` and takes a screenshot
- * for the visual review (apps/mobile/.maestro/kit-gallery.yaml). Plan 4b moves this to a `/kit`
+ * for the visual review (apps/mobile/.maestro-pending/kit-gallery.yaml). Plan 4b moves this to a `/kit`
  * route. "Credit Coach" and `engine-check` stay at the top so smoke.yaml is unchanged.
  */
 export function KitGallery() {

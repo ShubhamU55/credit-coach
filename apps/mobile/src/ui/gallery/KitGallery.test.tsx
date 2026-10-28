@@ -113,7 +113,7 @@ describe('KitGallery', () => {
 describe('kit-gallery.yaml', () => {
   // Prettier may rewrite the YAML quotes; compare with one quote style.
   const flow = fs
-    .readFileSync(path.join(__dirname, '../../../.maestro/kit-gallery.yaml'), 'utf8')
+    .readFileSync(path.join(__dirname, '../../../.maestro-pending/kit-gallery.yaml'), 'utf8')
     .replaceAll("'", '"');
 
   test.each(SECTIONS)('scrolls to the %s title anchor and takes three screenshots of it', (id) => {
