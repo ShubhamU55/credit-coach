@@ -43,7 +43,13 @@ export function StatTile({
   const body = (
     <View style={{ gap: 6 }}>
       <Text variant="overline">{overline}</Text>
-      <Text variant="numM" color={over ? 'warning' : 'ink'} numberOfLines={1}>
+      <Text
+        variant="numM"
+        color={over ? "warning" : "ink"}
+        numberOfLines={1}
+        // A value in a half-width tile cannot wrap or shrink, so it stops growing early (design.md 3).
+        maxFontSizeMultiplier={1.1}
+      >
         {value}
       </Text>
       <View

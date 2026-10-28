@@ -290,6 +290,12 @@ describe('StatTile', () => {
     expect(textStyle('45.0%').color).toBe(color.ink);
   });
 
+  test('the value stops growing early so a range fits a half-width tile at large font', async () => {
+    await render(<StatTile {...props} value="708–736" />);
+
+    expect(screen.getByText('708–736')).toHaveProp('maxFontSizeMultiplier', 1.1);
+  });
+
   test('the bar fills to barPercent in warning when over, ink otherwise', async () => {
     await render(<StatTile {...props} over />);
     expect(styleOf('tile-bar-fill')).toMatchObject({
