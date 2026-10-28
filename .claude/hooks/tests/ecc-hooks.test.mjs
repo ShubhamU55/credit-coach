@@ -261,6 +261,29 @@ describe('config-protection.cjs: spawned stdin fallback', () => {
     expect(result.status).toBe(0);
   });
 
+  // CI workflows can weaken every check at once, so an existing one is protected like a linter
+  // config: modifying it is blocked, creating a first-time one is allowed.
+  it('blocks editing an existing .github/workflows file (exit 2)', () => {
+    const workflowPath = path.join(repoRoot, '.github', 'workflows', 'ci.yml');
+    expect(fs.existsSync(workflowPath)).toBe(true);
+    const result = runProtection(workflowPath);
+    expect(result.status).toBe(2);
+  });
+
+  it('allows creating a new .github/workflows file (exit 0)', () => {
+    const newWorkflowPath = path.join(repoRoot, '.github', 'workflows', 'not-created-yet.yml');
+    expect(fs.existsSync(newWorkflowPath)).toBe(false);
+    const result = runProtection(newWorkflowPath);
+    expect(result.status).toBe(0);
+  });
+
+  it('still allows editing an issue template under .github (exit 0)', () => {
+    const templatePath = path.join(repoRoot, '.github', 'ISSUE_TEMPLATE', 'bug.yml');
+    expect(fs.existsSync(templatePath)).toBe(true);
+    const result = runProtection(templatePath);
+    expect(result.status).toBe(0);
+  });
+
   it('still allows editing an unrelated file under .claude/hooks/** (exit 0)', () => {
     const otherHookFile = path.join(repoRoot, '.claude', 'hooks', 'format-on-edit.mjs');
     expect(fs.existsSync(otherHookFile)).toBe(true);

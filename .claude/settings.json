@@ -22,30 +22,69 @@
       "Bash(wget * | bash*)",
       "Bash(* --no-verify*)",
       "Bash(git push --force*)",
-      "Bash(git push -f*)"
-    ]
+      "Bash(git push -f*)",
+      "Bash(rm -rf *)",
+      "Bash(git reset --hard *)",
+      "Bash(supabase db reset*)",
+      "PowerShell(* | iex*)",
+      "PowerShell(* | Invoke-Expression*)",
+      "PowerShell(* --no-verify*)",
+      "PowerShell(git push --force *)",
+      "PowerShell(git push -f *)",
+      "PowerShell(git reset --hard *)",
+      "PowerShell(Remove-Item * -Recurse*)"
+    ],
+    "ask": ["Bash(git push *)", "PowerShell(git push *)"]
   },
   "hooks": {
     "PreToolUse": [
       {
         "matcher": "Write|Edit|MultiEdit",
         "hooks": [
-          { "type": "command", "command": "node .claude/hooks/protect-env.mjs" },
-          { "type": "command", "command": "node .claude/hooks/config-protection.cjs" }
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}\"/.claude/hooks/protect-env.mjs"
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}\"/.claude/hooks/config-protection.cjs"
+          }
         ]
       },
       {
-        "matcher": "Bash",
+        "matcher": "Bash|PowerShell",
         "hooks": [
-          { "type": "command", "command": "node .claude/hooks/block-no-verify.cjs" },
-          { "type": "command", "command": "node .claude/hooks/pre-bash-commit-quality.cjs" }
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}\"/.claude/hooks/block-no-verify.cjs"
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}\"/.claude/hooks/pre-bash-commit-quality.cjs"
+          }
         ]
       }
     ],
     "PostToolUse": [
       {
         "matcher": "Write|Edit|MultiEdit",
-        "hooks": [{ "type": "command", "command": "node .claude/hooks/format-on-edit.mjs" }]
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}\"/.claude/hooks/format-on-edit.mjs"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}\"/.claude/hooks/bin/stop-gate.mjs",
+            "timeout": 300
+          }
+        ]
       }
     ]
   }
