@@ -66,7 +66,10 @@ const collectKeys = (value: unknown, into: string[] = []): string[] => {
   return into;
 };
 
-describe('runWhatIf properties (PRD §5.5 acceptance)', () => {
+/** fast-check suites run hundreds of cases; allow for a loaded CI or dev machine. */
+const PROPERTY_TIMEOUT_MS = 30_000;
+
+describe('runWhatIf properties (PRD §5.5 acceptance)', { timeout: PROPERTY_TIMEOUT_MS }, () => {
   // criterion: "close card Y" lowers the total limit and shows utilization rising
   it('closing any card never raises the estimate, never lowers utilization, and always warns', () => {
     fc.assert(

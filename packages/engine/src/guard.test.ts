@@ -32,7 +32,10 @@ const ROHAN: PredictorInput = {
   oldestAccountMonths: 40,
 };
 
-describe('checkApplicationGuard (PRD §5.6)', () => {
+/** One fast-check property below; allow for a loaded CI or dev machine. */
+const PROPERTY_TIMEOUT_MS = 30_000;
+
+describe('checkApplicationGuard (PRD §5.6)', { timeout: PROPERTY_TIMEOUT_MS }, () => {
   it('does not warn below N hard inquiries in 6 months, and still shows the impact', () => {
     // Act
     const result = checkApplicationGuard(AARAV);

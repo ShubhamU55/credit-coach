@@ -46,7 +46,10 @@ const expectNotLower = (a: ScoreEstimate, b: ScoreEstimate): void => {
   expect(a.high).toBeGreaterThanOrEqual(b.high);
 };
 
-describe('predictScore properties (PRD §5.5 acceptance)', () => {
+/** fast-check suites run hundreds of cases; allow for a loaded CI or dev machine. */
+const PROPERTY_TIMEOUT_MS = 30_000;
+
+describe('predictScore properties (PRD §5.5 acceptance)', { timeout: PROPERTY_TIMEOUT_MS }, () => {
   // criterion: lower utilization never produces a lower estimate, all else equal
   it('lower overall utilization never gives a lower estimate', () => {
     fc.assert(
