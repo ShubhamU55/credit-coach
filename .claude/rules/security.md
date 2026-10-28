@@ -1,3 +1,14 @@
+---
+paths:
+  - '**/*.ts'
+  - '**/*.tsx'
+  - '**/*.js'
+  - '**/*.mjs'
+  - '**/*.cjs'
+  - 'supabase/**'
+  - '.github/**'
+---
+
 <!-- Adapted from affaan-m/ECC (MIT) @ 90606c8 -->
 
 # Security Guidelines
