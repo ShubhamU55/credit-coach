@@ -1,0 +1,48 @@
+appId: com.creditcoach.app
+---
+# Welcome -> "Try sample profile" -> Home stub, then every other route is reachable and
+# Mark as paid lowers Axis Neo's outstanding through the shared in-memory repository.
+- launchApp:
+    clearState: true
+- assertVisible:
+    id: 'welcome-screen'
+- tapOn:
+    id: 'welcome-try-sample'
+- assertVisible:
+    id: 'home-screen'
+- assertVisible:
+    id: 'home-axis-outstanding'
+    text: 'Axis Neo outstanding: 15600'
+
+# Plan and back
+- tapOn:
+    id: 'home-link-plan'
+- assertVisible:
+    id: 'plan-screen'
+- tapOn:
+    id: 'plan-link-home'
+- assertVisible:
+    id: 'home-screen'
+
+# Score and back
+- tapOn:
+    id: 'home-link-score'
+- assertVisible:
+    id: 'score-screen'
+- tapOn:
+    id: 'score-link-home'
+- assertVisible:
+    id: 'home-screen'
+
+# Mark as paid sheet records a payment and Home shows the lower outstanding
+- tapOn:
+    id: 'home-link-mark-paid'
+- assertVisible:
+    id: 'mark-paid-screen'
+- tapOn:
+    id: 'mark-paid-record-axis-minimum'
+- assertVisible:
+    id: 'home-screen'
+- assertVisible:
+    id: 'home-axis-outstanding'
+    text: 'Axis Neo outstanding: 14980'
