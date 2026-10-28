@@ -98,6 +98,8 @@ export interface DemoRepository {
   listPayments(): DemoPayment[];
   /** Restores the seed data and clears recorded payments. */
   reset(): void;
+  /** Increments after every successful recordPayment/reset; a stable snapshot for subscribers. */
+  getVersion(): number;
   /** Called after recordPayment/reset change state. Returns an unsubscribe function. */
   subscribe(listener: () => void): () => void;
 }

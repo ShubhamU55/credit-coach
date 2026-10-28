@@ -44,9 +44,11 @@ export function createDemoRepository(seed: DemoSeed = SEED): DemoRepository {
   let rules: DemoRules = clone(seed.rules);
   let cards: DemoCard[] = clone(seed.cards);
   let payments: DemoPayment[] = [];
+  let version = 0;
   const listeners = new Set<() => void>();
 
   function notify() {
+    version += 1;
     listeners.forEach((listener) => listener());
   }
 
@@ -55,6 +57,7 @@ export function createDemoRepository(seed: DemoSeed = SEED): DemoRepository {
     listCards: () => clone(cards),
     getRules: () => clone(rules),
     listPayments: () => clone(payments),
+    getVersion: () => version,
 
     recordPayment(cardId: string, amount: number, date: IsoDate): DemoPayment {
       const card = cards.find((c) => c.id === cardId);

@@ -1,4 +1,3 @@
-
 import { DEMO_TODAY } from './config';
 import { createDemoRepository } from './repository';
 import { RepositoryError } from './types';
@@ -228,5 +227,21 @@ describe('subscribe', () => {
     expect(() => repo.recordPayment('axis-neo', 0, DEMO_TODAY)).toThrow();
 
     expect(listener).not.toHaveBeenCalled();
+  });
+});
+
+describe('getVersion', () => {
+  it('starts at 0 and increments on each successful change only', () => {
+    const repo = createDemoRepository();
+    expect(repo.getVersion()).toBe(0);
+
+    repo.recordPayment('axis-neo', 620, DEMO_TODAY);
+    expect(repo.getVersion()).toBe(1);
+
+    expect(() => repo.recordPayment('axis-neo', 0, DEMO_TODAY)).toThrow();
+    expect(repo.getVersion()).toBe(1);
+
+    repo.reset();
+    expect(repo.getVersion()).toBe(2);
   });
 });
