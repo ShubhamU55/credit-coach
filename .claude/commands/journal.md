@@ -1,6 +1,8 @@
 ---
-description: Add a process-journal entry for judges (what the AI did, tests, reviews, learnings)
-argument-hint: <title>
+description: 'Add a process-journal entry for judges (what the AI did, tests, reviews, learnings). Use after finishing a feature, a plan or a significant debugging session.'
+argument-hint: '<title>'
+disable-model-invocation: true
+allowed-tools: 'Bash(git log *)'
 ---
 
 Write a new entry in `docs/journal/` titled "$ARGUMENTS", following the `process-journal` skill exactly.

@@ -1,5 +1,6 @@
 ---
-description: Run every verification layer that applies to the current changes and report PASS/FAIL per stage
+description: 'Run every verification layer that applies to the current changes and report PASS/FAIL per stage. Use before every commit or PR.'
+allowed-tools: 'Bash(pnpm verify) Bash(pnpm --filter @credit-coach/admin test:e2e) Bash(git diff --name-only *) Bash(git status --porcelain) Bash(adb devices)'
 ---
 
 Run these stages in order and report a table: stage, command, PASS/FAIL, key output line.

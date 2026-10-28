@@ -1,6 +1,7 @@
 ---
-description: Run the qa Workflow over a scope (changed paths picked by the §8.1 table, deduped findings verified adversarially)
-argument-hint: <scope description>
+description: 'Run the qa Workflow over a scope (changed paths picked by the §8.1 table, deduped findings verified adversarially). Use after a plan''s tasks land or before review.'
+argument-hint: '<scope description>'
+allowed-tools: 'Bash(git merge-base main HEAD) Bash(git rev-parse HEAD) Bash(git diff *)'
 ---
 
 Run the `qa` Workflow over **$ARGUMENTS** (a short description of what's being tested — a task

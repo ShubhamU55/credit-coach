@@ -1,6 +1,6 @@
 ---
-description: Run the retro Workflow over recent run ledgers (per-agent stats, then proposed prompt edits for owner approval)
-argument-hint: [how many recent ledgers, default 5]
+description: 'Run the retro Workflow over recent run ledgers (per-agent stats, then proposed prompt edits for owner approval). Use after several workflow runs, to find agents whose prompts need work.'
+argument-hint: '[how many recent ledgers, default 5]'
 ---
 
 <!-- Adapted from affaan-m/ECC (MIT) @ 90606c8 -->

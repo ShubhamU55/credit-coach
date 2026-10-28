@@ -1,6 +1,7 @@
 ---
-description: Report stale worktrees and predicted merge conflicts between active ticket branches (read-only)
-argument-hint: [--base main] [--stale-days 7] [--json]
+description: 'Report stale worktrees and predicted merge conflicts between active ticket branches (read-only). Use before merging while several ticket branches are active.'
+argument-hint: '[--base main] [--stale-days 7] [--json]'
+allowed-tools: 'Bash(node .claude/hooks/bin/worktrees.cjs) Bash(node .claude/hooks/bin/worktrees.cjs *)'
 ---
 
 <!-- Adapted from affaan-m/ECC (MIT) @ 90606c8 -->
