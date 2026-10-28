@@ -1,0 +1,81 @@
+appId: com.creditcoach.app
+# Plan 4a task 11: scroll the kit gallery section by section and take one screenshot each, for the
+# visual review against docs/design.md. Needs a release build (pnpm --filter @credit-coach/mobile
+# android:release) with Metro stopped. Screenshots land in docs/test-reports/ui-kit/.
+---
+- launchApp:
+    clearState: true
+- assertVisible: 'Credit Coach'
+- assertVisible:
+    id: 'engine-check'
+    text: 'Engine OK: 30%'
+
+# 1. Buttons
+- scrollUntilVisible:
+    element:
+      id: 'kit-buttons'
+- assertVisible:
+    id: 'kit-buttons'
+- takeScreenshot: ../../docs/test-reports/ui-kit/kit-buttons
+
+# 2. Form controls
+- scrollUntilVisible:
+    element:
+      id: 'kit-form'
+- assertVisible:
+    id: 'kit-form'
+- takeScreenshot: ../../docs/test-reports/ui-kit/kit-form
+
+# 3. Information blocks
+- scrollUntilVisible:
+    element:
+      id: 'kit-info'
+- assertVisible:
+    id: 'kit-info'
+- assertVisible: 'Estimates only. Not your official CIBIL score. Not financial advice.'
+- takeScreenshot: ../../docs/test-reports/ui-kit/kit-info
+
+# 4. Card surfaces
+- scrollUntilVisible:
+    element:
+      id: 'kit-cards'
+- assertVisible:
+    id: 'kit-cards'
+- takeScreenshot: ../../docs/test-reports/ui-kit/kit-cards
+
+# 5. Plan visuals
+- scrollUntilVisible:
+    element:
+      id: 'kit-plan'
+- assertVisible:
+    id: 'kit-plan'
+- takeScreenshot: ../../docs/test-reports/ui-kit/kit-plan
+
+# 6. Score visuals: the range must show whole, on one line
+- scrollUntilVisible:
+    element:
+      id: 'kit-score'
+- assertVisible:
+    id: 'kit-score'
+- assertVisible:
+    id: 'score-range'
+    text: '708–736'
+- takeScreenshot: ../../docs/test-reports/ui-kit/kit-score
+
+# 7. App chrome, then the bottom sheet
+- scrollUntilVisible:
+    element:
+      id: 'kit-chrome'
+- assertVisible:
+    id: 'kit-chrome'
+- takeScreenshot: ../../docs/test-reports/ui-kit/kit-chrome
+- scrollUntilVisible:
+    element:
+      id: 'kit-open-sheet'
+- tapOn:
+    id: 'kit-open-sheet'
+- assertVisible: 'MARK AS PAID'
+- assertVisible: 'This only records it here. Pay in your bank or UPI app.'
+- takeScreenshot: ../../docs/test-reports/ui-kit/kit-chrome-sheet
+- tapOn: 'Close'
+- assertNotVisible: 'This only records it here. Pay in your bank or UPI app.'
