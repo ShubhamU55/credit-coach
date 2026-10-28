@@ -37,3 +37,4 @@ export {
   nextReportingPoint,
   payByFor,
 } from './reporting';
+export { planPayments } from './planner';
