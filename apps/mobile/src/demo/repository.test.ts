@@ -1,8 +1,16 @@
-import { describe, expect, it, vi } from 'vitest';
 
 import { DEMO_TODAY } from './config';
 import { createDemoRepository } from './repository';
 import { RepositoryError } from './types';
+
+function thrownBy(fn: () => unknown): unknown {
+  try {
+    fn();
+  } catch (error) {
+    return error;
+  }
+  throw new Error('expected the call to throw');
+}
 
 function card(repo: ReturnType<typeof createDemoRepository>, id: string) {
   const found = repo.listCards().find((c) => c.id === id);
@@ -117,10 +125,10 @@ describe('recordPayment', () => {
   ])('rejects %s and changes nothing', (_label, cardId, amount, code) => {
     const repo = createDemoRepository();
 
-    expect(() => repo.recordPayment(cardId, amount, DEMO_TODAY)).toThrow(RepositoryError);
-    expect(() => repo.recordPayment(cardId, amount, DEMO_TODAY)).toThrow(
-      expect.objectContaining({ code }),
-    );
+    const error = thrownBy(() => repo.recordPayment(cardId, amount, DEMO_TODAY));
+
+    expect(error).toBeInstanceOf(RepositoryError);
+    expect((error as RepositoryError).code).toBe(code);
     expect(card(repo, 'axis-neo').outstanding).toBe(15600);
     expect(repo.listPayments()).toEqual([]);
   });
@@ -128,12 +136,12 @@ describe('recordPayment', () => {
   it('rejects a date that is not an ISO calendar date', () => {
     const repo = createDemoRepository();
 
-    expect(() => repo.recordPayment('axis-neo', 620, '21/10/2026')).toThrow(
-      expect.objectContaining({ code: 'invalid_date' }),
-    );
-    expect(() => repo.recordPayment('axis-neo', 620, '2026-02-30')).toThrow(
-      expect.objectContaining({ code: 'invalid_date' }),
-    );
+    for (const date of ['21/10/2026', '2026-02-30']) {
+      const error = thrownBy(() => repo.recordPayment('axis-neo', 620, date));
+
+      expect(error).toBeInstanceOf(RepositoryError);
+      expect((error as RepositoryError).code).toBe('invalid_date');
+    }
   });
 });
 
@@ -175,7 +183,7 @@ describe('isolation', () => {
 describe('subscribe', () => {
   it('notifies on recordPayment and reset until unsubscribed', () => {
     const repo = createDemoRepository();
-    const listener = vi.fn();
+    const listener = jest.fn();
     const unsubscribe = repo.subscribe(listener);
 
     repo.recordPayment('axis-neo', 620, DEMO_TODAY);
@@ -189,7 +197,7 @@ describe('subscribe', () => {
 
   it('does not notify when a payment is rejected', () => {
     const repo = createDemoRepository();
-    const listener = vi.fn();
+    const listener = jest.fn();
     repo.subscribe(listener);
 
     expect(() => repo.recordPayment('axis-neo', 0, DEMO_TODAY)).toThrow();
