@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Pressable, type PressableProps, type StyleProp, type ViewStyle } from 'react-native';
-import { shadow, space } from '../theme';
+import { noShadow, shadow, space } from '../theme';
 
 export type PopShadowKind = 'pop' | 'popOnHero' | 'popSmall' | 'tileIdle' | 'cardTile' | 'hero';
 
@@ -58,7 +58,7 @@ export function PopPressable({
           ? null
           : pressed
             ? {
-                boxShadow: 'none',
+                boxShadow: noShadow,
                 transform: [{ translateX: offset }, { translateY: offset }],
               }
             : { boxShadow: shadow[shadowKind] },

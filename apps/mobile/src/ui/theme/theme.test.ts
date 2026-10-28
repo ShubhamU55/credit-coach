@@ -101,5 +101,7 @@ describe('shadow tokens', () => {
     expect(shadow.hero).toBe('6px 6px 0px #5A3FD6');
     expect(shadow.nav).toBe('4px 4px 0px #000000');
     expect(shadow.logo).toBe('3px 3px 0px #9F86FF');
+    expect(shadow.switchThumbOff).toBe('2px 2px 0px #3A3A44');
+    expect(shadow.switchThumbOn).toBe('2px 2px 0px #5A3FD6');
   });
 });
