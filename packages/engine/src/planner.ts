@@ -58,6 +58,19 @@ const laterOf = (a: IsoDate, b: IsoDate): IsoDate => (a >= b ? a : b);
 
 const utilOf = (s: CardState): number | null => utilization(s.outstanding, s.card.limit);
 
+/** Utilization for a card already filtered to a valid limit; a null here is a planner bug. */
+const validUtil = (outstanding: Rupees, s: CardState): number => {
+  const pct = utilization(outstanding, s.card.limit);
+  if (pct === null) throw new Error(`planner invariant: ${s.card.id} has no valid limit`);
+  return pct;
+};
+
+/** A card's step-4 pre-payment so far, and its outstanding when step 4 began. */
+interface Prepaid {
+  amount: Rupees;
+  outstandingBefore: Rupees;
+}
+
 /** The most a card may carry and stay at or under `pct`, in whole rupees. */
 const capAt = (s: CardState, pct: number): Rupees => Math.floor((s.card.limit * pct) / PERCENT);
 
@@ -167,12 +180,13 @@ function payStatements(run: Run, states: CardState[]): void {
 }
 
 /** Greedy: pay the highest-utilization card down to `pct`, then the next-highest, until cash runs out. */
-function lowerTo(run: Run, states: CardState[], pct: number, paid: Map<CardState, Rupees>): void {
+function lowerTo(run: Run, states: CardState[], pct: number, paid: Map<CardState, Prepaid>): void {
   const above = states.filter((s) => s.outstanding > capAt(s, pct)).sort(byUtilizationDesc);
   for (const s of above) {
     const amount = Math.min(run.cash, s.outstanding - capAt(s, pct));
     if (amount <= 0) return;
-    paid.set(s, (paid.get(s) ?? 0) + amount);
+    const sofar = paid.get(s) ?? { amount: 0, outstandingBefore: s.outstanding };
+    paid.set(s, { ...sofar, amount: sofar.amount + amount });
     s.outstanding -= amount;
     run.cash -= amount;
   }
@@ -189,15 +203,13 @@ const prepayOutcome = (s: CardState, rules: CoachRules): PrepayOutcome => {
  */
 function prepay(run: Run, states: CardState[]): void {
   const eligible = states.filter((s) => s.hasValidLimit);
-  const startOutstanding = new Map(eligible.map((s) => [s, s.outstanding]));
-  const paid = new Map<CardState, Rupees>();
+  const paid = new Map<CardState, Prepaid>();
   lowerTo(run, eligible, run.rules.thresholdPct, paid);
   if (run.rules.aimFor10) lowerTo(run, eligible, run.rules.excellentPct, paid);
 
-  for (const [s, amount] of paid) {
-    const outstandingBefore = startOutstanding.get(s) ?? s.outstanding;
-    const utilizationBefore = utilization(outstandingBefore, s.card.limit) ?? 0;
-    const utilizationAfter = utilOf(s) ?? 0;
+  for (const [s, { amount, outstandingBefore }] of paid) {
+    const utilizationBefore = validUtil(outstandingBefore, s);
+    const utilizationAfter = validUtil(s.outstanding, s);
     s.paidInPlan += amount;
     run.items.push({
       kind: 'prepay',
@@ -279,9 +291,7 @@ const toState = (card: Card, today: IsoDate, rules: CoachRules): CardState => ({
 });
 
 const highestCard = (states: CardState[], outstanding: (s: CardState) => Rupees): number | null => {
-  const utils = states
-    .filter((s) => s.hasValidLimit)
-    .map((s) => utilization(outstanding(s), s.card.limit) ?? 0);
+  const utils = states.filter((s) => s.hasValidLimit).map((s) => validUtil(outstanding(s), s));
   return utils.length === 0 ? null : Math.max(...utils);
 };
 
