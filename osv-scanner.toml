@@ -16,3 +16,8 @@ reason = "braces ReDoS via deeply nested patterns; no patch available; transitiv
 id = "GHSA-w5hq-g745-h8pq"
 ignoreUntil = 2026-11-21
 reason = "uuid missing buffer bounds check in v3/v5/v6 when buf is provided; moderate, below pnpm's --audit-level=high gate but osv-scanner has no severity threshold, so it is listed here too. Added 2026-10-21."
+
+[[IgnoredVulns]]
+id = "GHSA-gcqx-w48m-w2h4"
+ignoreUntil = 2026-11-21
+reason = "deepmerge through 4.3.1 mergeObject() prototype poisoning; no patched version exists (last_affected 4.3.1); medium (CVSS 5.3), below pnpm audit --audit-level=high but osv-scanner has no severity threshold. Reached only via @expo/config (Expo build-time CLI merging the developer own app config), not shipped in the app. Advisory modified 2026-10-27, first seen failing CI 2026-10-28. Added 2026-10-28."
