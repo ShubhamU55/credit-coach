@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react-native';
 
-import KitRoute from './kit';
+import KitRoute from '../app/kit';
 
 describe('Kit route', () => {
   it('renders the kit gallery', async () => {
