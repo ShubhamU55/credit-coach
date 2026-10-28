@@ -11,14 +11,22 @@ export interface DemoCard {
   name: string;
   issuer: string;
   initials: string;
+  /** Months since the card was opened (feeds the predictor's credit-age factor). */
+  ageMonths: number;
+  /** FD-backed or otherwise secured. */
+  isSecured: boolean;
   limit: number;
   outstanding: number;
   lastStatementBalance: number;
-  lastStatementDate: IsoDate | null;
+  /** Day of the month the statement is generated (1-31). */
   statementDay: number;
-  nextStatementDate: IsoDate;
+  /**
+   * Day of the month payment is due (1-31), or null when nothing is due this cycle
+   * (a card paid in full, like SBI SimplyClick). Adapters that need the engine's numeric
+   * `Card.dueDay` map null themselves. No dates are stored: screens get statement and
+   * due dates from the engine's `cardCycle(card, DEMO_TODAY)`.
+   */
   dueDay: number | null;
-  dueDate: IsoDate | null;
   minimumDue: number;
   paidSinceStatement: number;
 }
@@ -36,6 +44,7 @@ export interface DemoCreditHistory {
   monthsWithZeroMissed: number;
   missedPayments: number;
   hardInquiries6m: number;
+  hardInquiries12m: number;
   oldestAccountCardId: string;
   oldestAccountMonths: number;
   securedAccounts: number;
@@ -68,10 +77,7 @@ export interface DemoPayment {
 }
 
 export type RepositoryErrorCode =
-  | 'unknown_card'
-  | 'invalid_amount'
-  | 'amount_exceeds_outstanding'
-  | 'invalid_date';
+  'unknown_card' | 'invalid_amount' | 'amount_exceeds_outstanding' | 'invalid_date';
 
 export class RepositoryError extends Error {
   readonly code: RepositoryErrorCode;

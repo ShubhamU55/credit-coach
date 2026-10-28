@@ -1,4 +1,5 @@
 import aaravSeed from './aarav.json';
+import { parseSeed } from './seed';
 import {
   RepositoryError,
   type DemoCard,
@@ -10,12 +11,14 @@ import {
   type IsoDate,
 } from './types';
 
-const SEED = aaravSeed as DemoSeed;
+// Validated once at module load: a typo in aarav.json fails here, not deep inside a screen.
+const SEED: DemoSeed = parseSeed(aaravSeed);
 
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 function clone<T>(value: T): T {
-  return structuredClone(value);
+  // The data is plain JSON. structuredClone is not guaranteed on Hermes, so avoid it.
+  return JSON.parse(JSON.stringify(value)) as T;
 }
 
 function isIsoCalendarDate(value: string): boolean {

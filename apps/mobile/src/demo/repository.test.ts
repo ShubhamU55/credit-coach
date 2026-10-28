@@ -43,28 +43,53 @@ describe('createDemoRepository seed', () => {
     expect(cards.reduce((sum, c) => sum + c.limit, 0)).toBe(300000);
   });
 
-  it('carries the canonical statement and due data', () => {
+  it('carries the canonical statement and due-day data', () => {
     const repo = createDemoRepository();
 
     expect(card(repo, 'hdfc-millennia')).toMatchObject({
       outstanding: 81000,
       lastStatementBalance: 74200,
       minimumDue: 3710,
-      dueDate: '2026-11-04',
+      statementDay: 15,
+      dueDay: 4,
     });
     expect(card(repo, 'axis-neo')).toMatchObject({
       outstanding: 15600,
       lastStatementBalance: 12400,
       minimumDue: 620,
-      dueDate: '2026-10-22',
+      statementDay: 2,
+      dueDay: 22,
     });
-    // SBI was paid in full: no due date this cycle, next statement reports on 25 Oct.
+    // SBI was paid in full: no due date this cycle (adapters map the null dueDay).
     expect(card(repo, 'sbi-simplyclick')).toMatchObject({
       outstanding: 38400,
       minimumDue: 0,
-      dueDate: null,
-      nextStatementDate: '2026-10-25',
+      statementDay: 25,
+      dueDay: null,
     });
+  });
+
+  it('carries card age in months and the secured flag for the predictor', () => {
+    const cards = createDemoRepository().listCards();
+
+    expect(cards.map((c) => [c.id, c.ageMonths, c.isSecured])).toEqual([
+      ['hdfc-millennia', 74, false],
+      ['sbi-simplyclick', 38, false],
+      ['axis-neo', 20, false],
+    ]);
+    expect(createDemoRepository().getProfile().history).toMatchObject({
+      hardInquiries6m: 1,
+      hardInquiries12m: 1,
+      oldestAccountMonths: 74,
+    });
+  });
+
+  it('holds no derived dates: screens compute them from DEMO_TODAY via the engine', () => {
+    for (const c of createDemoRepository().listCards()) {
+      expect(c).not.toHaveProperty('dueDate');
+      expect(c).not.toHaveProperty('nextStatementDate');
+      expect(c).not.toHaveProperty('lastStatementDate');
+    }
   });
 
   it('exposes the default rules with the 10% switch off', () => {
