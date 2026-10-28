@@ -34,10 +34,21 @@ const FUNCTIONS = [
   'DateBlockTimeline',
   'PaymentTimelineStrip',
   'windowPercent',
+  'DashedRule',
+  'announce',
   // part B: score visuals
   'ScoreRangeText',
   'ScoreCard',
   'WhatIfTile',
+  // part B: card surfaces
+  'ChipGlyph',
+  'CardTile',
+  'HeroPaymentCard',
+  // part B: app chrome
+  'Header',
+  'FloatingNav',
+  'BottomSheet',
+  'Screen',
 ];
 
 const OBJECTS = [

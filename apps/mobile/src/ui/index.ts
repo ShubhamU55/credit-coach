@@ -24,6 +24,8 @@ export { PopPressable } from './primitives/PopPressable';
 export type { PopPressableProps, PopShadowKind } from './primitives/PopPressable';
 export { useReduceMotion } from './primitives/useReduceMotion';
 export { usePressed } from './primitives/usePressed';
+export { DashedRule } from './primitives/DashedRule';
+export { announce } from './primitives/announce';
 export { clampPercent, percentStyle } from './primitives/percent';
 
 // components: buttons and form controls
@@ -59,3 +61,16 @@ export { ScoreRangeText } from './components/ScoreRangeText';
 export { ScoreCard } from './components/ScoreCard';
 export type { ScoreCardProps, ScoreZoneSpec } from './components/ScoreCard';
 export { WhatIfTile } from './components/WhatIfTile';
+
+// components: card surfaces
+export { ChipGlyph } from './components/ChipGlyph';
+export { CardTile } from './components/CardTile';
+export { HeroPaymentCard } from './components/HeroPaymentCard';
+export type { HeroPaymentCardProps } from './components/HeroPaymentCard';
+
+// components: app chrome
+export { Header } from './components/Header';
+export { FloatingNav } from './components/FloatingNav';
+export type { NavTab } from './components/FloatingNav';
+export { BottomSheet } from './components/BottomSheet';
+export { Screen } from './components/Screen';
