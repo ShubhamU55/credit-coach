@@ -3,7 +3,7 @@
 - **Date:** 2026-10-28
 - **PRD refs:** §4 (F1, F3, F6), §5.5, §5.6; CLAUDE.md non-negotiables 1, 3, 4
 - **Plan:** docs/superpowers/plans/2026-10-28-pd-2.md (Tasks 1–5)
-- **Commits:** `8cff792..` on `feat/pd-2-predictor` (base `2836b93`)
+- **Commits:** `8cff792..1582cd6`, plus this docs fix, on `feat/pd-2-predictor` (base `2836b93`)
 - **Run ledger:** [`docs/agent-runs/2026-10-28-pd-2.md`](../agent-runs/2026-10-28-pd-2.md)
 
 ## Goal
@@ -75,6 +75,14 @@ and calibrated so the demo persona's numbers match the design.
   from a sibling worktree (`cc-pd3`), because another session wrote to the same file name. The
   AI noticed the path in the output and reran under a unique name instead of reporting someone
   else's result.
+- **The AI first blamed the environment for a failure that named its own workspace.** The
+  advisor review caught it. The AI's own first verify run had named `packages/engine` as the
+  failing workspace, and the AI hadn't read that section before writing "timeouts only".
+  - Probable cause: the heaviest property suite takes 2.5 s idle, against vitest's 5 s default.
+  - Fix: an explicit 30 s timeout on the property suites (`1582cd6`). The engine then passed in
+    both full runs.
+  - What's left: one bash-script hooks test (`pm-bootstrap`) times out at 180 s on the loaded
+    machine, so `pnpm verify` still doesn't exit 0 locally. It is reported as red, not green.
 
 ## What I learned
 
