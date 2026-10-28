@@ -61,7 +61,7 @@ function sentence(props: ScoreCardProps): string {
     zones.length > 0 ? `Zones: ${spans}.` : null,
     withPlan ? `With the plan, ${withPlan.range}.` : null,
   ]
-    .filter(Boolean)
+    .filter((part) => Boolean(part))
     .join(' ');
 }
 

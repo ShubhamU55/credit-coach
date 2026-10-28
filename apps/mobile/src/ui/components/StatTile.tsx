@@ -96,7 +96,7 @@ export function StatTile({
     <Pressable
       testID={testID}
       accessibilityRole="button"
-      accessibilityLabel={[overline, value, caption, delta].filter(Boolean).join(', ')}
+      accessibilityLabel={[overline, value, caption, delta].filter((part) => Boolean(part)).join(', ')}
       onPress={onPress}
       style={{ ...tileStyle, minHeight: space.touch }}
     >

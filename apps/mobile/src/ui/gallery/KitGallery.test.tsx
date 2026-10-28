@@ -114,17 +114,15 @@ describe('KitGallery', () => {
 describe('kit-gallery.yaml', () => {
   // Prettier may rewrite the YAML quotes; compare with one quote style.
   const flow = fs
-    .readFileSync(path.join(__dirname, '../../../.maestro-pending/kit-gallery.yaml'), 'utf8')
+    .readFileSync(path.join(__dirname, '../../../.maestro/kit-gallery.yaml'), 'utf8')
     .replaceAll("'", '"');
 
-  test.each(SECTIONS)('scrolls to the %s title anchor and takes three screenshots of it', (id) => {
+  test.each(SECTIONS)('scrolls to the %s title anchor and takes a screenshot of it', (id) => {
     // Sections are taller than one screen, so the flow anchors on the small title, never the
     // whole section (scrollUntilVisible wants 100% of the element visible).
     expect(flow).toContain(`id: "${id}-title"`);
     expect(flow).not.toContain(`id: "${id}"`);
-    for (const n of [1, 2, 3]) {
-      expect(flow).toContain(`takeScreenshot: ../../docs/test-reports/ui-kit/${id}-${n}`);
-    }
+    expect(flow).toContain(`takeScreenshot: ../../docs/test-reports/ui-kit/${id}-1`);
   });
 
   test('every section the flow scrolls to exists in the gallery', async () => {

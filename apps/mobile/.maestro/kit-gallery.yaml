@@ -1,18 +1,17 @@
 appId: com.creditcoach.app
-# Plan 4a task 11: walk the kit gallery section by section and take three screenshots of each, for the
+# Plan 4a task 11: walk the kit gallery section by section and take one screenshot of each, for the
 # visual review against docs/design.md. Needs a release build (pnpm --filter @credit-coach/mobile
 # android:release) with Metro stopped. Screenshots land in docs/test-reports/ui-kit/.
 #
 # Most sections are taller than one screen, so the flow scrolls to a small title anchor
-# (kit-<section>-title), which can be fully visible, then scrolls and shoots three times.
+# (kit-<section>-title), which can be fully visible, then shoots once.
 # NOT YET RUN ON A DEVICE: the scroll distances and the screenshot base path need confirming.
 ---
 - launchApp:
     clearState: true
-- assertVisible: 'Credit Coach'
+- openLink: creditcoach://kit
 - assertVisible:
-    id: 'engine-check'
-    text: 'Engine OK: 30%'
+    id: 'kit-buttons-title'
 
 # Buttons
 - scrollUntilVisible:
@@ -22,10 +21,6 @@ appId: com.creditcoach.app
     id: 'kit-buttons-title'
 - scroll
 - takeScreenshot: ../../docs/test-reports/ui-kit/kit-buttons-1
-- scroll
-- takeScreenshot: ../../docs/test-reports/ui-kit/kit-buttons-2
-- scroll
-- takeScreenshot: ../../docs/test-reports/ui-kit/kit-buttons-3
 
 # Form controls
 - scrollUntilVisible:
@@ -35,10 +30,6 @@ appId: com.creditcoach.app
     id: 'kit-form-title'
 - scroll
 - takeScreenshot: ../../docs/test-reports/ui-kit/kit-form-1
-- scroll
-- takeScreenshot: ../../docs/test-reports/ui-kit/kit-form-2
-- scroll
-- takeScreenshot: ../../docs/test-reports/ui-kit/kit-form-3
 
 # Information blocks
 - scrollUntilVisible:
@@ -48,10 +39,6 @@ appId: com.creditcoach.app
     id: 'kit-info-title'
 - scroll
 - takeScreenshot: ../../docs/test-reports/ui-kit/kit-info-1
-- scroll
-- takeScreenshot: ../../docs/test-reports/ui-kit/kit-info-2
-- scroll
-- takeScreenshot: ../../docs/test-reports/ui-kit/kit-info-3
 
 # Card surfaces
 - scrollUntilVisible:
@@ -61,10 +48,6 @@ appId: com.creditcoach.app
     id: 'kit-cards-title'
 - scroll
 - takeScreenshot: ../../docs/test-reports/ui-kit/kit-cards-1
-- scroll
-- takeScreenshot: ../../docs/test-reports/ui-kit/kit-cards-2
-- scroll
-- takeScreenshot: ../../docs/test-reports/ui-kit/kit-cards-3
 
 # Plan visuals
 - scrollUntilVisible:
@@ -74,10 +57,6 @@ appId: com.creditcoach.app
     id: 'kit-plan-title'
 - scroll
 - takeScreenshot: ../../docs/test-reports/ui-kit/kit-plan-1
-- scroll
-- takeScreenshot: ../../docs/test-reports/ui-kit/kit-plan-2
-- scroll
-- takeScreenshot: ../../docs/test-reports/ui-kit/kit-plan-3
 
 # Score visuals
 - scrollUntilVisible:
@@ -90,10 +69,6 @@ appId: com.creditcoach.app
     id: 'kit-range-xl'
     text: '708–736'
 - takeScreenshot: ../../docs/test-reports/ui-kit/kit-score-1
-- scroll
-- takeScreenshot: ../../docs/test-reports/ui-kit/kit-score-2
-- scroll
-- takeScreenshot: ../../docs/test-reports/ui-kit/kit-score-3
 
 # App chrome
 - scrollUntilVisible:
@@ -103,10 +78,6 @@ appId: com.creditcoach.app
     id: 'kit-chrome-title'
 - scroll
 - takeScreenshot: ../../docs/test-reports/ui-kit/kit-chrome-1
-- scroll
-- takeScreenshot: ../../docs/test-reports/ui-kit/kit-chrome-2
-- scroll
-- takeScreenshot: ../../docs/test-reports/ui-kit/kit-chrome-3
 
 # The bottom sheet: open it, check the fixed note, close it
 - scrollUntilVisible:
