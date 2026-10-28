@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<testsuites>
+  <testsuite name="Test Suite" device="Pixel_7" tests="2" failures="0" time="78.398" timestamp="2026-10-28T21:07:20">
+    <testcase id="onboarding-try-sample" name="onboarding-try-sample" classname="onboarding-try-sample" file=".maestro\onboarding-try-sample.yaml" time="58.94" timestamp="2026-10-28T21:07:20" status="SUCCESS"/>
+    <testcase id="smoke" name="smoke" classname="smoke" file=".maestro\smoke.yaml" time="19.387" timestamp="2026-10-28T21:08:19" status="SUCCESS"/>
+  </testsuite>
+</testsuites>
