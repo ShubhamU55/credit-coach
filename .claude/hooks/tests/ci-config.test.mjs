@@ -11,6 +11,7 @@ const WORKFLOW_PATHS = {
   ci: '.github/workflows/ci.yml',
   hold: '.github/workflows/hold.yml',
   codeql: '.github/workflows/codeql.yml',
+  'pr-body': '.github/workflows/pr-body.yml',
 };
 
 function readWorkflow(relPath) {

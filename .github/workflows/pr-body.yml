@@ -1,0 +1,27 @@
+name: PR body
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+# The check reads the PR description from the event payload; it needs the repo only to run the script.
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-body-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  pr-body:
+    name: pr-body
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Require the AI-assisted disclosure and a verify result
+        run: node .claude/hooks/bin/pr-body-check.mjs
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
