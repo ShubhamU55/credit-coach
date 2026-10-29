@@ -24,12 +24,14 @@ version):
 
 - **Real and tested on `main`:** the rules engine (payment planner, reporting dates, score range predictor,
   what-ifs, application guard, the "Why this plan?" template) and the mobile kit and app shell.
-- **Built, awaiting device evidence, not on `main` yet:** the Welcome, Home, Plan, Mark as paid and Score screens
-  (branches `feat/pd-8-welcome-home`, `feat/pd-9-plan`, `feat/pd-10-score`). Until they merge, the app on `main` shows
+- **Built, not on `main` yet:** the Welcome, Home, Plan, Mark as paid and Score screens. Welcome and Home are PR #65
+  (open) with a device report; Plan and Mark as paid (`feat/pd-9-plan`) have a device report on their branch; Score
+  (`feat/pd-10-score`) has none yet. Until they merge, the app on `main` shows
   stub screens behind "Try sample profile".
 - **Written, not deployed:** the Supabase backend and the `explain` Edge Function (branch `feat/pd-5-backend`). The
   app is built to work without it.
-- **Cut:** bureau linking, reminders, the admin panel (it is still the stock Next scaffold), and sign-in.
+- **Not built:** bureau linking, the admin panel (it is still the stock Next scaffold), and sign-in. Reminders are built on
+  a parked branch (`feat/pd-13-reminders`) and not part of the judged path.
 - **No release APK is attached for judges yet.** The owner attaches it to a GitHub release (see the links table in
   `docs/submission.md`). Until then use track C to build it.
 
@@ -50,8 +52,8 @@ pnpm --filter @credit-coach/engine test
 Expect 255 passing tests and about 99.7% line coverage (the gate is 90%). The golden fixture is Aarav, from
 `docs/design.md` section 8: `packages/engine/src/planner.golden.test.ts` asserts the exact plan, the 15.3% and 7.3%
 outcomes, and the "admin demo moment" (threshold 20% makes the SBI step 14,400 and the left over 19,000).
-`pnpm verify` runs lint, typecheck and every unit test in every workspace; the `.claude/hooks` and mobile suites can hit
-5-second timeouts when the machine is busy, so rerun a failing file alone before treating it as a failure.
+`pnpm verify` runs lint, typecheck and every unit test in every workspace. When the machine is busy the `.claude/hooks` and
+mobile suites can hit 5-second load timeouts; rerun a failing file alone to confirm. CI `verify` is the reference.
 
 **C. Run the app, needs the Android SDK, JDK 17 and an emulator or a phone with USB debugging.**
 

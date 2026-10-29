@@ -1,14 +1,15 @@
 # Demo video script (3 to 5 minutes)
 
 Shot list and voice-over for the submission video (PRD section 9, deliverable 2). The video is also the fallback if
-the APK does not install, so it has to stand on its own. Target length: about 4 minutes 45 seconds.
+the APK does not install, so it has to stand on its own. Target length: about 4 minutes 30 seconds, leaving margin inside the 3 to 5 minute limit.
 
 ## Read this first: what the video can show
 
 The numbers and strings below come from the golden fixture (`docs/design.md` section 8), the engine tests on `main`,
 and the screens on the three unmerged branches `feat/pd-8-welcome-home` (Welcome, Home), `feat/pd-9-plan` (Plan, Mark
-as paid) and `feat/pd-10-score` (Score, what-ifs). As of `origin/main` `23ba4be` (2026-10-29) those screens are
-**built, awaiting device evidence**: they pass their Jest tests but have not been merged or run on a device. So:
+as paid) and `feat/pd-10-score` (Score, what-ifs). As of 2026-10-29 none of those screens is on `main`. PD-8 is PR #65 (open) with a Maestro report on a physical phone
+(Welcome to Home only); PD-9 has a report for Plan and Mark as paid on its branch; PD-10 has no device report. All pass
+their Jest tests. So:
 
 - **Record segments 2 to 7 only from a build that contains PD-8, PD-9 and PD-10.** Do not record them from `main`
   as it stands; `main` has stub screens for Home, Plan, Score and Mark as paid.
@@ -33,7 +34,7 @@ as paid) and `feat/pd-10-score` (Score, what-ifs). As of `origin/main` `23ba4be`
 
 Times are cumulative. The voice-over is plain: short sentences, say the consequence, no hype, never promise a score.
 
-### 1. The problem (0:00 to 0:25)
+### 1. The problem (0:00 to 0:20)
 
 **Screen:** the Welcome screen, not yet tapped.
 **Say:** "In India, the credit bureau sees the balance your bank reports, usually the statement balance, not what is
@@ -41,13 +42,13 @@ left after you pay by the due date. So someone who pays in full every month can 
 Credit Coach tells you what to pay, where and when, to fix that. Everything you will see is a sample profile, and the
 dates are fixed to 21 October."
 
-### 2. Try sample profile (0:25 to 0:45)
+### 2. Try sample profile (0:20 to 0:35)
 
 **Screen:** tap **Try sample profile** (test id `welcome-try-sample`). Note the caption "No sign-up, 10 seconds".
 **Say:** "No sign-up, no SMS code. One tap opens Aarav's profile."
 **Check:** Home appears in a couple of seconds with nothing typed.
 
-### 3. Home (0:45 to 1:30)
+### 3. Home (0:35 to 1:15)
 
 **Screen:** Home (`home-screen`). Pause on each item.
 
@@ -60,7 +61,7 @@ dates are fixed to 21 October."
 **Say:** "Three cards, 45 percent used overall. The HDFC card is at 81 percent. The score is a range, never one number,
 and it says it is an estimate. The top of the screen is the one thing to do first: pay Axis Neo by Thursday."
 
-### 4. The plan (1:30 to 2:30)
+### 4. The plan (1:15 to 2:05)
 
 **Screen:** tap "All 5 steps" (`home-all-steps`) to open Plan (`plan-screen`, period "21 OCT to 20 NOV").
 
@@ -74,7 +75,7 @@ and it says it is an estimate. The top of the screen is the one thing to do firs
 clear statements because that is the balance that gets reported, then bring the highest card under 30 percent. If
 the cash does not cover it, the shortfall is shown, never hidden. The switch is for people who want to go further."
 
-#### 4b. The admin moment, as a test (2:30 to 2:50)
+#### 4b. The admin moment, as a test (2:05 to 2:25)
 
 **Screen:** terminal.
 
@@ -88,7 +89,7 @@ Highlight the test named "admin demo moment, threshold 20% and switch off".
 panel was cut for time, so here is the same rule as a test: with a 20 percent threshold the SBI step becomes 14,400
 rupees and the left over 19,000."
 
-### 5. Mark as paid (2:50 to 3:20)
+### 5. Mark as paid (2:25 to 2:50)
 
 **Screen:** on Plan, scroll to step 01 and tap **Mark as paid** (`plan-step-1-mark-paid`); the sheet opens
 (`mark-paid-sheet`, "Axis Neo, due Thu, 22 Oct").
@@ -102,7 +103,7 @@ rupees and the left over 19,000."
 Home."
 **Note:** there is no Undo button (a recorded ruling: the demo repository has no undo). Do not mention one.
 
-### 6. Score and a what-if (3:20 to 4:00)
+### 6. Score and a what-if (2:50 to 3:30)
 
 **Screen:** Home, tap the score tile (`home-stat-score`) to open Score (`score-screen`).
 
@@ -116,7 +117,7 @@ Home."
 average credit age and removes limit, which pushes utilization up. These ranges come from the rules engine, not from
 the AI. The AI never computes a number."
 
-### 7. Why this plan? (4:00 to 4:15)
+### 7. Why this plan? (3:30 to 3:45)
 
 **Screen:** Plan, scroll to the "Why this plan?" block.
 **Say:** "The explanation is written from the plan's own numbers. Today it is template text, and it works with no
@@ -126,7 +127,7 @@ falls back to the template if anything is off."
 `docs/submission.md`). Do not imply a live AI call unless the function has been deployed and the PD-9 screen wired to
 the PD-11 hook.
 
-### 8. How AI built it (4:15 to 4:50)
+### 8. How AI built it (3:45 to 4:15)
 
 **Screen:** `docs/ai-system.md` (the diagram), then `docs/agent-runs/2026-10-28-coordinator.md`, a PR's checks list,
 then the engine test run (255 tests).
@@ -137,7 +138,7 @@ in an amount field, a config that could collapse the score range to one exact nu
 hide an unpaid minimum. Everything is in the repo: the journal, the run ledgers, and the rulings with what each would
 cost if wrong."
 
-### 9. Honest close (4:50 to 5:00)
+### 9. Honest close (4:15 to 4:30)
 
 **Screen:** the status table in `docs/submission.md` section 3.
 **Say:** "What is not here: sign-in and bureau linking, reminders, and the admin panel were cut. The backend is
