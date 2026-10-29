@@ -49,7 +49,9 @@ The PRD commits to the spirit of India's DPDP Act: consent, purpose limitation, 
 
 ## Review
 
-- Once branch protection is on, every change reaches `main` through a pull request with CI green. The owner merges with a merge commit, not a squash, so first-parent history shows what was reviewed.
+- Since 28 Oct 2026, every change reaches `main` through a pull request with CI green. The owner squash-merges, and `main` requires linear history, so there are no merge commits and each first-parent commit since then carries its pull request number, `(#N)`, which shows what was reviewed.
+- Before branch protection went on (28 Oct 2026, recorded in PR #4), commits reached `main` directly, with no pull request and no required checks. That includes the AI configuration in `.claude/`. The first pull request, #1, was merged on 27 Oct 2026. Check any commit with `git log --first-parent origin/main`: a commit without a `(#N)` in its title did not go through a pull request.
+- Aim for pull requests of at most about 400 changed lines, and split larger work by ticket.
 - CI lives in `.github/workflows/`: verification, secret scanning, dependency audit, CodeQL, Sonar and the end-to-end evidence checks.
 - `/pr-review` posts the agent review verdict, and a separate adversarial verifier must confirm a finding before it blocks. That verdict supports the owner's decision and does not replace it.
 - A change to agent configuration (`CLAUDE.md`, `.claude/`, the nested `AGENTS.md` files, `.github/`) gets the owner's own read of the diff before it merges, never on an agent verdict alone.
