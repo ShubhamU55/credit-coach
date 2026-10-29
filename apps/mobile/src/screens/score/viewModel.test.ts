@@ -17,6 +17,7 @@ import {
   daysSince,
   scenarioTitle,
   describeOutcome,
+  MAX_AMOUNT,
   followPlanPayments,
   reasonRows,
   scoreHeadline,
@@ -51,7 +52,7 @@ describe('WHAT_IF_TILES', () => {
       'Apply for a card or loan',
       'Open an FD-backed card',
     ]);
-    expect(WHAT_IF_TILES.filter((t) => t.suggested).map((t) => t.key)).toEqual(['follow-plan']);
+    expect(WHAT_IF_TILES.filter((t) => t.isSuggested).map((t) => t.key)).toEqual(['follow-plan']);
   });
 });
 
@@ -184,7 +185,7 @@ describe('describeOutcome', () => {
   it('an application carries the guard impact as a range of points, not a score', () => {
     const view = describeOutcome(outcomeOf({ kind: 'apply', product: 'card' }));
 
-    expect(view.guard?.warn).toBe(false);
+    expect(view.guard?.hasWarning).toBe(false);
     expect(view.guard?.impactLine).toMatch(
       /^Another application could cost about \d+–\d+ points\.$/,
     );
@@ -205,7 +206,7 @@ describe('describeOutcome', () => {
 
     const view = describeOutcome(result);
 
-    expect(view.guard?.warn).toBe(true);
+    expect(view.guard?.hasWarning).toBe(true);
     expect(view.guard?.headline).toBe('You already have 2 hard inquiries in the last 6 months.');
   });
 
@@ -318,5 +319,79 @@ describe('amountProblem and buildScenario agree', () => {
   it('refuses pay-card for an unknown card', () => {
     expect(buildScenario('pay-card', { cardId: 'nope', amount: 100 }, plan)).toBeNull();
     expect(buildScenario('close-card', { cardId: 'nope' }, plan)).toBeNull();
+  });
+});
+
+describe('Fix round 2: boundaries', () => {
+  const { cards, rules } = aarav();
+  const plan = { cards, rules, today: DEMO_TODAY, cash: 120000 };
+  const hdfc = cards[0];
+
+  it('accepts exactly the largest amount for an FD card and refuses one rupee more', () => {
+    expect(amountProblem('fd-card', MAX_AMOUNT)).toBeUndefined();
+    expect(buildScenario('fd-card', { amount: MAX_AMOUNT }, plan)).toEqual({
+      kind: 'fd-card',
+      fdAmount: MAX_AMOUNT,
+    });
+    expect(amountProblem('fd-card', MAX_AMOUNT + 1)).toEqual(expect.any(String));
+    expect(buildScenario('fd-card', { amount: MAX_AMOUNT + 1 }, plan)).toBeNull();
+  });
+
+  it('builds pay-card for exactly the outstanding amount', () => {
+    expect(
+      buildScenario('pay-card', { cardId: hdfc.id, amount: hdfc.outstanding }, plan),
+    ).toMatchObject({ kind: 'pay-card', amount: hdfc.outstanding });
+  });
+
+  it.each([
+    ['moves up by exactly 2', 2, 'barely moves'],
+    ['moves up by 3', 3, 'improves'],
+    ['moves down by exactly 2', -2, 'barely moves'],
+    ['moves down by 3', -3, 'lowers'],
+  ])('direction when the centre %s', (_name, move, expected) => {
+    const base = outcomeOf({ kind: 'miss-payment' });
+    const outcome = {
+      ...base,
+      before: { ...base.before, low: 700, high: 720 },
+      after: { ...base.after, low: 700 + move, high: 720 + move },
+    };
+
+    expect(describeOutcome(outcome).direction).toBe(expected);
+  });
+
+  it('keeps what-if ranges inside 300 to 900', () => {
+    const base = outcomeOf({ kind: 'miss-payment' });
+    const low = describeOutcome({
+      ...base,
+      before: { ...base.before, low: 300, high: 330 },
+      after: { ...base.after, low: 280, high: 310 },
+    });
+    const high = describeOutcome({
+      ...base,
+      before: { ...base.before, low: 870, high: 900 },
+      after: { ...base.after, low: 890, high: 930 },
+    });
+
+    for (const text of [low.beforeRange, low.afterRange, high.beforeRange, high.afterRange]) {
+      const [from, to] = text.split('–').map(Number) as [number, number];
+      expect(from).toBeGreaterThanOrEqual(300);
+      expect(to).toBeLessThanOrEqual(900);
+    }
+  });
+
+  it('counts days across month-end, year-end and a leap day', () => {
+    expect(daysSince('2026-01-31', '2026-02-01')).toBe(1);
+    expect(daysSince('2025-12-31', '2026-01-01')).toBe(1);
+    expect(daysSince('2028-02-28', '2028-03-01')).toBe(2);
+    expect(daysSince('2027-02-28', '2027-03-01')).toBe(1);
+  });
+
+  it('says "this card" when the card is not in the list', () => {
+    expect(scenarioTitle({ kind: 'close-card', cardId: 'gone' }, cards)).toBe(
+      'you close this card',
+    );
+    expect(scenarioTitle({ kind: 'pay-card', cardId: 'gone', amount: 100 }, cards)).toBe(
+      'you pay ₹100 on this card',
+    );
   });
 });

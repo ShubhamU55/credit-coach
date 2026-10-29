@@ -440,3 +440,40 @@ describe('Fix round 1', () => {
     expect(screen.getByTestId('score-screen')).toBeTruthy();
   });
 });
+
+describe('Fix round 2', () => {
+  it('shows the sample strip on the main view, a form and a result, and Switch goes to Welcome', async () => {
+    await renderScore();
+    expect(screen.getByTestId('sample-strip')).toBeTruthy();
+
+    await fireEvent.press(screen.getByTestId('score-tile-fd-card'));
+    expect(screen.getByTestId('sample-strip')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('score-whatif-back'));
+    await fireEvent.press(screen.getByTestId('score-tile-miss-payment'));
+    expect(screen.getByTestId('sample-strip')).toBeTruthy();
+
+    await fireEvent.press(screen.getByTestId('sample-strip-switch'));
+    expect(router.replace).toHaveBeenCalledWith('/');
+  });
+
+  it('shows no sample strip for a profile that is not the sample', async () => {
+    const seed = seedWith((s) => {
+      s.profile.isSample = false;
+    });
+    await renderScore(createDemoRepository(seed));
+
+    expect(screen.getByTestId('score-screen')).toBeTruthy();
+    expect(screen.queryByTestId('sample-strip')).toBeNull();
+  });
+
+  it('offers Back to Home when the estimate cannot be made', async () => {
+    const seed = seedWith((s) => {
+      s.profile.history.anchorDate = '2027-06-01';
+    });
+    await renderScore(createDemoRepository(seed));
+
+    await fireEvent.press(screen.getByTestId('score-link-home-unavailable'));
+
+    expect(router.replace).toHaveBeenCalledWith('/home');
+  });
+});

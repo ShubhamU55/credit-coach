@@ -38,14 +38,14 @@ function pickableCards(tile: WhatIfConfigureProps['tile'], cards: readonly DemoC
 }
 
 function isReady(a: {
-  needsCard: boolean;
-  needsAmount: boolean;
+  showCardChoice: boolean;
+  showAmountField: boolean;
   card: DemoCard | undefined;
   amount: number | undefined;
   problem: string | undefined;
 }): boolean {
-  const cardOk = !a.needsCard || a.card !== undefined;
-  const amountOk = !a.needsAmount || (a.amount !== undefined && a.problem === undefined);
+  const cardOk = !a.showCardChoice || a.card !== undefined;
+  const amountOk = !a.showAmountField || (a.amount !== undefined && a.problem === undefined);
   return cardOk && amountOk;
 }
 
@@ -54,14 +54,15 @@ export function WhatIfConfigure({ tile, cards, onRun, onBack }: WhatIfConfigureP
   const choices = pickableCards(tile, cards);
   const [cardId, setCardId] = useState<string>(choices[0]?.id ?? '');
   const [digits, setDigits] = useState('');
-  const needsCard = tile !== 'fd-card';
-  const needsAmount = tile !== 'close-card';
+  const showCardChoice = tile !== 'fd-card';
+  const showAmountField = tile !== 'close-card';
   const amount = toAmount(digits);
   const card = choices.find((c) => c.id === cardId) ?? choices[0];
   const emptyMessage = nothingToPick(tile, cards, choices);
   const problem = tile === 'close-card' ? undefined : amountProblem(tile, amount, card);
   const ready =
-    emptyMessage === undefined && isReady({ needsCard, needsAmount, card, amount, problem });
+    emptyMessage === undefined &&
+    isReady({ showCardChoice, showAmountField, card, amount, problem });
   return (
     <>
       <TextAction label="Back to score" onPress={onBack} testID="score-whatif-back" />
@@ -72,7 +73,7 @@ export function WhatIfConfigure({ tile, cards, onRun, onBack }: WhatIfConfigureP
           {emptyMessage}
         </Text>
       ) : null}
-      {needsCard && choices.length > 0 ? (
+      {showCardChoice && choices.length > 0 ? (
         <ChoiceRows
           options={cardOptions(choices)}
           value={card?.id ?? ''}
@@ -80,7 +81,7 @@ export function WhatIfConfigure({ tile, cards, onRun, onBack }: WhatIfConfigureP
           testID="score-card-choice"
         />
       ) : null}
-      {needsAmount ? (
+      {showAmountField ? (
         <AmountInput
           label={tile === 'fd-card' ? 'FD amount' : 'Amount to pay'}
           value={digits}
@@ -93,7 +94,7 @@ export function WhatIfConfigure({ tile, cards, onRun, onBack }: WhatIfConfigureP
       <PopButton
         label="See the result"
         disabled={!ready}
-        onPress={() => onRun({ cardId: needsCard ? card?.id : undefined, amount })}
+        onPress={() => onRun({ cardId: showCardChoice ? card?.id : undefined, amount })}
         testID="score-whatif-go"
       />
     </>

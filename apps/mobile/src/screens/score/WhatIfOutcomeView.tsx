@@ -10,7 +10,7 @@ import {
   color,
   space,
 } from '../../ui';
-import type { OutcomeView } from './viewModel';
+import { WHATIF_FAILED, type OutcomeView } from './viewModel';
 
 export interface WhatIfOutcomeViewProps {
   /** For example "you close HDFC Millennia". */
@@ -29,7 +29,7 @@ function WarningLine({ testID, children }: { testID: string; children: string })
 }
 
 function GuardPanel({ guard }: { guard: NonNullable<OutcomeView['guard']> }) {
-  const tone = guard.warn ? 'warning' : 'body';
+  const tone = guard.hasWarning ? 'warning' : 'body';
   return (
     <View
       testID="score-result-guard"
@@ -37,11 +37,11 @@ function GuardPanel({ guard }: { guard: NonNullable<OutcomeView['guard']> }) {
         padding: space.cardPad,
         gap: 6,
         borderWidth: 1,
-        borderColor: guard.warn ? color.warning : color.hairline,
-        backgroundColor: guard.warn ? color.warningTint : color.surface,
+        borderColor: guard.hasWarning ? color.warning : color.hairline,
+        backgroundColor: guard.hasWarning ? color.warningTint : color.surface,
       }}
     >
-      {guard.warn ? (
+      {guard.hasWarning ? (
         <Text variant="title" color="warning">
           <Text
             variant="title"
@@ -92,7 +92,7 @@ export function WhatIfOutcomeView({ title, view, onBack }: WhatIfOutcomeViewProp
       <>
         <TextAction label="Back to score" onPress={onBack} testID="score-whatif-back" />
         <Text variant="body" testID="score-result-error">
-          We couldn’t run that what-if. Check the card and the amount, then try again.
+          {WHATIF_FAILED}
         </Text>
       </>
     );

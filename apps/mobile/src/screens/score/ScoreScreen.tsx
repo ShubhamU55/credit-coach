@@ -14,7 +14,7 @@ import {
 import { DEMO_TODAY } from '../../demo/config';
 import type { DemoCard } from '../../demo/types';
 import { useCards, useProfile, useRules } from '../../state/DemoRepositoryContext';
-import { Screen, Text, announce } from '../../ui';
+import { SampleStrip, Screen, Text, TextAction, announce } from '../../ui';
 import { toGuardConfig, toWhatIfConfig, toWhatIfContext, type RulesWithGuard } from './adapter';
 import { ScoreHome } from './ScoreHome';
 import { WhatIfConfigure } from './WhatIfConfigure';
@@ -29,12 +29,14 @@ import {
   type PlanContext,
   type ScenarioInput,
   type TileKey,
+  WHATIF_FAILED,
 } from './viewModel';
 
 type Step =
   | { name: 'home' }
   | { name: 'configure'; tile: 'pay-card' | 'close-card' | 'fd-card' }
-  | { name: 'result'; scenario: WhatIfScenario };
+  | { name: 'result'; scenario: WhatIfScenario }
+  | { name: 'failed' };
 
 const NEEDS_INPUT = new Set<TileKey>(['pay-card', 'close-card', 'fd-card']);
 
@@ -42,13 +44,24 @@ function isInputTile(tile: TileKey): tile is 'pay-card' | 'close-card' | 'fd-car
   return NEEDS_INPUT.has(tile);
 }
 
-/** The estimate, or null if the engine rejects the inputs (for example an anchor dated in the future). */
-function safeEstimate(run: () => ScoreEstimate): ScoreEstimate | null {
+/**
+ * Runs an engine call and returns null when the engine rejects the inputs (a RangeError, for
+ * example an anchor dated in the future). Any other error is a bug and is rethrown. The message is
+ * logged in development only, so production stays quiet.
+ */
+function guarded<T>(label: string, run: () => T): T | null {
   try {
     return run();
-  } catch {
+  } catch (error) {
+    if (!(error instanceof RangeError)) throw error;
+    if (__DEV__) console.warn(`Score: ${label} refused its inputs: ${error.message}`);
     return null;
   }
+}
+
+/** The estimate, or null if the engine rejects the inputs. */
+function safeEstimate(run: () => ScoreEstimate): ScoreEstimate | null {
+  return guarded('the estimate', run);
 }
 
 /** Android back leaves a what-if before it leaves the screen. */
@@ -70,17 +83,22 @@ function safeWhatIf(
   scenario: WhatIfScenario,
   config: WhatIfConfig,
 ): WhatIfResult | null {
-  try {
-    return runWhatIf(context, scenario, config);
-  } catch {
-    return null;
-  }
+  return guarded('the what-if', () => runWhatIf(context, scenario, config));
+}
+
+/** The scenario for a tile, or null when the choices are incomplete or the planner rejects the data. */
+function safeScenario(key: TileKey, input: ScenarioInput, plan: PlanContext) {
+  return guarded('the plan', () => buildScenario(key, input, plan));
 }
 
 /** Tells a screen reader what the what-if answered, since the view swaps in place. */
 function useAnnounceResult(step: Step, result: WhatIfResult | null, cards: readonly DemoCard[]) {
   useEffect(() => {
-    if (step.name !== 'result' || !result?.ok) return;
+    if (step.name !== 'result') return;
+    if (!result?.ok) {
+      announce(WHATIF_FAILED);
+      return;
+    }
     const view = describeOutcome(result);
     announce(
       `If ${scenarioTitle(step.scenario, cards)}: estimated score ${view.afterRange}, ${view.direction} your score.`,
@@ -92,8 +110,9 @@ function useAnnounceResult(step: Step, result: WhatIfResult | null, cards: reado
 
 interface HomeExtras {
   withPlan: { low: number; high: number } | null;
-  planHelps: boolean;
-  guard: GuardView;
+  isPlanHelping: boolean;
+  /** Null when the guard check could not run: never shown as an all-clear. */
+  guard: GuardView | null;
 }
 
 /** The with-plan range and the application guard for the main view. */
@@ -102,24 +121,24 @@ function homeExtras(
   plan: PlanContext,
   rules: RulesWithGuard,
 ): HomeExtras {
-  const scenario = buildScenario('follow-plan', {}, plan);
+  const scenario = safeScenario('follow-plan', {}, plan);
   const planRun = scenario ? safeWhatIf(context, scenario, toWhatIfConfig(rules)) : null;
   const guard = safeGuard(context, rules);
   return {
     withPlan: planRun?.ok ? planRun.after : null,
-    planHelps: planRun?.ok === true && describeOutcome(planRun).direction === 'improves',
+    isPlanHelping: planRun?.ok === true && describeOutcome(planRun).direction === 'improves',
     guard,
   };
 }
 
-const NO_GUARD: GuardView = { warn: false, headline: '', impactLine: '' };
-
-function safeGuard(context: ReturnType<typeof toWhatIfContext>, rules: RulesWithGuard): GuardView {
-  try {
-    return describeGuard(checkApplicationGuard(context.input, toGuardConfig(rules)));
-  } catch {
-    return NO_GUARD;
-  }
+function safeGuard(
+  context: ReturnType<typeof toWhatIfContext>,
+  rules: RulesWithGuard,
+): GuardView | null {
+  const result = guarded('the application check', () =>
+    checkApplicationGuard(context.input, toGuardConfig(rules)),
+  );
+  return result ? describeGuard(result) : null;
 }
 
 /** The Score screen (PRD 5.5, 5.6; docs/design.md 7.5) and its what-if result views. */
@@ -150,8 +169,13 @@ export function ScoreScreen() {
   useAnnounceResult(step, result, cards);
 
   const run = (key: TileKey, input: ScenarioInput) => {
-    const scenario = buildScenario(key, input, plan);
-    if (scenario) setStep({ name: 'result', scenario });
+    const scenario = safeScenario(key, input, plan);
+    if (scenario) {
+      setStep({ name: 'result', scenario });
+    } else {
+      announce(WHATIF_FAILED);
+      setStep({ name: 'failed' });
+    }
   };
   const onPickTile = (key: TileKey) => {
     if (isInputTile(key)) setStep({ name: 'configure', tile: key });
@@ -162,6 +186,7 @@ export function ScoreScreen() {
     <View testID="score-screen" style={{ flex: 1 }}>
       {/* key: each step starts at the top instead of inheriting the previous scroll offset. */}
       <Screen scroll key={step.name}>
+        {profile.isSample ? <SampleStrip onSwitch={() => router.replace('/')} /> : null}
         {renderStep({ step, estimate, home, result, cards, profile, onPickTile, run, setStep })}
       </Screen>
     </View>
@@ -193,6 +218,9 @@ function renderStep(args: RenderArgs) {
       />
     );
   }
+  if (step.name === 'failed') {
+    return <WhatIfOutcomeView title="" view={null} onBack={toHome} />;
+  }
   if (step.name === 'result') {
     return (
       <WhatIfOutcomeView
@@ -209,6 +237,11 @@ function renderStep(args: RenderArgs) {
         <Text variant="body" testID="score-unavailable">
           The report date or your details look wrong. Check them and try again.
         </Text>
+        <TextAction
+          label="Back to Home"
+          onPress={() => router.replace('/home')}
+          testID="score-link-home-unavailable"
+        />
       </>
     );
   }
@@ -217,7 +250,7 @@ function renderStep(args: RenderArgs) {
       profile={profile}
       estimate={estimate}
       withPlan={home.withPlan}
-      planHelps={home.planHelps}
+      isPlanHelping={home.isPlanHelping}
       daysSinceReport={daysSince(profile.history.anchorDate, DEMO_TODAY)}
       guard={home.guard}
       onPickTile={onPickTile}

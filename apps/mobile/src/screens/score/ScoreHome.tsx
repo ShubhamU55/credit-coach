@@ -29,9 +29,10 @@ export interface ScoreHomeProps {
   estimate: ScoreEstimate;
   /** The range with the plan followed, or null when the plan could not be run. */
   withPlan: { low: number; high: number } | null;
-  planHelps: boolean;
+  isPlanHelping: boolean;
   daysSinceReport: number;
-  guard: GuardView;
+  /** Null when the application check could not run. */
+  guard: GuardView | null;
   onPickTile: (key: TileKey) => void;
   onBackHome: () => void;
 }
@@ -40,16 +41,16 @@ const HOW_WE_ESTIMATE =
   'We start from the last score your report showed, then adjust it for what we can see today: how much of your limits you use, your payment history, new applications, account age and mix. The range widens as the report gets older. It is an estimate, not your CIBIL score.';
 
 /** Tile glyphs are decorative; the label carries the meaning. */
-function Glyph({ children, suggested }: { children: string; suggested: boolean }) {
+function Glyph({ children, isSuggested }: { children: string; isSuggested: boolean }) {
   return (
-    <Text variant="title" color={suggested ? 'link' : 'muted'}>
+    <Text variant="title" color={isSuggested ? 'link' : 'muted'}>
       {children}
     </Text>
   );
 }
 
-function Headline({ zone, planHelps }: { zone: string; planHelps: boolean }) {
-  const { before, zone: word, after } = scoreHeadline(zone, planHelps);
+function Headline({ zone, isPlanHelping }: { zone: string; isPlanHelping: boolean }) {
+  const { before, zone: word, after } = scoreHeadline(zone, isPlanHelping);
   return (
     <Text variant="h1">
       {before}
@@ -101,7 +102,7 @@ export function ScoreHome({
   profile,
   estimate,
   withPlan,
-  planHelps,
+  isPlanHelping,
   daysSinceReport,
   guard,
   onPickTile,
@@ -115,7 +116,7 @@ export function ScoreHome({
   return (
     <>
       <Text variant="overline">{`YOUR SCORE · ${checkedAgo(daysSinceReport)}`}</Text>
-      <Headline zone={estimate.band} planHelps={planHelps} />
+      <Headline zone={estimate.band} isPlanHelping={isPlanHelping} />
       <ScoreCard
         range={range}
         zones={zoneSpecs()}
@@ -133,7 +134,12 @@ export function ScoreHome({
         }
         footer={estimate.isRoughBand ? 'A rough estimate: no report to anchor it yet.' : reported}
       />
-      {guard.warn ? <GuardBanner guard={guard} /> : null}
+      {guard === null ? (
+        <Text variant="bodyS" color="muted" testID="score-guard-unavailable">
+          Application check unavailable
+        </Text>
+      ) : null}
+      {guard?.hasWarning ? <GuardBanner guard={guard} /> : null}
       {rows.length > 0 ? (
         <View style={{ gap: space.grid }}>
           <Text variant="overline">WHAT’S MOVING IT</Text>
@@ -148,9 +154,9 @@ export function ScoreHome({
           {WHAT_IF_TILES.map((tile) => (
             <View key={tile.key} style={{ width: '48%', flexGrow: 1 }}>
               <WhatIfTile
-                icon={<Glyph suggested={tile.suggested}>{tile.glyph}</Glyph>}
+                icon={<Glyph isSuggested={tile.isSuggested}>{tile.glyph}</Glyph>}
                 label={tile.label}
-                suggested={tile.suggested}
+                suggested={tile.isSuggested}
                 onPress={() => onPickTile(tile.key)}
                 testID={`score-tile-${tile.key}`}
               />

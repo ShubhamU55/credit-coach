@@ -20,24 +20,28 @@ const SCORE_MAX = 900;
 const BARELY_MOVES_POINTS = 2;
 const MONTHS_PER_YEAR = 12;
 
+/** Shown and announced when a what-if cannot run. */
+export const WHATIF_FAILED =
+  'We couldn’t run that what-if. Check the card and the amount, then try again.';
+
 export type TileKey = WhatIfScenario['kind'];
 
 export interface WhatIfTileSpec {
   key: TileKey;
   label: string;
-  suggested: boolean;
+  isSuggested: boolean;
   /** Decorative glyph (no icon dependency in the app). */
   glyph: string;
 }
 
 /** The six tiles, in the order of docs/design.md 7.5. */
 export const WHAT_IF_TILES: readonly WhatIfTileSpec[] = [
-  { key: 'follow-plan', label: 'Follow this month’s plan', suggested: true, glyph: '✓' },
-  { key: 'pay-card', label: 'Pay an amount on a card', suggested: false, glyph: '₹' },
-  { key: 'miss-payment', label: 'Miss a payment', suggested: false, glyph: '!' },
-  { key: 'close-card', label: 'Close a card', suggested: false, glyph: '×' },
-  { key: 'apply', label: 'Apply for a card or loan', suggested: false, glyph: '+' },
-  { key: 'fd-card', label: 'Open an FD-backed card', suggested: false, glyph: '₹' },
+  { key: 'follow-plan', label: 'Follow this month’s plan', isSuggested: true, glyph: '✓' },
+  { key: 'pay-card', label: 'Pay an amount on a card', isSuggested: false, glyph: '₹' },
+  { key: 'miss-payment', label: 'Miss a payment', isSuggested: false, glyph: '!' },
+  { key: 'close-card', label: 'Close a card', isSuggested: false, glyph: '×' },
+  { key: 'apply', label: 'Apply for a card or loan', isSuggested: false, glyph: '+' },
+  { key: 'fd-card', label: 'Open an FD-backed card', isSuggested: false, glyph: '₹' },
 ];
 
 export interface ZoneSpec {
@@ -263,7 +267,7 @@ export function buildScenario(
 export type ResultDirection = 'lowers' | 'improves' | 'barely moves';
 
 export interface GuardView {
-  warn: boolean;
+  hasWarning: boolean;
   headline: string;
   impactLine: string;
 }
@@ -292,7 +296,7 @@ export function describeGuard(guard: GuardResult): GuardView {
   const { hardInquiries6m, impact } = guard;
   const count = `${hardInquiries6m} hard ${plural(hardInquiries6m, 'inquiry', 'inquiries')}`;
   return {
-    warn: guard.shouldWarn,
+    hasWarning: guard.shouldWarn,
     headline: guard.shouldWarn
       ? `You already have ${count} in the last 6 months.`
       : `You have ${count} in the last 6 months.`,
@@ -337,11 +341,11 @@ export interface Headline {
 }
 
 /** "You're in *good* shape — and the plan helps." The zone word is the italic one. */
-export function scoreHeadline(zone: string, planHelps: boolean): Headline {
+export function scoreHeadline(zone: string, isPlanHelping: boolean): Headline {
   return {
     before: 'You’re in ',
     zone: zone.toLowerCase(),
-    after: planHelps ? ' shape — and the plan helps.' : ' shape.',
+    after: isPlanHelping ? ' shape — and the plan helps.' : ' shape.',
   };
 }
 
