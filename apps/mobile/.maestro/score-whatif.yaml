@@ -1,0 +1,50 @@
+appId: com.creditcoach.app
+---
+# Home -> Score -> "Close a card" what-if on HDFC Millennia (PD-10).
+# The Score screen shows the estimated range for the Aarav sample, and closing the oldest
+# account shows the engine's lower range with the credit-age and limit-loss warnings.
+- launchApp:
+    clearState: true
+- tapOn:
+    id: 'welcome-try-sample'
+- assertVisible:
+    id: 'home-screen'
+- tapOn:
+    id: 'home-link-score'
+- assertVisible:
+    id: 'score-screen'
+- assertVisible:
+    id: 'score-range'
+    text: '708–736'
+- takeScreenshot: score-main
+
+# Close HDFC Millennia
+- scrollUntilVisible:
+    element:
+      id: 'score-tile-close-card'
+- tapOn:
+    id: 'score-tile-close-card'
+- tapOn:
+    id: 'score-card-choice-hdfc-millennia'
+- tapOn:
+    id: 'score-whatif-go'
+- assertVisible:
+    id: 'score-result'
+- assertVisible:
+    id: 'score-range'
+    text: '698–726'
+- assertVisible:
+    id: 'score-oldest-account'
+- assertVisible:
+    id: 'score-limit-loss'
+- assertVisible: 'Closing a card shortens your average credit age.*'
+- takeScreenshot: score-close-card
+
+# Back to the Score screen
+- tapOn:
+    id: 'score-whatif-back'
+- assertVisible:
+    id: 'score-screen'
+- assertVisible:
+    id: 'score-range'
+    text: '708–736'
