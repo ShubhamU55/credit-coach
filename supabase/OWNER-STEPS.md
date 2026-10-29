@@ -102,14 +102,18 @@ not deploy with `--no-verify-jwt`. On top of the gateway check, the function its
 session for a real user (anonymous sign-in users included) and confirms it with Supabase Auth, so
 the anon key alone, which ships inside the app, is refused with 401.
 
-**Rate limit.** 10 calls per minute per user and 30 per minute per network address (the platform's `cf-connecting-ip`, else `x-real-ip`, else the rightmost `x-forwarded-for` hop; the leftmost hop is client-controlled and is never used), counted in the
+**Rate limit.** 10 calls per minute per user and 30 per minute per network address (the platform's `cf-connecting-ip`, else the rightmost `x-forwarded-for` hop; `x-real-ip` is not read and the leftmost hop is client-controlled, so neither is ever used), counted in the
 memory of each running instance. It is best effort: counters reset when an instance restarts and each
 instance counts separately, so the real ceiling is a few times higher. The durable option, not built
 here, is a Postgres counter: a `rate_limits (key text, window_start timestamptz, count int)` table
 plus an RPC that upserts and returns the count, called by the function with the service role. Add it
 if the spend cap is ever hit.
 
-**The Anthropic spend cap is the real backstop.** The address limit can still be dodged by a caller who reaches the function through a path that does not set those headers, and counters are per instance. Do not rely on the limiter alone.
+**After deploy, confirm the proxy hop count.** Send a call with a made-up `x-forwarded-for: 1.2.3.4` and check, from the function's own behaviour (the 31st call in a minute from your own connection must return 429 whatever you put in the header), that the rightmost entry is the address the gateway saw and not something you chose. If it is not, tell the developer: the limiter would be bypassable.
+
+**Anonymous sign-in widens the gap.** `enable_anonymous_sign_ins = true` (`supabase/config.toml`, needed for "Try sample profile") lets one person mint any number of user ids, so the per-user limit is no bound on a determined person. The in-memory per-address limit is the only bound, and it is best effort.
+
+**The Anthropic spend cap is the real backstop.** Set it in the Anthropic console before the demo window. The address limit can still be dodged by a caller who reaches the function through a path that does not set those headers, and counters are per instance. Do not rely on the limiter alone.
 
 ## 5. What to check afterwards
 

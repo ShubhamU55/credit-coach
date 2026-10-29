@@ -255,10 +255,12 @@ export function isGrounded(text: string, payload: GroundingPayload): boolean {
 const SPELLED_NUMBERS =
   'one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|' +
   'seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|' +
-  'thousand|lakhs?|crores?|millions?|billions?|dozen';
+  'thousand|lakhs?|crores?|millions?|billions?|dozen|zero|half|twice|thrice|double|triple';
+// first/second/third are deliberately NOT here: "first, pay..." is ordinary plan wording and an
+// ordinal word names a position, not an amount, date or percent.
 const SCORE_CLAIM =
   'will|would|could|might|may|should|reach(?:es|ed)?|hit|hits|jump(?:s|ed)?|rise|rises|climb(?:s|ed)?|' +
-  'boost(?:s|ed)?|predict(?:s|ed|ion)?|expect(?:s|ed)?|lift(?:s|ed|ing)?|rais(?:e|es|ed|ing)|' +
+  'boost(?:s|ed)?|better|gains?|gained|predict(?:s|ed|ion)?|expect(?:s|ed)?|lift(?:s|ed|ing)?|rais(?:e|es|ed|ing)|' +
   'improv(?:e|es|ed|ing)|increas(?:e|es|ed|ing)|go(?:es)? up|going up';
 
 /** Wording a short plan note must never contain, whatever the numbers say. Each hit means "use the template". */
@@ -267,10 +269,14 @@ const FORBIDDEN: readonly RegExp[] = [
   new RegExp(`\\bscores?\\b[^.!?]*\\b(?:${SCORE_CLAIM})\\b`, 'i'),
   new RegExp(`\\b(?:${SCORE_CLAIM})\\b[^.!?]*\\bscores?\\b`, 'i'),
   new RegExp(`\\bcibil\\b[^.!?]*\\b\\d`, 'i'),
-  // Advice to close a card (non-negotiable 4 needs a warning the note cannot give). "close" is only
-  // blocked when it governs a card or account ("close the card", "closing SBI"), so "before your
-  // statement closes" and "close to the 30% threshold" pass. Card names are masked as "card" first.
+  // Advice to close or drop a card (non-negotiable 4 needs a warning the note cannot give). "close" is
+  // only blocked when it governs a card, an account or a pronoun ("close the card", "close it",
+  // "closing them"), so "before your statement closes" and "close to the 30% threshold" pass. Card
+  // names are masked as "card" first. drop/ditch/retire follow the same rule, but "drop to 15%" passes.
   /\bclos(?:e|es|ed|ing)\s+(?:(?:the|your|this|that|a|an|any|my|all|both|one)\s+)?(?:\w+\s+){0,2}?(?:cards?|accounts?)\b/i,
+  /\bclos(?:e|ed|ing)\s+(?:it|them|that|this|one)\b(?!\s+(?:week|month|year|cycle|window|date|day|time|statement))/i,
+  /\b(?:drop(?:s|ped|ping)?|ditch(?:es|ed|ing)?|retir(?:e|es|ed|ing))\s+(?:(?:the|your|this|that|a|an|any|my|all|both|one)\s+)?(?:(?!(?:to|by|below|under|from|in|on|at|toward|towards)\b)\w+\s+){0,2}?(?:cards?|accounts?)\b/i,
+  /\b(?:drop(?:s|ped|ping)?|ditch(?:es|ed|ing)?|retir(?:e|es|ed|ing))\s+(?:it|them|that|this|one)\b(?!\s+(?:week|month|year|cycle|window|date|day|time|statement))/i,
   /\bclosures?\b/i,
   /\bcancel(?:s|led|ling|ing)?\b/i,
   /\bshut(?:s|ting)?[ -]?down\b/i,

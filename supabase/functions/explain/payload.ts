@@ -117,6 +117,14 @@ const MAX_PERCENT = 1000;
  * scripts work), digits and a few separators only. No newlines, quotes, backticks or angle brackets.
  */
 const CARD_NAME = /^[\p{L}\p{N}][\p{L}\p{M}\p{N} .&'()/+-]{0,59}$/u;
+/**
+ * A PAN pasted into a card name (ABCDE1234F, also ABCDE-1234-F or with spaces) must not reach the
+ * prompt, the logs or the model. The final letter must not run into a longer word, so "Platinum
+ * 2024 Card" is still a card name. Mirrors public.looks_like_pan in the database.
+ */
+const PAN_SHAPE = /[A-Za-z]{5}[0-9]{4}[A-Za-z]|[A-Za-z]{5}[ .-]*[0-9]{4}[ .-]*[A-Za-z](?![A-Za-z])/;
+const isCardName = (v: unknown): v is string =>
+  typeof v === 'string' && CARD_NAME.test(v) && !PAN_SHAPE.test(v);
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
@@ -160,7 +168,7 @@ function checkItem(raw: unknown, path: string): string | null {
     return `${path}.step`;
   }
   if (typeof raw.kind !== 'string' || !ITEM_KINDS.includes(raw.kind)) return `${path}.kind`;
-  if (typeof raw.card !== 'string' || !CARD_NAME.test(raw.card)) return `${path}.card`;
+  if (!isCardName(raw.card)) return `${path}.card`;
   if (!isRupees(raw.amount)) return `${path}.amount`;
   if (!isIsoDate(raw.payBy)) return `${path}.payBy`;
   if (typeof raw.reasonCode !== 'string' || !REASON_CODES.includes(raw.reasonCode)) {
@@ -175,7 +183,7 @@ function checkShortfall(raw: unknown, path: string): string | null {
   if (!isRecord(raw)) return path;
   const mismatch = keyMismatch(raw, SHORTFALL_KEYS, `${path}.`);
   if (mismatch) return mismatch;
-  if (typeof raw.card !== 'string' || !CARD_NAME.test(raw.card)) return `${path}.card`;
+  if (!isCardName(raw.card)) return `${path}.card`;
   if (typeof raw.kind !== 'string' || !SHORTFALL_KINDS.includes(raw.kind)) return `${path}.kind`;
   if (!isRupees(raw.required)) return `${path}.required`;
   if (!isRupees(raw.funded)) return `${path}.funded`;

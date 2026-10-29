@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { handleExplain, type ExplainDeps } from '../../../functions/explain/handler.ts';
+import {
+  clientAddress,
+  handleExplain,
+  type ExplainDeps,
+} from '../../../functions/explain/handler.ts';
 import { createRateLimiter } from '../../../functions/explain/ratelimit.ts';
 import { templateFromPayload } from '../../../functions/explain/template.ts';
 import { scenario } from './fixtures.ts';
@@ -168,9 +172,9 @@ describe('rate limit (best effort, in memory)', () => {
       expect(fetchMock).toHaveBeenCalledTimes(2);
     });
 
-    it('prefers cf-connecting-ip, then x-real-ip, over any forwarded value', async () => {
+    it('trusts cf-connecting-ip over any forwarded value, and ignores x-real-ip', async () => {
       const cf = setup(1);
-      const cfFirst = await handleExplain(
+      const first = await handleExplain(
         cf.from({
           'cf-connecting-ip': '203.0.113.9',
           'x-forwarded-for': '1.1.1.1',
@@ -178,7 +182,7 @@ describe('rate limit (best effort, in memory)', () => {
         }),
         cf.d,
       );
-      const cfSecond = await handleExplain(
+      const second = await handleExplain(
         cf.from({
           'cf-connecting-ip': '203.0.113.9',
           'x-forwarded-for': '3.3.3.3',
@@ -186,18 +190,19 @@ describe('rate limit (best effort, in memory)', () => {
         }),
         cf.d,
       );
-      const real = setup(1);
-      const realFirst = await handleExplain(
-        real.from({ 'x-real-ip': '203.0.113.9', 'x-forwarded-for': '1.1.1.1' }),
-        real.d,
-      );
-      const realSecond = await handleExplain(
-        real.from({ 'x-real-ip': '203.0.113.9', 'x-forwarded-for': '3.3.3.3' }),
-        real.d,
-      );
+      // x-real-ip is client-settable, so with only it present there is no address key at all.
+      const spoof = setup(1);
+      const spoofStatuses: number[] = [];
+      for (const ip of ['5.5.5.5', '6.6.6.6', '7.7.7.7']) {
+        spoofStatuses.push((await handleExplain(spoof.from({ 'x-real-ip': ip }), spoof.d)).status);
+      }
 
-      expect([cfFirst.status, cfSecond.status]).toEqual([200, 429]);
-      expect([realFirst.status, realSecond.status]).toEqual([200, 429]);
+      expect([first.status, second.status]).toEqual([200, 429]);
+      expect(spoofStatuses).toEqual([200, 200, 200]);
+      expect(clientAddress(new Headers({ 'x-real-ip': '9.9.9.9' }))).toBeNull();
+      expect(
+        clientAddress(new Headers({ 'x-real-ip': '9.9.9.9', 'x-forwarded-for': 'a, b' })),
+      ).toBe('b');
     });
 
     it('keeps no address limit when the platform reports none, and ignores blank or empty entries', async () => {

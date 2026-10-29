@@ -95,16 +95,21 @@ async function parsePayload(
 }
 
 /**
- * The caller's network address as the platform saw it. The platform's own headers come first
- * (cf-connecting-ip, then x-real-ip). Failing that, the RIGHTMOST x-forwarded-for entry: it is the
- * one the last trusted proxy appended, while everything to its left is whatever the client chose to
- * send, so the first entry must never be used as a key. Null when nothing usable is present.
+ * The caller's network address as the platform saw it, used ONLY to bound abuse. Only
+ * cf-connecting-ip is trusted outright: the gateway sets it. x-real-ip is NOT read: nothing here
+ * proves the gateway overwrites it, so a client could mint a new key per request. Failing that, the
+ * RIGHTMOST x-forwarded-for entry: it is the one the last trusted proxy appended, while everything to
+ * its left is whatever the client chose to send, so the first entry is never used as a key. Null when
+ * nothing usable is present (the per-user limit still applies).
+ *
+ * OWNER, after deploy: confirm the proxy hop count (that the rightmost entry really is the client as
+ * the gateway saw it) and set the Anthropic spend cap as the backstop. Anonymous sign-in
+ * (supabase/config.toml, enable_anonymous_sign_ins) lets one person mint many user ids, so this
+ * in-memory per-address limit is the only bound on one person; see supabase/OWNER-STEPS.md.
  */
 export function clientAddress(headers: Headers): string | null {
-  for (const name of ['cf-connecting-ip', 'x-real-ip']) {
-    const value = headers.get(name)?.trim();
-    if (value) return value;
-  }
+  const platform = headers.get('cf-connecting-ip')?.trim();
+  if (platform) return platform;
   const hops = (headers.get('x-forwarded-for') ?? '')
     .split(',')
     .map((hop) => hop.trim())

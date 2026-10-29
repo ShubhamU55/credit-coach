@@ -80,6 +80,11 @@ set local role authenticated;
 
 select is((select count(*)::int from public.cards), 2, 'A sees exactly their own two cards');
 select is((select count(*)::int from public.cards where user_id = '00000000-0000-4000-8000-00000000000b'), 0, 'A cannot read B''s cards');
+
+-- card_count_for: own count for the caller, null for anybody else's id (it is SECURITY DEFINER, so the
+-- check inside the function is the only guard).
+select is(public.card_count_for('00000000-0000-4000-8000-00000000000a'), 2::bigint, 'A gets their own card count');
+select is(public.card_count_for('00000000-0000-4000-8000-00000000000b'), null, 'A gets null for B''s id');
 select is((select count(*)::int from public.profiles), 1, 'A sees only their own profile');
 select is((select count(*)::int from public.payments), 1, 'A sees only their own payment');
 select is((select count(*)::int from public.consents), 1, 'A sees only their own consent');
@@ -256,6 +261,7 @@ select throws_ok($$delete from public.coach_rules$$, '42501', null, 'anon cannot
 select throws_ok($$insert into public.audit_log (actor_role, table_name, action, row_key) values ('admin', 'x', 'INSERT', '1')$$, '42501', null, 'anon cannot insert audit rows');
 select throws_ok($$truncate public.audit_log$$, '42501', null, 'anon cannot truncate the audit log');
 select throws_ok($$truncate public.cards$$, '42501', null, 'anon cannot truncate cards');
+select throws_ok($$select public.card_count_for('00000000-0000-4000-8000-00000000000a')$$, '42501', null, 'anon cannot call card_count_for');
 
 reset role;
 
@@ -284,6 +290,8 @@ select throws_ok($$select public.reset_demo_data()$$, '42501', null, 'C cannot r
 select set_config('request.jwt.claims',
   '{"sub":"00000000-0000-4000-8000-00000000000c","role":"authenticated","is_anonymous":true,"app_metadata":{"role":"admin"}}', true);
 select is(public.is_admin(), false, 'an anonymous user with an admin claim is still not an admin');
+select throws_ok($$insert into public.profiles (id) values ('00000000-0000-4000-8000-00000000000b')$$, '42501', null, 'an anonymous user with an admin claim cannot insert a profile for another user');
+select is(public.card_count_for('00000000-0000-4000-8000-00000000000b'), null, 'and gets null from card_count_for for another user''s id');
 update public.coach_rules set threshold_pct = 40;
 
 reset role;
@@ -302,6 +310,8 @@ reset role;
 select set_config('request.jwt.claims',
   '{"sub":"00000000-0000-4000-8000-00000000000d","role":"authenticated","is_anonymous":false,"app_metadata":{"role":"admin"}}', true);
 set local role authenticated;
+select throws_ok($$insert into public.profiles (id) values ('00000000-0000-4000-8000-00000000000a')$$, '42501', null, 'an admin cannot insert a profile for another user');
+select is(public.card_count_for('00000000-0000-4000-8000-00000000000a'), 2::bigint, 'an admin gets another user''s card count (counts only)');
 
 select is(public.is_admin(), true, 'D is an admin');
 select lives_ok($$update public.coach_rules set threshold_pct = 20$$, 'D can change the threshold from 30 to 20');

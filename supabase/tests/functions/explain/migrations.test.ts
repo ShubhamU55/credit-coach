@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { loadPersonas } from './fixtures.ts';
 
 // Static guards over the SQL and the function folder. They run in `pnpm verify` without Docker;
 // the behavioural RLS tests are the pgTAP file in supabase/tests/database (needs the local stack).
@@ -159,6 +160,30 @@ describe('fix round 1 guards', () => {
       'profiles_name_not_pan',
       'sample_profiles_name_not_pan',
     ]);
+  });
+
+  it('catches a PAN typed with separators, in a new migration, without hitting seeded names', () => {
+    const sql = read('migrations/20261028100300_pan_shape_separators.sql').replace(/--.*$/gm, '');
+    const pattern = /t ~\* '([^']+)'/g;
+    const regexes = [...sql.matchAll(pattern)].map((m) => new RegExp(m[1]!, 'i'));
+    const looksLikePan = (text: string): boolean => regexes.some((r) => r.test(text));
+
+    expect(sql).toMatch(/create or replace function public\.looks_like_pan/);
+    expect(regexes).toHaveLength(2);
+    for (const bad of ['ABCDE1234F', 'ABCDE-1234-F', 'abcde 1234 f', 'My ABCDE 1234 F.']) {
+      expect(looksLikePan(bad)).toBe(true);
+    }
+    for (const ok of ['Platinum 2024 Card', 'Kotak 811', 'ABXXXXX34F', 'Axis Neo']) {
+      expect(looksLikePan(ok)).toBe(false);
+    }
+    for (const row of loadPersonas()) {
+      for (const text of [
+        row.display_name,
+        ...row.report.cards.flatMap((c) => [c.name, c.issuer]),
+      ]) {
+        expect(looksLikePan(text)).toBe(false);
+      }
+    }
   });
 
   it('validates sample profile reports', () => {
