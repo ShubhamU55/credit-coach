@@ -9,12 +9,15 @@ const repoRoot = path.resolve(here, '../../..');
 // Cold-start ESLint (plugin resolution) flakes past the 5s default under CPU load.
 vi.setConfig({ testTimeout: 30_000 });
 
+// Cold-start ESLint exceeded even that 30 s on a loaded machine (one test took 38 s).
+const SPAWN_TIMEOUT_MS = 60_000;
+
 function lintTextAt(cwd) {
   const eslint = new ESLint({ cwd });
   return (code, filePath) => eslint.lintText(code, { filePath: path.resolve(cwd, filePath) });
 }
 
-describe('engine purity rules (packages/engine)', () => {
+describe('engine purity rules (packages/engine)', { timeout: SPAWN_TIMEOUT_MS }, () => {
   const lint = lintTextAt(path.join(repoRoot, 'packages/engine'));
 
   it('rejects argless new Date()', async () => {
@@ -94,7 +97,7 @@ describe('engine purity rules (packages/engine)', () => {
   });
 });
 
-describe('mobile rules (apps/mobile)', () => {
+describe('mobile rules (apps/mobile)', { timeout: SPAWN_TIMEOUT_MS }, () => {
   const lint = lintTextAt(path.join(repoRoot, 'apps/mobile'));
 
   it('rejects a raw hex literal in a component', async () => {
@@ -121,7 +124,7 @@ describe('mobile rules (apps/mobile)', () => {
   });
 });
 
-describe('admin rules (apps/admin)', () => {
+describe('admin rules (apps/admin)', { timeout: SPAWN_TIMEOUT_MS }, () => {
   const lint = lintTextAt(path.join(repoRoot, 'apps/admin'));
 
   it('rejects importing @credit-coach/mobile', async () => {

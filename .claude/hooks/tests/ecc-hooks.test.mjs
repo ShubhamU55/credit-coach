@@ -19,6 +19,9 @@ const preBashCommitQualityPath = pathToFileURL(
 const configProtectionPath = pathToFileURL(path.join(hooksDir, 'config-protection.cjs')).href;
 const configProtectionScriptPath = path.join(hooksDir, 'config-protection.cjs');
 
+// Child-process start-up exceeds Vitest's 5 s default on a loaded machine.
+const SPAWN_TIMEOUT_MS = 60_000;
+
 describe('block-no-verify.cjs: run()', () => {
   it('blocks a git commit carrying --no-verify (exit 2)', async () => {
     const { run } = await import(blockNoVerifyPath);
@@ -150,7 +153,7 @@ describe('pre-bash-commit-quality.cjs: evaluate() runs the message check regardl
   });
 });
 
-describe('config-protection.cjs: spawned stdin fallback', () => {
+describe('config-protection.cjs: spawned stdin fallback', { timeout: SPAWN_TIMEOUT_MS }, () => {
   function runProtection(filePath, options = {}) {
     return spawnSync(process.execPath, [configProtectionScriptPath], {
       input: JSON.stringify({ tool_input: { file_path: filePath } }),
@@ -404,27 +407,31 @@ describe('config-protection.cjs: case variants on a case-sensitive filesystem', 
 
   // The canonical-path check must not remove the bootstrap escape hatch: in a
   // repo with no settings.json yet, creating one (in any case) stays allowed.
-  it('still allows first-time creation of settings.json in a repo that has none (exit 0)', () => {
-    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'config-protection-test-'));
-    try {
-      const tempHooksDir = path.join(tempRoot, '.claude', 'hooks');
-      fs.mkdirSync(tempHooksDir, { recursive: true });
-      const tempScriptPath = path.join(tempHooksDir, 'config-protection.cjs');
-      fs.copyFileSync(configProtectionScriptPath, tempScriptPath);
+  it(
+    'still allows first-time creation of settings.json in a repo that has none (exit 0)',
+    { timeout: SPAWN_TIMEOUT_MS },
+    () => {
+      const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'config-protection-test-'));
+      try {
+        const tempHooksDir = path.join(tempRoot, '.claude', 'hooks');
+        fs.mkdirSync(tempHooksDir, { recursive: true });
+        const tempScriptPath = path.join(tempHooksDir, 'config-protection.cjs');
+        fs.copyFileSync(configProtectionScriptPath, tempScriptPath);
 
-      for (const name of ['settings.json', 'Settings.json']) {
-        const result = spawnSync(process.execPath, [tempScriptPath], {
-          input: JSON.stringify({
-            tool_input: { file_path: path.join(tempRoot, '.claude', name) },
-          }),
-          encoding: 'utf8',
-        });
-        expect(result.status).toBe(0);
+        for (const name of ['settings.json', 'Settings.json']) {
+          const result = spawnSync(process.execPath, [tempScriptPath], {
+            input: JSON.stringify({
+              tool_input: { file_path: path.join(tempRoot, '.claude', name) },
+            }),
+            encoding: 'utf8',
+          });
+          expect(result.status).toBe(0);
+        }
+      } finally {
+        fs.rmSync(tempRoot, { recursive: true, force: true });
       }
-    } finally {
-      fs.rmSync(tempRoot, { recursive: true, force: true });
-    }
-  });
+    },
+  );
 });
 
 describe('config-protection.cjs: no stdin listener attaches on require (module guard)', () => {
