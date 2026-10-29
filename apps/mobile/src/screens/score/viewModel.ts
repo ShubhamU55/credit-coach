@@ -185,6 +185,16 @@ export function followPlanPayments({ cards, rules, today, cash }: PlanContext): 
 const isWholeRupees = (n: number | undefined): n is number =>
   n !== undefined && Number.isSafeInteger(n) && n > 0;
 
+function payCard({ cardId, amount }: ScenarioInput): WhatIfScenario | null {
+  return cardId !== undefined && isWholeRupees(amount)
+    ? { kind: 'pay-card', cardId, amount }
+    : null;
+}
+
+function fdCard({ amount }: ScenarioInput): WhatIfScenario | null {
+  return isWholeRupees(amount) ? { kind: 'fd-card', fdAmount: amount } : null;
+}
+
 /** The engine scenario for a tile and the user's choices, or null while the choices are incomplete. */
 export function buildScenario(
   key: TileKey,
@@ -195,8 +205,7 @@ export function buildScenario(
     case 'follow-plan':
       return { kind: 'follow-plan', payments: followPlanPayments(plan) };
     case 'pay-card':
-      if (input.cardId === undefined || !isWholeRupees(input.amount)) return null;
-      return { kind: 'pay-card', cardId: input.cardId, amount: input.amount };
+      return payCard(input);
     case 'miss-payment':
       return { kind: 'miss-payment' };
     case 'close-card':
@@ -204,7 +213,7 @@ export function buildScenario(
     case 'apply':
       return { kind: 'apply', product: 'card' };
     case 'fd-card':
-      return isWholeRupees(input.amount) ? { kind: 'fd-card', fdAmount: input.amount } : null;
+      return fdCard(input);
   }
 }
 
@@ -291,4 +300,42 @@ export function scoreHeadline(zone: string, planHelps: boolean): Headline {
     zone: zone.toLowerCase(),
     after: planHelps ? ' shape — and the plan helps.' : ' shape.',
   };
+}
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+function isoDayNumber(iso: IsoDate): number {
+  const [year, month, day] = iso.split('-').map(Number) as [number, number, number];
+  // Date.UTC with explicit arguments is deterministic; it never reads the clock.
+  return Math.round(Date.UTC(year, month - 1, day) / MS_PER_DAY);
+}
+
+/** Whole calendar days from `from` to `to` (both ISO dates). */
+export function daysSince(from: IsoDate, to: IsoDate): number {
+  return isoDayNumber(to) - isoDayNumber(from);
+}
+
+/** The tail of the overline "YOUR SCORE · CHECKED 19 DAYS AGO". */
+export function checkedAgo(days: number): string {
+  if (days <= 0) return 'CHECKED TODAY';
+  return `CHECKED ${days} ${plural(days, 'DAY', 'DAYS')} AGO`;
+}
+
+/** The h1 of a what-if result, after "If ": the action, with the card name and amount. */
+export function scenarioTitle(scenario: WhatIfScenario, cards: readonly DemoCard[]): string {
+  const nameOf = (id: string) => cards.find((card) => card.id === id)?.name ?? 'this card';
+  switch (scenario.kind) {
+    case 'follow-plan':
+      return 'you follow this month’s plan';
+    case 'pay-card':
+      return `you pay ${formatINR(scenario.amount)} on ${nameOf(scenario.cardId)}`;
+    case 'miss-payment':
+      return 'you miss a payment';
+    case 'close-card':
+      return `you close ${nameOf(scenario.cardId)}`;
+    case 'apply':
+      return 'you apply for a card or loan';
+    case 'fd-card':
+      return `you open an FD-backed card with ${formatINR(scenario.fdAmount)}`;
+  }
 }

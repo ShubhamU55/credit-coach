@@ -12,6 +12,9 @@ import { toPredictorInput, toWhatIfContext } from './adapter';
 import {
   WHAT_IF_TILES,
   buildScenario,
+  checkedAgo,
+  daysSince,
+  scenarioTitle,
   describeOutcome,
   followPlanPayments,
   reasonRows,
@@ -228,5 +231,43 @@ describe('scoreHeadline', () => {
 
   it('drops the plan clause when the plan does not help', () => {
     expect(scoreHeadline('Excellent', false).after).toBe(' shape.');
+  });
+});
+
+describe('daysSince', () => {
+  it('counts calendar days from the anchor to today', () => {
+    expect(daysSince('2026-10-02', '2026-10-21')).toBe(19);
+    expect(daysSince('2026-10-21', '2026-10-21')).toBe(0);
+  });
+});
+
+describe('checkedAgo', () => {
+  it('words the age of the report', () => {
+    expect(checkedAgo(19)).toBe('CHECKED 19 DAYS AGO');
+    expect(checkedAgo(1)).toBe('CHECKED 1 DAY AGO');
+    expect(checkedAgo(0)).toBe('CHECKED TODAY');
+  });
+});
+
+describe('scenarioTitle', () => {
+  const { cards } = aarav();
+
+  it('names the action and the amount', () => {
+    expect(scenarioTitle({ kind: 'close-card', cardId: 'hdfc-millennia' }, cards)).toBe(
+      'you close HDFC Millennia',
+    );
+    expect(scenarioTitle({ kind: 'pay-card', cardId: 'axis-neo', amount: 5000 }, cards)).toBe(
+      'you pay ₹5,000 on Axis Neo',
+    );
+    expect(scenarioTitle({ kind: 'fd-card', fdAmount: 50000 }, cards)).toBe(
+      'you open an FD-backed card with ₹50,000',
+    );
+    expect(scenarioTitle({ kind: 'miss-payment' }, cards)).toBe('you miss a payment');
+    expect(scenarioTitle({ kind: 'apply', product: 'card' }, cards)).toBe(
+      'you apply for a card or loan',
+    );
+    expect(scenarioTitle({ kind: 'follow-plan', payments: [] }, cards)).toBe(
+      'you follow this month’s plan',
+    );
   });
 });
