@@ -5,7 +5,8 @@ import {
   MAX_TEXT_LENGTH,
   type ExplainDeps,
 } from '../../../functions/explain/handler.ts';
-import { ANTHROPIC_URL, MODEL } from '../../../functions/explain/anthropic.ts';
+import { ANTHROPIC_URL, MODEL, MODEL_TIMEOUT_MS } from '../../../functions/explain/anthropic.ts';
+import { createRateLimiter } from '../../../functions/explain/ratelimit.ts';
 import { templateFromPayload } from '../../../functions/explain/template.ts';
 import { scenario } from './fixtures.ts';
 
@@ -32,9 +33,17 @@ const modelReply = (text: string, extra: Record<string, unknown> = {}): Response
 
 type FetchMock = ReturnType<typeof vi.fn<typeof fetch>>;
 
+const USER_ID = '00000000-0000-4000-8000-0000000000aa';
+
+const limiter = (max: number) => createRateLimiter({ max, windowMs: 60_000, now: () => Date.now() });
+
+/** A caller who is a signed-in user, with generous limits, unless a test overrides something. */
 const deps = (fetchImpl: FetchMock, over: Partial<ExplainDeps> = {}): ExplainDeps => ({
   apiKey: TEST_KEY,
   fetchImpl,
+  authenticate: async () => ({ ok: true, userId: USER_ID }),
+  userLimiter: limiter(1000),
+  ipLimiter: limiter(1000),
   ...over,
 });
 
@@ -65,7 +74,7 @@ afterEach(() => {
 
 describe('explain handler: the AI path', () => {
   const reworded =
-    'Axis Neo needs ₹620 by Thu, 22 Oct, and HDFC Millennia needs ₹3,710 by Wed, 4 Nov, so nothing is missed. Then ₹11,780 clears the Axis Neo statement and ₹70,490 clears the HDFC one, which means no interest. ' +
+    'Axis Neo needs ₹620 by Thu, 22 Oct, and HDFC Millennia needs ₹3,710 by Wed, 4 Nov, so nothing is missed. Then ₹11,780 clears the Axis Neo statement and ₹70,490 clears the HDFC Millennia statement, which means no interest. ' +
     'Paying ₹2,400 on SBI SimplyClick by Sat, 24 Oct brings overall utilization from 45.0% to 15.3%, and ₹31,000 is left over.';
 
   it('returns the model text with source "ai" when every number is in the payload', async () => {
@@ -207,12 +216,12 @@ describe('explain handler: every failure falls back to the template', () => {
     await expectTemplate(
       await handleExplain(post(aarav), deps(fetchReturning(() => modelReply(text)))),
     );
-    expect(warn).toHaveBeenCalledWith('explain fallback', 'ungrounded_numbers');
+    expect(warn).toHaveBeenCalledWith('explain fallback', 'ungrounded_or_forbidden');
   });
 });
 
 describe('explain handler: the 3 second limit', () => {
-  it('falls back to the template when the model never answers, after exactly 3000 ms', async () => {
+  it('falls back to the template when the model never answers, after exactly the model time limit', async () => {
     vi.useFakeTimers();
     let signal: AbortSignal | undefined;
     // Ignores the abort signal on purpose: the limit must hold without the transport's help.
@@ -226,7 +235,7 @@ describe('explain handler: the 3 second limit', () => {
       return r;
     });
 
-    await vi.advanceTimersByTimeAsync(2999);
+    await vi.advanceTimersByTimeAsync(MODEL_TIMEOUT_MS - 1);
     expect(settled).toBe(false);
     await vi.advanceTimersByTimeAsync(1);
     const response = await pending;
@@ -332,7 +341,12 @@ describe('explain handler: strict input validation', () => {
 
     const byContent = await handleExplain(post(big), deps(fetchMock));
     const byHeader = await handleExplain(
-      post(JSON.stringify(aarav), { headers: { 'content-length': String(MAX_BODY_BYTES + 1) } }),
+      post(JSON.stringify(aarav), {
+        headers: {
+          'content-type': 'application/json',
+          'content-length': String(MAX_BODY_BYTES + 1),
+        },
+      }),
       deps(fetchMock),
     );
 
@@ -376,7 +390,7 @@ describe('explain handler: nothing sensitive is logged or returned', () => {
       expect(everything).not.toContain(secret);
     }
     expect(returned).not.toContain(TEST_KEY);
-    expect(everything).toContain('ungrounded_numbers');
+    expect(everything).toContain('ungrounded_or_forbidden');
   });
 
   it('does not log on the happy path', async () => {

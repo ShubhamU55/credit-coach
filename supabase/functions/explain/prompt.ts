@@ -9,6 +9,7 @@ export const SYSTEM_PROMPT = [
   'Rules:',
   '- Use ONLY numbers that appear in the REFERENCE TEXT or the DATA. Never add, subtract, round, convert, count or estimate any number.',
   '- Copy every amount, percentage and date exactly as they are written in the REFERENCE TEXT, with the same rupee sign, digit grouping, decimals and date wording.',
+  '- Write every number as digits, never as words, and never use words like hundred, thousand, lakh or crore.',
   '- Never mention a credit score, a score range or a prediction.',
   '- Write two to five short sentences in calm, friendly, plain English. No hype, no emoji, no markdown, no bullet points.',
   '- Keep the plan order: overdue and minimum payments first, then full statements, then lowering utilization before it is reported.',

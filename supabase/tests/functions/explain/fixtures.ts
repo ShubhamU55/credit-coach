@@ -71,10 +71,15 @@ export interface Scenario {
 /** Plans a persona with the engine and builds the exact payload the app would send. */
 export function scenario(
   slug: string,
-  options: { cash?: number; rules?: Partial<CoachRules> } = {},
+  options: {
+    cash?: number;
+    rules?: Partial<CoachRules>;
+    /** Changes the persona's cards before planning (e.g. a card with no limit). */
+    editCards?: (cards: Card[]) => Card[];
+  } = {},
 ): Scenario {
   const row = persona(slug);
-  const cards = cardsOf(row);
+  const cards = options.editCards ? options.editCards(cardsOf(row)) : cardsOf(row);
   const rules: CoachRules = { ...DEFAULT_COACH_RULES, ...options.rules };
   const plan = planPayments({ cards, cash: options.cash ?? row.cash, today: TODAY, rules });
   const payload = buildExplainPayload(plan, cards, {

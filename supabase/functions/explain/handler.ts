@@ -2,14 +2,18 @@
 // be tested under Node with a mocked fetch. Contract with the app (apps/mobile/src/explain/client.ts):
 //   request  POST, body = the engine's ExplainPayload JSON
 //   response 200 { "text": string, "source": "ai" | "template" }
-//   400 invalid JSON or an unknown shape; 405 not POST; 413 body too large.
+//   401 no session for a real user (the anon key alone is refused); 503 sign-in service unreachable;
+//   429 over the rate limit (the model is not called); 400 invalid JSON or an unknown shape;
+//   405 not POST; 413 body too large; 415 body not application/json.
 // Anything that goes wrong after the input is accepted (no key, timeout, bad reply, numbers the
 // payload does not contain) still answers 200 with the deterministic template and source "template".
 
 import { askModel } from './anthropic.ts';
-import { isGrounded } from './ground.ts';
+import type { AuthResult } from './auth.ts';
+import { isAcceptableAiText } from './grounding.ts';
 import { validatePayload, type ExplainPayload } from './payload.ts';
 import { buildUserMessage, SYSTEM_PROMPT } from './prompt.ts';
+import type { RateLimiter } from './ratelimit.ts';
 import { templateFromPayload } from './template.ts';
 
 /** The app rejects longer text, so neither the model's reply nor the template may exceed it. */
@@ -22,6 +26,11 @@ export interface ExplainDeps {
   apiKey: string | undefined;
   fetchImpl: typeof fetch;
   timeoutMs?: number;
+  /** Resolves the caller to a real signed-in user (anonymous sign-in users included). */
+  authenticate: (request: Request) => Promise<AuthResult>;
+  /** Per user, and per network address when the gateway reports one. */
+  userLimiter: RateLimiter;
+  ipLimiter: RateLimiter;
 }
 
 const HEADERS: Record<string, string> = {
@@ -69,6 +78,9 @@ async function readBody(request: Request): Promise<string | 'too_large'> {
 async function parsePayload(
   request: Request,
 ): Promise<{ payload: ExplainPayload } | { response: Response }> {
+  if (!(request.headers.get('content-type') ?? '').toLowerCase().startsWith('application/json')) {
+    return { response: json(415, { error: 'unsupported_media_type' }) };
+  }
   const raw = await readBody(request);
   if (raw === 'too_large') return { response: json(413, { error: 'payload_too_large' }) };
   let parsed: unknown;
@@ -82,10 +94,31 @@ async function parsePayload(
   return { payload: result.value };
 }
 
+/** 429 when this user or address is over its limit; null otherwise. Runs before anything is read or paid for. */
+function rateLimited(request: Request, userId: string, deps: ExplainDeps): Response | null {
+  const ip = (request.headers.get('x-forwarded-for') ?? '').split(',')[0]?.trim();
+  const checks = [deps.userLimiter.take(userId), ip ? deps.ipLimiter.take(ip) : { ok: true as const }];
+  for (const check of checks) {
+    if (!check.ok) {
+      return json(429, { error: 'rate_limited' }, { 'retry-after': String(check.retryAfterSec) });
+    }
+  }
+  return null;
+}
+
 export async function handleExplain(request: Request, deps: ExplainDeps): Promise<Response> {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: HEADERS });
   if (request.method !== 'POST')
     return json(405, { error: 'method_not_allowed' }, { allow: 'POST, OPTIONS' });
+
+  const caller = await deps.authenticate(request);
+  if (!caller.ok) {
+    return caller.reason === 'unavailable'
+      ? json(503, { error: 'auth_unavailable' })
+      : json(401, { error: 'unauthenticated' });
+  }
+  const limited = rateLimited(request, caller.userId, deps);
+  if (limited) return limited;
 
   const parsed = await parsePayload(request);
   if ('response' in parsed) return parsed.response;
@@ -105,7 +138,7 @@ export async function handleExplain(request: Request, deps: ExplainDeps): Promis
 
   const text = acceptable(reply.text);
   if (text === null) return template(fallback, 'unusable_text');
-  if (!isGrounded(text, payload)) return template(fallback, 'ungrounded_numbers');
+  if (!isAcceptableAiText(text, payload)) return template(fallback, 'ungrounded_or_forbidden');
 
   return json(200, { text, source: 'ai' });
 }

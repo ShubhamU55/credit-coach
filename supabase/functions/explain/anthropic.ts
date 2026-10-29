@@ -4,8 +4,11 @@
 export const MODEL = 'claude-haiku-4-5';
 export const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 export const ANTHROPIC_VERSION = '2023-06-01';
-/** The ticket's hard limit for the whole model call, headers and body included. */
-export const MODEL_TIMEOUT_MS = 3000;
+/**
+ * Hard limit for the whole model call, headers and body included. The app gives up after 3 s, so this
+ * plus the user lookup must leave room for the server template to arrive first (tested).
+ */
+export const MODEL_TIMEOUT_MS = 2000;
 /** A few sentences; also bounds cost per request. */
 const MAX_OUTPUT_TOKENS = 400;
 
@@ -24,7 +27,8 @@ function textOf(body: unknown): string | null {
   if (typeof body !== 'object' || body === null) return null;
   const { content, stop_reason: stopReason } = body as Record<string, unknown>;
   // A reply cut off by the token limit ends mid-sentence: not usable.
-  if (stopReason === 'max_tokens' || !Array.isArray(content)) return null;
+  // Only a finished answer: not cut off (max_tokens), not a refusal, not a tool call.
+  if ((stopReason !== 'end_turn' && stopReason !== 'stop_sequence') || !Array.isArray(content)) return null;
   const parts: string[] = [];
   for (const block of content) {
     if (typeof block === 'object' && block !== null) {
