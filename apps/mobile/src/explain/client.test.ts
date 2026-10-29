@@ -22,7 +22,9 @@ const TEMPLATE = 'Template text.';
 const CONFIG = { url: 'https://example.test', anonKey: 'anon' };
 
 const respond = (body: unknown, ok = true): typeof fetch =>
-  jest.fn(async () => ({ ok, json: async () => body }) as Response) as unknown as typeof fetch;
+  jest.fn(
+    async (_url: string, _init?: RequestInit) => ({ ok, json: async () => body }) as Response,
+  ) as unknown as typeof fetch;
 
 const run = (fetchImpl: typeof fetch, config: typeof CONFIG | null = CONFIG, timeoutMs = 50) =>
   fetchExplanation({ payload: PAYLOAD, template: TEMPLATE, config, fetchImpl, timeoutMs });
@@ -91,7 +93,7 @@ describe('fetchExplanation', () => {
   });
 
   it('falls back when the function returns malformed JSON', async () => {
-    const badJson = jest.fn(async () => ({
+    const badJson = jest.fn(async (_url: string, _init?: RequestInit) => ({
       ok: true,
       json: async () => {
         throw new SyntaxError('Unexpected token');
@@ -166,7 +168,7 @@ describe('number grounding (non-negotiable 2)', () => {
     expect(await check(text)).toEqual({ text, source: 'ai' });
   });
 
-  it('accepts numbers that appear in the template text', async () => {
+  it('no longer accepts a number just because the template text has it', async () => {
     const result = await fetchExplanation({
       payload: PAY,
       template: 'Overall goes to 15.3%.',
@@ -175,7 +177,70 @@ describe('number grounding (non-negotiable 2)', () => {
       timeoutMs: 50,
     });
 
-    expect(result.source).toBe('ai');
+    expect(result).toEqual({ text: 'Overall goes to 15.3%.', source: 'template' });
+  });
+
+  it('falls back when a date digit is used as a percent or an amount is swapped', async () => {
+    for (const text of [
+      'Utilization falls to 22%.',
+      'Pay ₹620 on Axis Neo by 22nd Oct, so 31% is reported.',
+      'Pay ₹22 on Axis Neo.',
+    ]) {
+      expect((await check(text)).source).toBe('template');
+    }
+  });
+
+  it('falls back on forbidden wording: score claims, closing a card, spelled-out numbers, links', async () => {
+    for (const text of [
+      'Your score could reach 750 after paying ₹620 on Axis Neo.',
+      'Closing Axis Neo would help, after paying ₹620.',
+      'Pay six hundred twenty rupees on Axis Neo.',
+      'Pay ₹620 on Axis Neo, see https://example.com.',
+    ]) {
+      expect((await check(text)).source).toBe('template');
+    }
+  });
+});
+
+describe('access token', () => {
+  it('sends the signed-in user session as the bearer token and the anon key as apikey', async () => {
+    const fetchImpl = jest.fn(
+      async (_url: string, _init?: RequestInit) =>
+        ({ ok: true, json: async () => ({ text: 'x', source: 'template' }) }) as Response,
+    );
+
+    await fetchExplanation({
+      payload: PAYLOAD,
+      template: TEMPLATE,
+      config: { ...CONFIG, accessToken: 'user-session-token' },
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      timeoutMs: 50,
+    });
+
+    const init = fetchImpl.mock.calls[0]?.[1] as RequestInit;
+    expect(init.headers).toMatchObject({
+      apikey: 'anon',
+      Authorization: 'Bearer user-session-token',
+    });
+  });
+
+  it('falls back to the anon key as the bearer when there is no session (the server then answers 401 and the template shows)', async () => {
+    const fetchImpl = jest.fn(
+      async (_url: string, _init?: RequestInit) =>
+        ({ ok: false, status: 401, json: async () => ({}) }) as Response,
+    );
+
+    const result = await fetchExplanation({
+      payload: PAYLOAD,
+      template: TEMPLATE,
+      config: CONFIG,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      timeoutMs: 50,
+    });
+
+    const init = fetchImpl.mock.calls[0]?.[1] as RequestInit;
+    expect(init.headers).toMatchObject({ Authorization: 'Bearer anon' });
+    expect(result).toEqual({ text: TEMPLATE, source: 'template' });
   });
 });
 

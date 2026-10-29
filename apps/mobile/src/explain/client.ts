@@ -1,5 +1,7 @@
 import type { ExplainPayload } from '@credit-coach/engine';
 
+import { isAcceptableAiText } from './grounding';
+
 export type ExplanationSource = 'ai' | 'template';
 
 export interface Explanation {
@@ -10,6 +12,11 @@ export interface Explanation {
 export interface ExplainConfig {
   url: string;
   anonKey: string;
+  /**
+   * The signed-in user's session access token (anonymous sign-in users included). The function
+   * rejects the bare anon key with 401, so without a session the app simply shows the template.
+   */
+  accessToken?: string;
 }
 
 /** The hard limit the ticket sets; the function itself also caps its model call. */
@@ -58,31 +65,15 @@ function warnFallback(reason: FallbackReason): void {
   console.warn('explain fallback', reason);
 }
 
-/** Every number in a text, normalised: commas, currency and ordinal suffixes drop out. */
-function numbersIn(text: string): Set<number> {
-  const found = new Set<number>();
-  for (const token of text.match(/\d[\d,]*(?:\.\d+)?/g) ?? []) {
-    found.add(Number(token.replaceAll(',', '')));
-  }
-  return found;
-}
-
 /**
- * Non-negotiable 2: the LLM never produces a number. AI text is accepted only if every
- * numeral in it (digits, ignoring commas, currency symbols and ordinal suffixes like "22nd")
- * also appears in the payload or in the engine's template text. Month names and words are
- * free. A false positive only costs the template.
+ * Non-negotiable 2: the LLM never produces a number. AI text is accepted only if every number
+ * in it is the right kind of number and is in the payload (an amount of the named card, a
+ * utilization percent, a date from the plan), and it holds no forbidden wording (score claims,
+ * closing a card, spelled-out numbers, links). The rules live in grounding.ts, a byte-identical
+ * copy of the Edge Function's own. A false positive only costs the template.
  */
-export function numbersAreGrounded(
-  text: string,
-  payload: ExplainPayload,
-  template: string,
-): boolean {
-  const allowed = numbersIn(`${JSON.stringify(payload)} ${template}`);
-  for (const n of numbersIn(text)) {
-    if (!allowed.has(n)) return false;
-  }
-  return true;
+export function numbersAreGrounded(text: string, payload: ExplainPayload): boolean {
+  return isAcceptableAiText(text, payload);
 }
 
 function parseResponse(body: unknown): { text: string; source: ExplanationSource } | null {
@@ -109,18 +100,17 @@ type Outcome = { ok: true; text: string } | { ok: false; reason: FallbackReason 
 
 async function callFunction(options: {
   payload: ExplainPayload;
-  template: string;
   fetchImpl: typeof fetch;
   config: ExplainConfig;
   signal: AbortSignal;
 }): Promise<Outcome> {
-  const { payload, template, fetchImpl, config, signal } = options;
+  const { payload, fetchImpl, config, signal } = options;
   const response = await fetchImpl(explainEndpoint(config), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       apikey: config.anonKey,
-      Authorization: `Bearer ${config.anonKey}`,
+      Authorization: `Bearer ${config.accessToken ?? config.anonKey}`,
     },
     body: JSON.stringify(payload),
     signal,
@@ -130,7 +120,7 @@ async function callFunction(options: {
   if (!parsed) return { ok: false, reason: 'bad_body' };
   // Never show server-supplied text unlabelled: a template answer is replaced by ours.
   if (parsed.source === 'template') return { ok: false, reason: 'server_template' };
-  if (!numbersAreGrounded(parsed.text, payload, template)) {
+  if (!numbersAreGrounded(parsed.text, payload)) {
     return { ok: false, reason: 'ungrounded_numbers' };
   }
   return { ok: true, text: parsed.text };
@@ -169,7 +159,6 @@ export async function fetchExplanation(options: FetchExplanationOptions): Promis
     const outcome = await Promise.race([
       callFunction({
         payload: options.payload,
-        template: options.template,
         fetchImpl: options.fetchImpl ?? fetch,
         config,
         signal: controller.signal,
