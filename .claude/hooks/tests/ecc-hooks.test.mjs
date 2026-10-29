@@ -169,6 +169,13 @@ describe('config-protection.cjs: spawned stdin fallback', { timeout: SPAWN_TIMEO
     expect(result.status).toBe(2);
   });
 
+  it('blocks editing the shared ESLint rules in eslint.shared.cjs (exit 2)', () => {
+    const sharedRules = path.join(repoRoot, 'eslint.shared.cjs');
+    expect(fs.existsSync(sharedRules)).toBe(true);
+    const result = runProtection(sharedRules);
+    expect(result.status).toBe(2);
+  });
+
   it('allows editing an ordinary source file (exit 0)', () => {
     const result = runProtection('src/a.ts');
     expect(result.status).toBe(0);

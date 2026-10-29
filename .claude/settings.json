@@ -32,7 +32,15 @@
       "PowerShell(git push --force *)",
       "PowerShell(git push -f *)",
       "PowerShell(git reset --hard *)",
-      "PowerShell(Remove-Item * -Recurse*)"
+      "PowerShell(Remove-Item * -Recurse*)",
+      "Bash(cat *.env*)",
+      "Bash(less *.env*)",
+      "Bash(head *.env*)",
+      "Bash(tail *.env*)",
+      "Bash(grep * *.env*)",
+      "PowerShell(Get-Content *.env*)",
+      "PowerShell(cat *.env*)",
+      "PowerShell(type *.env*)"
     ],
     "ask": ["Bash(git push *)", "PowerShell(git push *)"]
   },
