@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { hasForbiddenWording, isAcceptableAiText, isGrounded } from '../../../functions/explain/grounding.ts';
+import {
+  hasForbiddenWording,
+  isAcceptableAiText,
+  isGrounded,
+} from '../../../functions/explain/grounding.ts';
 import { templateFromPayload } from '../../../functions/explain/template.ts';
 import { scenario } from './fixtures.ts';
 
@@ -143,7 +147,9 @@ describe('hasForbiddenWording', () => {
 describe('isAcceptableAiText: the spec cases together', () => {
   it('rejects "seven hundred fifty", a closing suggestion and a swapped amount', () => {
     expect(isAcceptableAiText('You could reach seven hundred fifty.', aarav)).toBe(false);
-    expect(isAcceptableAiText('Closing the SBI SimplyClick card would lower your limit.', aarav)).toBe(false);
+    expect(
+      isAcceptableAiText('Closing the SBI SimplyClick card would lower your limit.', aarav),
+    ).toBe(false);
     expect(isAcceptableAiText('Pay ₹70,490 on Axis Neo.', aarav)).toBe(false);
   });
 });

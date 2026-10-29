@@ -195,11 +195,11 @@ begin
     c ->> 'issuer',
     (c ->> 'limit')::integer,
     (c ->> 'outstanding')::integer,
-    (c ->> 'lastStatementBalance')::integer,
+    coalesce((c ->> 'lastStatementBalance')::integer, 0),
     (c ->> 'statementDay')::integer,
     (c ->> 'dueDay')::integer,
-    (c ->> 'minimumDue')::integer,
-    (c ->> 'paidSinceStatement')::integer,
+    coalesce((c ->> 'minimumDue')::integer, 0),
+    coalesce((c ->> 'paidSinceStatement')::integer, 0),
     (c ->> 'interestRatePct')::numeric,
     coalesce((c ->> 'secured')::boolean, false)
   from jsonb_array_elements(v_sample.report -> 'cards') c;

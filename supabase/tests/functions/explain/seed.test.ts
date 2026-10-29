@@ -54,10 +54,22 @@ describe('seed personas (from the demo_data migration)', () => {
   it('puts Rohan in the overdue and shortfall state with 3,000 of cash', () => {
     const { plan } = scenario('rohan');
 
-    expect(plan.items[0]).toMatchObject({ cardId: 'kotak-811', kind: 'overdue_minimum', amount: 1450 });
-    expect(plan.items[1]).toMatchObject({ cardId: 'icici-amazon-pay', kind: 'minimum', amount: 1550 });
+    expect(plan.items[0]).toMatchObject({
+      cardId: 'kotak-811',
+      kind: 'overdue_minimum',
+      amount: 1450,
+    });
+    expect(plan.items[1]).toMatchObject({
+      cardId: 'icici-amazon-pay',
+      kind: 'minimum',
+      amount: 1550,
+    });
     expect(plan.shortfalls).toHaveLength(1);
-    expect(plan.shortfalls[0]).toMatchObject({ cardId: 'icici-amazon-pay', required: 2880, shortfall: 1330 });
+    expect(plan.shortfalls[0]).toMatchObject({
+      cardId: 'icici-amazon-pay',
+      required: 2880,
+      shortfall: 1330,
+    });
     expect(formatINR(plan.shortfalls[0]?.shortfall ?? 0)).toBe('₹1,330');
   });
 

@@ -24,6 +24,17 @@ as $$
      and coalesce((auth.jwt() ->> 'is_anonymous')::boolean, false) = false;
 $$;
 
+-- True when free text contains something shaped like a full PAN (5 letters, 4 digits, 1 letter).
+-- Free-text columns reject it, so a PAN pasted into a name or a note is never stored.
+create function public.looks_like_pan(t text)
+returns boolean
+language sql
+immutable
+set search_path = ''
+as $$
+  select coalesce(t ~* '[a-z]{5}[0-9]{4}[a-z]', false);
+$$;
+
 create function public.touch_updated_at()
 returns trigger
 language plpgsql
@@ -92,6 +103,68 @@ begin
       return false;
     end if;
     if (v_entry.value)::numeric < 0 or (v_entry.value)::numeric > 100 then
+      return false;
+    end if;
+  end loop;
+  return true;
+end;
+$$;
+
+-- Validates a sample profile's report so an admin edit cannot break "Try sample profile": every card
+-- needs a name, issuer, limit, outstanding, statement day and due day; the other card fields are
+-- optional (adopt_sample_profile fills defaults); at most 12 cards (the per-user cap).
+create function public.valid_sample_report(r jsonb)
+returns boolean
+language plpgsql
+immutable
+set search_path = ''
+as $$
+declare
+  c jsonb;
+  k text;
+begin
+  if r is null or jsonb_typeof(r) <> 'object' or jsonb_typeof(r -> 'cards') is distinct from 'array' then
+    return false;
+  end if;
+  if jsonb_array_length(r -> 'cards') > 12 then
+    return false;
+  end if;
+  for c in select value from jsonb_array_elements(r -> 'cards') loop
+    if jsonb_typeof(c) <> 'object' then
+      return false;
+    end if;
+    foreach k in array array['name', 'issuer'] loop
+      if jsonb_typeof(c -> k) is distinct from 'string'
+         or char_length(c ->> k) not between 1 and 60
+         or public.looks_like_pan(c ->> k) then
+        return false;
+      end if;
+    end loop;
+    foreach k in array array['limit', 'outstanding'] loop
+      if jsonb_typeof(c -> k) is distinct from 'number' or (c ->> k) !~ '^[0-9]{1,9}$' then
+        return false;
+      end if;
+    end loop;
+    foreach k in array array['statementDay', 'dueDay'] loop
+      if jsonb_typeof(c -> k) is distinct from 'number'
+         or (c ->> k) !~ '^[0-9]{1,2}$'
+         or (c ->> k)::integer not between 1 and 31 then
+        return false;
+      end if;
+    end loop;
+    foreach k in array array['lastStatementBalance', 'minimumDue', 'paidSinceStatement'] loop
+      if c -> k is not null and jsonb_typeof(c -> k) <> 'null'
+         and (jsonb_typeof(c -> k) <> 'number' or (c ->> k) !~ '^[0-9]{1,9}$') then
+        return false;
+      end if;
+    end loop;
+    if c -> 'interestRatePct' is not null and jsonb_typeof(c -> 'interestRatePct') <> 'null'
+       and (jsonb_typeof(c -> 'interestRatePct') <> 'number'
+            or (c ->> 'interestRatePct') !~ '^[0-9]{1,3}(\.[0-9]{1,2})?$'
+            or (c ->> 'interestRatePct')::numeric > 100) then
+      return false;
+    end if;
+    if c -> 'secured' is not null and jsonb_typeof(c -> 'secured') not in ('boolean', 'null') then
       return false;
     end if;
   end loop;
@@ -169,7 +242,8 @@ create table public.sample_profiles (
   slug text primary key constraint sample_profiles_slug_shape check (slug ~ '^[a-z][a-z0-9-]{1,40}$'),
   persona text not null
     constraint sample_profiles_persona check (persona in ('high_utilizer', 'thin_file', 'recovering')),
-  display_name text not null constraint sample_profiles_name_len check (char_length(display_name) between 1 and 80),
+  display_name text not null constraint sample_profiles_name_len check (char_length(display_name) between 1 and 80)
+    constraint sample_profiles_name_not_pan check (not public.looks_like_pan(display_name)),
   pan_masked text not null constraint sample_profiles_pan_masked check (pan_masked ~ '^[A-Z]{2}X{5}[0-9]{2}[A-Z]$'),
   mobile_masked text not null constraint sample_profiles_mobile_masked check (mobile_masked ~ '^\+91 [0-9]{2}X{5}[0-9]{3}$'),
   -- The last bureau score and when it was fetched (the predictor anchor).
@@ -182,9 +256,7 @@ create table public.sample_profiles (
   oldest_account_months integer not null constraint sample_profiles_oldest_nonneg check (oldest_account_months >= 0),
   hard_inquiries_6m integer not null default 0 constraint sample_profiles_inquiries_nonneg check (hard_inquiries_6m >= 0),
   -- { "cards": [ engine Card shape + "secured" ], "loans": [ ... ] }
-  report jsonb not null constraint sample_profiles_report_shape check (
-    jsonb_typeof(report) = 'object' and jsonb_typeof(report -> 'cards') = 'array'
-  ),
+  report jsonb not null constraint sample_profiles_report_shape check (public.valid_sample_report(report)),
   is_default boolean not null default false,
   sort_order integer not null default 0,
   updated_at timestamptz not null default now(),
@@ -200,7 +272,8 @@ create trigger sample_profiles_touch before update on public.sample_profiles
 
 create table public.profiles (
   id uuid primary key references auth.users (id) on delete cascade,
-  display_name text constraint profiles_name_len check (char_length(display_name) between 1 and 80),
+  display_name text constraint profiles_name_len check (char_length(display_name) between 1 and 80)
+    constraint profiles_name_not_pan check (not public.looks_like_pan(display_name)),
   pan_masked text constraint profiles_pan_masked check (pan_masked ~ '^[A-Z]{2}X{5}[0-9]{2}[A-Z]$'),
   mobile_masked text constraint profiles_mobile_masked check (mobile_masked ~ '^\+91 [0-9]{2}X{5}[0-9]{3}$'),
   -- Set when the profile was created by "Try sample profile".
@@ -215,8 +288,10 @@ create trigger profiles_touch before update on public.profiles
 create table public.cards (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles (id) on delete cascade,
-  name text not null constraint cards_name_len check (char_length(name) between 1 and 60),
-  issuer text not null constraint cards_issuer_len check (char_length(issuer) between 1 and 60),
+  name text not null constraint cards_name_len check (char_length(name) between 1 and 60)
+    constraint cards_name_not_pan check (not public.looks_like_pan(name)),
+  issuer text not null constraint cards_issuer_len check (char_length(issuer) between 1 and 60)
+    constraint cards_issuer_not_pan check (not public.looks_like_pan(issuer)),
   credit_limit integer not null constraint cards_limit_nonneg check (credit_limit >= 0),
   outstanding integer not null constraint cards_outstanding_nonneg check (outstanding >= 0),
   last_statement_balance integer not null default 0 constraint cards_statement_nonneg check (last_statement_balance >= 0),
@@ -260,14 +335,39 @@ create trigger payments_cap before insert on public.payments
   for each row execute function public.enforce_row_cap('1000');
 
 -- Consent is recorded with a purpose and a timestamp (PRD 5.1). Append-only for users.
+--
+-- The record outlives the account on purpose: user_id is a plain uuid with NO foreign key to
+-- profiles or auth.users, so deleting a profile (or the auth user) leaves the consent row behind as
+-- evidence of what was agreed and when. It holds a masked PAN only and no name. Row-level security
+-- still shows a row only to the user whose id it carries. Erasing a user's consents on request is an
+-- owner action with the service role (see supabase/README.md).
+-- granted_at and id are always set by the server (consents_force_server_fields below).
 create table public.consents (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references public.profiles (id) on delete cascade,
-  purpose text not null constraint consents_purpose_len check (char_length(purpose) between 1 and 80),
+  user_id uuid not null,
+  purpose text not null constraint consents_purpose_len check (char_length(purpose) between 1 and 80)
+    constraint consents_purpose_not_pan check (not public.looks_like_pan(purpose)),
   pan_masked text constraint consents_pan_masked check (pan_masked ~ '^[A-Z]{2}X{5}[0-9]{2}[A-Z]$'),
   granted_at timestamptz not null default now(),
   retention_note text constraint consents_note_len check (char_length(retention_note) <= 200)
+    constraint consents_note_not_pan check (not public.looks_like_pan(retention_note))
 );
+
+-- A client must not choose when consent was given, or pick an id: both are overwritten on insert.
+create function public.consents_force_server_fields()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  new.granted_at := now();
+  new.id := gen_random_uuid();
+  return new;
+end;
+$$;
+
+create trigger consents_force_server_fields before insert on public.consents
+  for each row execute function public.consents_force_server_fields();
 
 create index consents_user_id_idx on public.consents (user_id);
 

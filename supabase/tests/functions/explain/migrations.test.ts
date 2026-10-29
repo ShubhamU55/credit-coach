@@ -119,3 +119,61 @@ describe('secrets', () => {
     expect(read('functions/explain/index.ts')).toContain("Deno.env.get('ANTHROPIC_API_KEY')");
   });
 });
+
+describe('fix round 1 guards', () => {
+  it('lets only the owner select cards: no admin branch in the cards policy', () => {
+    const policy = /create policy cards_select[\s\S]*?;/.exec(code)?.[0] ?? '';
+
+    expect(policy).toContain('user_id = (select auth.uid())');
+    expect(policy).not.toMatch(/is_admin/);
+  });
+
+  it('gives the admin card counts through a security definer helper', () => {
+    expect(code).toMatch(/create function public\.card_count_for[\s\S]*security definer/);
+    expect(code).toMatch(/public\.card_count_for\(p\.id\) as card_count/);
+  });
+
+  it('keeps consents after a profile or user delete: no foreign key on consents.user_id', () => {
+    const table = /create table public\.consents \([\s\S]*?\n\);/.exec(code)?.[0] ?? '';
+
+    expect(table).toContain('user_id uuid not null,');
+    expect(table).not.toMatch(/references/);
+  });
+
+  it('forces the consent time and id on the server', () => {
+    expect(code).toMatch(/new\.granted_at := now\(\)/);
+    expect(code).toMatch(/new\.id := gen_random_uuid\(\)/);
+    expect(code).toMatch(
+      /create trigger consents_force_server_fields before insert on public\.consents/,
+    );
+  });
+
+  it('rejects PAN-shaped text in every free-text column', () => {
+    const names = [...code.matchAll(/constraint (\w+_not_pan) check/g)].map((m) => m[1]);
+
+    expect(names.sort()).toEqual([
+      'cards_issuer_not_pan',
+      'cards_name_not_pan',
+      'consents_note_not_pan',
+      'consents_purpose_not_pan',
+      'profiles_name_not_pan',
+      'sample_profiles_name_not_pan',
+    ]);
+  });
+
+  it('validates sample profile reports', () => {
+    expect(code).toMatch(
+      /sample_profiles_report_shape check \(public\.valid_sample_report\(report\)\)/,
+    );
+    expect(code).toMatch(/coalesce\(\(c ->> 'minimumDue'\)::integer, 0\)/);
+  });
+
+  it('never tells the owner to deploy or serve the function without JWT verification', () => {
+    const steps = read('OWNER-STEPS.md');
+
+    expect(steps).not.toMatch(/(deploy|serve) explain --no-verify-jwt/);
+    expect(read('config.toml')).toMatch(/\[functions\.explain\][\s\S]*verify_jwt = true/);
+    expect(steps).toMatch(/spend cap/i);
+    expect(steps).toMatch(/CAPTCHA/);
+  });
+});

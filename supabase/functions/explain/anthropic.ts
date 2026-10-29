@@ -28,7 +28,8 @@ function textOf(body: unknown): string | null {
   const { content, stop_reason: stopReason } = body as Record<string, unknown>;
   // A reply cut off by the token limit ends mid-sentence: not usable.
   // Only a finished answer: not cut off (max_tokens), not a refusal, not a tool call.
-  if ((stopReason !== 'end_turn' && stopReason !== 'stop_sequence') || !Array.isArray(content)) return null;
+  if ((stopReason !== 'end_turn' && stopReason !== 'stop_sequence') || !Array.isArray(content))
+    return null;
   const parts: string[] = [];
   for (const block of content) {
     if (typeof block === 'object' && block !== null) {

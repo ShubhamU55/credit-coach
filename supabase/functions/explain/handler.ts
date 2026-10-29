@@ -97,7 +97,10 @@ async function parsePayload(
 /** 429 when this user or address is over its limit; null otherwise. Runs before anything is read or paid for. */
 function rateLimited(request: Request, userId: string, deps: ExplainDeps): Response | null {
   const ip = (request.headers.get('x-forwarded-for') ?? '').split(',')[0]?.trim();
-  const checks = [deps.userLimiter.take(userId), ip ? deps.ipLimiter.take(ip) : { ok: true as const }];
+  const checks = [
+    deps.userLimiter.take(userId),
+    ip ? deps.ipLimiter.take(ip) : { ok: true as const },
+  ];
   for (const check of checks) {
     if (!check.ok) {
       return json(429, { error: 'rate_limited' }, { 'retry-after': String(check.retryAfterSec) });

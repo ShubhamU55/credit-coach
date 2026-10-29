@@ -47,7 +47,10 @@ export function createRateLimiter(options: RateLimiterOptions): RateLimiter {
         return { ok: true };
       }
       if (entry.count >= max) {
-        return { ok: false, retryAfterSec: Math.max(1, Math.ceil((entry.start + windowMs - at) / 1000)) };
+        return {
+          ok: false,
+          retryAfterSec: Math.max(1, Math.ceil((entry.start + windowMs - at) / 1000)),
+        };
       }
       entry.count += 1;
       return { ok: true };

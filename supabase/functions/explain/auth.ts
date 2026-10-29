@@ -5,8 +5,7 @@
 // token for a real user, which Supabase Auth confirms with one call. No dependencies, no logging.
 
 export type AuthResult =
-  | { ok: true; userId: string }
-  | { ok: false; reason: 'unauthenticated' | 'unavailable' };
+  { ok: true; userId: string } | { ok: false; reason: 'unauthenticated' | 'unavailable' };
 
 export interface AuthConfig {
   /** From the function environment (SUPABASE_URL, set by the Edge runtime). */
@@ -51,10 +50,13 @@ export async function authenticate(request: Request, config: AuthConfig): Promis
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), config.timeoutMs ?? AUTH_TIMEOUT_MS);
   try {
-    const response = await config.fetchImpl(`${config.supabaseUrl.replace(/\/+$/, '')}/auth/v1/user`, {
-      headers: { apikey: config.anonKey, authorization: `Bearer ${token}` },
-      signal: controller.signal,
-    });
+    const response = await config.fetchImpl(
+      `${config.supabaseUrl.replace(/\/+$/, '')}/auth/v1/user`,
+      {
+        headers: { apikey: config.anonKey, authorization: `Bearer ${token}` },
+        signal: controller.signal,
+      },
+    );
     if (response.status === 401 || response.status === 403) {
       return { ok: false, reason: 'unauthenticated' };
     }

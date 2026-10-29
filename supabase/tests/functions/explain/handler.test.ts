@@ -35,7 +35,8 @@ type FetchMock = ReturnType<typeof vi.fn<typeof fetch>>;
 
 const USER_ID = '00000000-0000-4000-8000-0000000000aa';
 
-const limiter = (max: number) => createRateLimiter({ max, windowMs: 60_000, now: () => Date.now() });
+const limiter = (max: number) =>
+  createRateLimiter({ max, windowMs: 60_000, now: () => Date.now() });
 
 /** A caller who is a signed-in user, with generous limits, unless a test overrides something. */
 const deps = (fetchImpl: FetchMock, over: Partial<ExplainDeps> = {}): ExplainDeps => ({
