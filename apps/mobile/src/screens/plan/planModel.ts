@@ -147,7 +147,9 @@ function paymentRuns(payments: readonly DemoPayment[]): Map<string, PaymentRun> 
 }
 
 function payByLabel(payBy: IsoDate, today: IsoDate): string {
-  return `BY ${formatRelativeDate(payBy, today).toUpperCase()}`;
+  const relative = formatRelativeDate(payBy, today);
+  const text = relative === 'today' || relative === 'tomorrow' ? relative : formatShortDate(payBy);
+  return `BY ${text.toUpperCase()}`;
 }
 
 function buildSteps(
