@@ -23,6 +23,8 @@ import {
   describeGuard,
   describeOutcome,
   scenarioTitle,
+  type GuardView,
+  type PlanContext,
   type ScenarioInput,
   type TileKey,
 } from './viewModel';
@@ -59,6 +61,22 @@ function useBackToScore(active: boolean, onBack: () => void) {
   }, [active, onBack]);
 }
 
+interface HomeExtras {
+  withPlan: { low: number; high: number } | null;
+  planHelps: boolean;
+  guard: GuardView;
+}
+
+/** The with-plan range and the application guard for the main view. */
+function homeExtras(context: ReturnType<typeof toWhatIfContext>, plan: PlanContext): HomeExtras {
+  const planRun = runWhatIf(context, buildScenario('follow-plan', {}, plan) as WhatIfScenario);
+  return {
+    withPlan: planRun.ok ? planRun.after : null,
+    planHelps: planRun.ok && describeOutcome(planRun).direction === 'improves',
+    guard: describeGuard(checkApplicationGuard(context.input)),
+  };
+}
+
 /** The Score screen (PRD 5.5, 5.6; docs/design.md 7.5) and its what-if result views. */
 export function ScoreScreen() {
   const profile = useProfile();
@@ -71,6 +89,15 @@ export function ScoreScreen() {
     [cards, rules, profile.cashForCards],
   );
   const estimate = useMemo(() => safeEstimate(() => predictScore(context.input)), [context]);
+  // Computed once per data change, not on every render (the what-if engine runs several predictions).
+  const home = useMemo(
+    () => (estimate ? homeExtras(context, plan) : null),
+    [estimate, context, plan],
+  );
+  const result = useMemo(
+    () => (step.name === 'result' ? runWhatIf(context, step.scenario) : null),
+    [step, context],
+  );
 
   useBackToScore(step.name !== 'home', () => setStep({ name: 'home' }));
 
@@ -85,8 +112,9 @@ export function ScoreScreen() {
 
   return (
     <View testID="score-screen" style={{ flex: 1 }}>
-      <Screen scroll>
-        {renderStep({ step, estimate, context, plan, cards, profile, onPickTile, run, setStep })}
+      {/* key: each step starts at the top instead of inheriting the previous scroll offset. */}
+      <Screen scroll key={step.name}>
+        {renderStep({ step, estimate, home, result, cards, profile, onPickTile, run, setStep })}
       </Screen>
     </View>
   );
@@ -95,8 +123,8 @@ export function ScoreScreen() {
 interface RenderArgs {
   step: Step;
   estimate: ScoreEstimate | null;
-  context: ReturnType<typeof toWhatIfContext>;
-  plan: Parameters<typeof buildScenario>[2];
+  home: HomeExtras | null;
+  result: WhatIfResult | null;
   cards: ReturnType<typeof useCards>;
   profile: ReturnType<typeof useProfile>;
   onPickTile: (key: TileKey) => void;
@@ -105,7 +133,7 @@ interface RenderArgs {
 }
 
 function renderStep(args: RenderArgs) {
-  const { step, estimate, context, plan, cards, profile, onPickTile, run, setStep } = args;
+  const { step, estimate, home, result, cards, profile, onPickTile, run, setStep } = args;
   const toHome = () => setStep({ name: 'home' });
   if (step.name === 'configure') {
     return (
@@ -117,8 +145,7 @@ function renderStep(args: RenderArgs) {
       />
     );
   }
-  if (step.name === 'result') {
-    const result: WhatIfResult = runWhatIf(context, step.scenario);
+  if (step.name === 'result' && result) {
     return (
       <WhatIfOutcomeView
         title={scenarioTitle(step.scenario, cards)}
@@ -127,7 +154,7 @@ function renderStep(args: RenderArgs) {
       />
     );
   }
-  if (estimate === null) {
+  if (estimate === null || home === null) {
     return (
       <>
         <Text variant="h1">We can’t estimate your score right now.</Text>
@@ -137,16 +164,14 @@ function renderStep(args: RenderArgs) {
       </>
     );
   }
-  const planRun = runWhatIf(context, buildScenario('follow-plan', {}, plan) as WhatIfScenario);
-  const planView = planRun.ok ? describeOutcome(planRun) : null;
   return (
     <ScoreHome
       profile={profile}
       estimate={estimate}
-      withPlan={planRun.ok ? planRun.after : null}
-      planHelps={planView?.direction === 'improves'}
+      withPlan={home.withPlan}
+      planHelps={home.planHelps}
       daysSinceReport={daysSince(profile.history.anchorDate, DEMO_TODAY)}
-      guard={describeGuard(checkApplicationGuard(context.input))}
+      guard={home.guard}
       onPickTile={onPickTile}
       onBackHome={() => router.replace('/home')}
     />

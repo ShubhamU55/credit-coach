@@ -244,3 +244,59 @@ describe('What-if flows', () => {
     spy.mockRestore();
   });
 });
+
+function textNodes(node: unknown, out: string[] = []): string[] {
+  if (typeof node === 'string') out.push(node);
+  else if (Array.isArray(node)) node.forEach((child) => textNodes(child, out));
+  else if (node && typeof node === 'object') {
+    textNodes((node as { children?: unknown }).children, out);
+  }
+  return out;
+}
+
+/** Visible text with ranges, rupee amounts and the one bureau-reported anchor taken out. */
+function strayScores(): string[] {
+  const text = textNodes(screen.toJSON())
+    .join(' ')
+    .replace(/Last reported 724/g, '')
+    .replace(/\d{3}–\d{3}/g, '')
+    .replace(/₹[\d,]+/g, '');
+  return text.match(/(?<![\d.,])[3-9]\d{2}(?![\d,.%])/g) ?? [];
+}
+
+describe('No exact score anywhere (non-negotiable 3)', () => {
+  const TAPS: [string, string[]][] = [
+    ['the main view', []],
+    ['follow the plan', ['score-tile-follow-plan']],
+    ['miss a payment', ['score-tile-miss-payment']],
+    ['apply', ['score-tile-apply']],
+    ['close a card', ['score-tile-close-card', 'score-whatif-go']],
+  ];
+
+  it.each(TAPS)('%s shows only ranges', async (_name, taps) => {
+    await renderScore();
+    for (const id of taps) {
+      await fireEvent.press(screen.getByTestId(id));
+    }
+
+    expect(strayScores()).toEqual([]);
+  });
+
+  it('pay an amount and an FD-backed card show only ranges', async () => {
+    await renderScore();
+    await fireEvent.press(screen.getByTestId('score-tile-pay-card'));
+    await fireEvent.changeText(screen.getByTestId('score-amount'), '50000');
+    await fireEvent.press(screen.getByTestId('score-whatif-go'));
+    expect(strayScores()).toEqual([]);
+
+    await fireEvent.press(screen.getByTestId('score-whatif-back'));
+    await fireEvent.press(screen.getByTestId('score-tile-fd-card'));
+    await fireEvent.changeText(screen.getByTestId('score-amount'), '50000');
+    await fireEvent.press(screen.getByTestId('score-whatif-go'));
+    expect(strayScores()).toEqual([]);
+  });
+
+  it('the check itself would catch a bare score', () => {
+    expect('Estimated 724 today'.match(/(?<![\d.,])[3-9]\d{2}(?![\d,.%])/g)).toEqual(['724']);
+  });
+});

@@ -33,14 +33,28 @@ appId: com.creditcoach.app
 - assertVisible:
     id: 'score-range'
     text: '698–726'
+# The warnings sit below the range, so scroll down to them (assertVisible never scrolls).
+- scrollUntilVisible:
+    element:
+      text: 'Closing a card shortens your average credit age.*'
+- scrollUntilVisible:
+    element:
+      id: 'score-oldest-account'
 - assertVisible:
     id: 'score-oldest-account'
+- scrollUntilVisible:
+    element:
+      id: 'score-limit-loss'
 - assertVisible:
     id: 'score-limit-loss'
-- assertVisible: 'Closing a card shortens your average credit age.*'
 - takeScreenshot: score-close-card
 
 # Back to the Score screen
+# Back is at the top of the result; scroll up to it.
+- scrollUntilVisible:
+    element:
+      id: 'score-whatif-back'
+    direction: UP
 - tapOn:
     id: 'score-whatif-back'
 - assertVisible:
