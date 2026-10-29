@@ -15,7 +15,9 @@
 //   ordinal  (22nd)                                    -> the day of a date in the payload
 //   bare                                               -> an amount, or a step number 1..N
 // Digits inside a card name ("Kotak 811") are part of the name. So a day-of-month never legitimises a
-// percent or an amount, and an amount never legitimises a percent. What is NOT caught: swapping two
+// percent or an amount, and an amount never legitimises a percent. Digits are ASCII only: any other
+// numeral (Devanagari, Arabic-Indic, fullwidth, superscripts, fractions) is refused outright, because
+// the number checks below only read 0-9. What is NOT caught: swapping two
 // amounts between two cards named in the same sentence (template-style lists name several cards).
 
 export interface GroundingPayload {
@@ -132,14 +134,45 @@ function collectFacts(payload: GroundingPayload): Facts {
   return facts;
 }
 
-/** Splits at . ! ? followed by whitespace (or the end); decimals like 15.3 stay whole. */
+/**
+ * Abbreviations whose full stop does not end a sentence when a number follows ("Rs. 3710",
+ * "No. 5", "Oct. 22"). Splitting there would cut an amount off from the card named before it.
+ */
+const ABBREVIATIONS = new Set([
+  'rs',
+  'inr',
+  'no',
+  'nos',
+  'approx',
+  'vs',
+  'jan',
+  'feb',
+  'mar',
+  'apr',
+  'jun',
+  'jul',
+  'aug',
+  'sep',
+  'sept',
+  'oct',
+  'nov',
+  'dec',
+]);
+
+function endsAbbreviatedNumber(text: string, stop: number): boolean {
+  const word = /([A-Za-z]+)$/.exec(text.slice(0, stop))?.[1]?.toLowerCase() ?? '';
+  return ABBREVIATIONS.has(word) && /^\s*[\d₹]/.test(text.slice(stop + 1));
+}
+
+/** Splits at . ! ? followed by whitespace (or the end); decimals like 15.3 and "Rs. 3710" stay whole. */
 function sentencesOf(text: string): string[] {
   const out: string[] = [];
   let start = 0;
   for (let i = 0; i < text.length; i += 1) {
     const ch = text.charAt(i);
     const next = text.charAt(i + 1);
-    if ((ch === '.' || ch === '!' || ch === '?') && (next === '' || /\s/.test(next))) {
+    const ends = (ch === '.' || ch === '!' || ch === '?') && (next === '' || /\s/.test(next));
+    if (ends && !(ch === '.' && endsAbbreviatedNumber(text, i))) {
       out.push(text.slice(start, i + 1));
       start = i + 1;
     }
@@ -162,7 +195,7 @@ function namedCards(sentence: string, facts: Facts): { named: CardFacts[]; rest:
   return { named, rest };
 }
 
-const MONEY_BEFORE = /(?:₹|\bRs\.?|\bINR)\s*$/i;
+const MONEY_BEFORE = /(?:₹|\bRs\.?|\bINR\.?)\s*$/i;
 const MONEY_AFTER = /^\s*(?:rupees?\b|rs\b)/i;
 const PERCENT_AFTER = /^\s?(?:%|percent\b|per cent\b)/i;
 const ORDINAL_AFTER = /^(?:st|nd|rd|th)\b/i;
@@ -197,8 +230,12 @@ function tokenOk(
   return facts.allAmounts.has(value) || facts.steps.has(value);
 }
 
+/** Any numeral that is not 0-9 (a digit in another script, a superscript, a fraction). */
+const NON_ASCII_NUMERAL = /(?![0-9])\p{N}/u;
+
 function sentenceGrounded(sentence: string, facts: Facts): boolean {
   const { named, rest } = namedCards(sentence, facts);
+  if (NON_ASCII_NUMERAL.test(rest)) return false;
   for (const match of rest.matchAll(/\d[\d,]*(?:\.\d+)?/g)) {
     const raw = match[0];
     const value = Number(raw.replace(/,+$/, '').split(',').join(''));
@@ -220,7 +257,9 @@ const SPELLED_NUMBERS =
   'seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|' +
   'thousand|lakhs?|crores?|millions?|billions?|dozen';
 const SCORE_CLAIM =
-  'will|would|could|might|may|should|reach(?:es|ed)?|hit|hits|jump(?:s|ed)?|rise|rises|climb(?:s|ed)?|boost(?:s|ed)?|predict(?:s|ed|ion)?|expect(?:s|ed)?';
+  'will|would|could|might|may|should|reach(?:es|ed)?|hit|hits|jump(?:s|ed)?|rise|rises|climb(?:s|ed)?|' +
+  'boost(?:s|ed)?|predict(?:s|ed|ion)?|expect(?:s|ed)?|lift(?:s|ed|ing)?|rais(?:e|es|ed|ing)|' +
+  'improv(?:e|es|ed|ing)|increas(?:e|es|ed|ing)|go(?:es)? up|going up';
 
 /** Wording a short plan note must never contain, whatever the numbers say. Each hit means "use the template". */
 const FORBIDDEN: readonly RegExp[] = [
@@ -228,8 +267,18 @@ const FORBIDDEN: readonly RegExp[] = [
   new RegExp(`\\bscores?\\b[^.!?]*\\b(?:${SCORE_CLAIM})\\b`, 'i'),
   new RegExp(`\\b(?:${SCORE_CLAIM})\\b[^.!?]*\\bscores?\\b`, 'i'),
   new RegExp(`\\bcibil\\b[^.!?]*\\b\\d`, 'i'),
-  // Advice to close a card (non-negotiable 4 needs a warning the note cannot give).
-  /\b(?:clos(?:e|es|ed|ing)|cancel(?:s|led|ling|ing)?)\b/i,
+  // Advice to close a card (non-negotiable 4 needs a warning the note cannot give). "close" is only
+  // blocked when it governs a card or account ("close the card", "closing SBI"), so "before your
+  // statement closes" and "close to the 30% threshold" pass. Card names are masked as "card" first.
+  /\bclos(?:e|es|ed|ing)\s+(?:(?:the|your|this|that|a|an|any|my|all|both|one)\s+)?(?:\w+\s+){0,2}?(?:cards?|accounts?)\b/i,
+  /\bclosures?\b/i,
+  /\bcancel(?:s|led|ling|ing)?\b/i,
+  /\bshut(?:s|ting)?[ -]?down\b/i,
+  /\bterminat(?:e|es|ed|ing|ion)\b/i,
+  /\bdiscontinu(?:e|es|ed|ing)\b/i,
+  /\bsurrender(?:s|ed|ing)?\b/i,
+  /\bstop(?:s|ped|ping)?\s+using\b/i,
+  /\b(?:get(?:s|ting)?|got)\s+rid\s+of\b/i,
   /\bguarantee(?:s|d)?\b/i,
   // Numbers spelled out in words cannot be checked against the payload.
   new RegExp(`\\b(?:${SPELLED_NUMBERS})\\b`, 'i'),
@@ -245,10 +294,14 @@ export function hasForbiddenWording(text: string): boolean {
 }
 
 /**
- * Both checks: grounded numbers and clean wording. Card names are taken out before the wording
- * check, so a card called "One Card" is not mistaken for a spelled-out number.
+ * Both checks: grounded numbers and clean wording. Card names are masked as the word "card" before
+ * the wording check: a card called "One Card" is not a spelled-out number, and "Closing SBI
+ * SimplyClick" reads as "Closing card".
  */
 export function isAcceptableAiText(text: string, payload: GroundingPayload): boolean {
-  const withoutNames = namedCards(text, collectFacts(payload)).rest;
-  return !hasForbiddenWording(withoutNames) && isGrounded(text, payload);
+  const facts = collectFacts(payload);
+  const names = [...facts.cards].sort((x, y) => y.name.length - x.name.length);
+  let masked = text;
+  for (const card of names) masked = masked.split(card.name).join(' card ');
+  return !hasForbiddenWording(masked) && isGrounded(text, payload);
 }

@@ -94,9 +94,27 @@ async function parsePayload(
   return { payload: result.value };
 }
 
+/**
+ * The caller's network address as the platform saw it. The platform's own headers come first
+ * (cf-connecting-ip, then x-real-ip). Failing that, the RIGHTMOST x-forwarded-for entry: it is the
+ * one the last trusted proxy appended, while everything to its left is whatever the client chose to
+ * send, so the first entry must never be used as a key. Null when nothing usable is present.
+ */
+export function clientAddress(headers: Headers): string | null {
+  for (const name of ['cf-connecting-ip', 'x-real-ip']) {
+    const value = headers.get(name)?.trim();
+    if (value) return value;
+  }
+  const hops = (headers.get('x-forwarded-for') ?? '')
+    .split(',')
+    .map((hop) => hop.trim())
+    .filter((hop) => hop.length > 0);
+  return hops.length > 0 ? (hops[hops.length - 1] ?? null) : null;
+}
+
 /** 429 when this user or address is over its limit; null otherwise. Runs before anything is read or paid for. */
 function rateLimited(request: Request, userId: string, deps: ExplainDeps): Response | null {
-  const ip = (request.headers.get('x-forwarded-for') ?? '').split(',')[0]?.trim();
+  const ip = clientAddress(request.headers);
   const checks = [
     deps.userLimiter.take(userId),
     ip ? deps.ipLimiter.take(ip) : { ok: true as const },

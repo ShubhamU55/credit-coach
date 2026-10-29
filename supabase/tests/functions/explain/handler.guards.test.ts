@@ -123,28 +123,95 @@ describe('rate limit (best effort, in memory)', () => {
     expect([first.status, again.status, other.status]).toEqual([200, 429, 200]);
   });
 
-  it('also limits per network address, so many anonymous user ids from one address are capped', async () => {
-    const fetchMock = fetchReturning(okReply);
-    let n = 0;
-    const d = deps(fetchMock, {
-      ipLimiter: limiter(2),
-      authenticate: async () => {
-        n += 1;
-        return { ok: true, userId: `user-${n}` };
-      },
+  describe('per network address', () => {
+    /** Many different user ids (anonymous sign-in is cheap), all calling through one address. */
+    function setup(max: number) {
+      const fetchMock = fetchReturning(okReply);
+      let n = 0;
+      const d = deps(fetchMock, {
+        ipLimiter: limiter(max),
+        authenticate: async () => {
+          n += 1;
+          return { ok: true, userId: `user-${n}` };
+        },
+      });
+      const from = (headers: Record<string, string>) =>
+        post(aarav, { headers: { 'content-type': 'application/json', ...headers } });
+      return { fetchMock, d, from };
+    }
+
+    it('caps one address across many user ids, using the rightmost forwarded hop', async () => {
+      const { fetchMock, d, from } = setup(2);
+      const hop = (ip: string) => ({ 'x-forwarded-for': `10.9.9.9, ${ip}` });
+
+      const statuses = [
+        (await handleExplain(from(hop('203.0.113.9')), d)).status,
+        (await handleExplain(from(hop('203.0.113.9')), d)).status,
+        (await handleExplain(from(hop('203.0.113.9')), d)).status,
+        (await handleExplain(from(hop('198.51.100.7')), d)).status,
+      ];
+
+      expect(statuses).toEqual([200, 200, 429, 200]);
+      expect(fetchMock).toHaveBeenCalledTimes(3);
     });
-    const from = (ip: string) =>
-      post(aarav, { headers: { 'content-type': 'application/json', 'x-forwarded-for': ip } });
 
-    const statuses = [
-      (await handleExplain(from('203.0.113.9, 10.0.0.1'), d)).status,
-      (await handleExplain(from('203.0.113.9'), d)).status,
-      (await handleExplain(from('203.0.113.9'), d)).status,
-      (await handleExplain(from('198.51.100.7'), d)).status,
-    ];
+    it('is not fooled by a spoofed leading X-Forwarded-For value that changes on every call', async () => {
+      const { fetchMock, d, from } = setup(2);
 
-    expect(statuses).toEqual([200, 200, 429, 200]);
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+      const statuses: number[] = [];
+      for (let i = 0; i < 4; i += 1) {
+        const headers = { 'x-forwarded-for': `198.18.0.${i}, 203.0.113.9` };
+        statuses.push((await handleExplain(from(headers), d)).status);
+      }
+
+      expect(statuses).toEqual([200, 200, 429, 429]);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('prefers cf-connecting-ip, then x-real-ip, over any forwarded value', async () => {
+      const cf = setup(1);
+      const cfFirst = await handleExplain(
+        cf.from({
+          'cf-connecting-ip': '203.0.113.9',
+          'x-forwarded-for': '1.1.1.1',
+          'x-real-ip': '2.2.2.2',
+        }),
+        cf.d,
+      );
+      const cfSecond = await handleExplain(
+        cf.from({
+          'cf-connecting-ip': '203.0.113.9',
+          'x-forwarded-for': '3.3.3.3',
+          'x-real-ip': '4.4.4.4',
+        }),
+        cf.d,
+      );
+      const real = setup(1);
+      const realFirst = await handleExplain(
+        real.from({ 'x-real-ip': '203.0.113.9', 'x-forwarded-for': '1.1.1.1' }),
+        real.d,
+      );
+      const realSecond = await handleExplain(
+        real.from({ 'x-real-ip': '203.0.113.9', 'x-forwarded-for': '3.3.3.3' }),
+        real.d,
+      );
+
+      expect([cfFirst.status, cfSecond.status]).toEqual([200, 429]);
+      expect([realFirst.status, realSecond.status]).toEqual([200, 429]);
+    });
+
+    it('keeps no address limit when the platform reports none, and ignores blank or empty entries', async () => {
+      const { fetchMock, d, from } = setup(1);
+
+      const none = [await handleExplain(from({}), d), await handleExplain(from({}), d)];
+      const blank = [
+        await handleExplain(from({ 'x-forwarded-for': ' , ' }), d),
+        await handleExplain(from({ 'x-forwarded-for': '' }), d),
+      ];
+
+      expect([...none, ...blank].map((r) => r.status)).toEqual([200, 200, 200, 200]);
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+    });
   });
 
   it('counts rejected requests too, so bad input cannot be used to probe for free', async () => {

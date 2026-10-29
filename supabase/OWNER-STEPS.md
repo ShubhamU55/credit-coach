@@ -102,12 +102,14 @@ not deploy with `--no-verify-jwt`. On top of the gateway check, the function its
 session for a real user (anonymous sign-in users included) and confirms it with Supabase Auth, so
 the anon key alone, which ships inside the app, is refused with 401.
 
-**Rate limit.** 10 calls per minute per user and 30 per minute per network address, counted in the
+**Rate limit.** 10 calls per minute per user and 30 per minute per network address (the platform's `cf-connecting-ip`, else `x-real-ip`, else the rightmost `x-forwarded-for` hop; the leftmost hop is client-controlled and is never used), counted in the
 memory of each running instance. It is best effort: counters reset when an instance restarts and each
 instance counts separately, so the real ceiling is a few times higher. The durable option, not built
 here, is a Postgres counter: a `rate_limits (key text, window_start timestamptz, count int)` table
 plus an RPC that upserts and returns the count, called by the function with the service role. Add it
 if the spend cap is ever hit.
+
+**The Anthropic spend cap is the real backstop.** The address limit can still be dodged by a caller who reaches the function through a path that does not set those headers, and counters are per instance. Do not rely on the limiter alone.
 
 ## 5. What to check afterwards
 
