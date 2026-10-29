@@ -12,6 +12,7 @@ import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 import { loadBlocks } from '../../lib/pure-block.mjs';
+import { checkPrBody } from '../../lib/pr-body.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const workflowPath = path.join(here, '../../../workflows/bugfix.workflow.js');
@@ -704,6 +705,10 @@ describe('buildPrBody', () => {
 
   it('omits a commit that is not a plain hex sha', () => {
     expect(buildPrBody(analysis(), task, 'x; rm -rf')).not.toContain('rm -rf');
+  });
+
+  it('builds a body that passes the pr-body check', () => {
+    expect(checkPrBody(buildPrBody(analysis(), task, commit))).toEqual({ ok: true, missing: [] });
   });
 });
 
