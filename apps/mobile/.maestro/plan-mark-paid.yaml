@@ -1,0 +1,69 @@
+appId: com.creditcoach.app
+# PD-9: Plan -> Mark as paid -> Plan updated. Aarav's plan (30% target, switch off) is checked
+# against docs/design.md section 8, step 01 is marked paid with the minimum only, and the plan then
+# shows step 01 paid with step 03 still open. Needs a release build with Metro stopped.
+# NOT YET RUN ON A DEVICE: an evidence runner records the report.
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible:
+      id: 'welcome-screen'
+    timeout: 20000
+- tapOn:
+    id: 'welcome-try-sample'
+- extendedWaitUntil:
+    visible:
+      id: 'home-screen'
+    timeout: 20000
+- tapOn:
+    id: 'home-link-plan'
+- extendedWaitUntil:
+    visible:
+      id: 'plan-screen'
+    timeout: 10000
+- assertVisible:
+    id: 'plan-period'
+    text: '21 OCT → 20 NOV'
+- assertVisible:
+    id: 'plan-util-after'
+    text: '15.3%'
+- scrollUntilVisible:
+    element:
+      id: 'plan-step-1-mark-paid'
+- takeScreenshot: plan-before
+- tapOn:
+    id: 'plan-step-1-mark-paid'
+- extendedWaitUntil:
+    visible:
+      id: 'mark-paid-sheet'
+    timeout: 10000
+- assertVisible:
+    id: 'mark-paid-subtitle'
+    text: 'Axis Neo · due Thu, 22 Oct'
+- tapOn:
+    id: 'mark-paid-choices-minimum'
+- assertVisible:
+    id: 'mark-paid-amount'
+    text: '₹620'
+- tapOn:
+    id: 'mark-paid-confirm'
+- extendedWaitUntil:
+    visible:
+      id: 'mark-paid-recorded'
+    timeout: 10000
+- assertVisible:
+    id: 'mark-paid-recorded'
+    text: 'Recorded ₹620.'
+- tapOn:
+    id: 'mark-paid-back'
+- extendedWaitUntil:
+    visible:
+      id: 'plan-screen'
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      id: 'plan-step-3-mark-paid'
+- assertVisible:
+    id: 'plan-step-3-mark-paid'
+- takeScreenshot: plan-after
