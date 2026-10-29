@@ -60,6 +60,15 @@ describe('docs/ai-policy.md', () => {
     expect(text).toContain('28 Oct 2026');
   });
 
+  it('dates branch protection going on as 27 Oct 2026', () => {
+    const line = read(policyPath)
+      .split('\n')
+      .find((candidate) => /branch protection went on/i.test(candidate));
+
+    expect(line).toBeDefined();
+    expect(line).toContain('27 Oct 2026');
+  });
+
   it('sets a PR size guideline', () => {
     expect(read(policyPath)).toMatch(/400 changed lines/);
   });
