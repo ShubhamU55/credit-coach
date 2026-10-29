@@ -72,7 +72,7 @@ check out the branches listed above (or wait for them to merge). The app needs n
 
 If you can sideload an APK on a stock Android phone: enable "Install unknown apps" for your file manager or browser,
 open the APK, install, then tap **Try sample profile**. This has not been tried on a stock phone with a release APK
-from this repo yet; `docs/install.md` does not exist (that ticket, PD-6, was not started).
+from this repo yet; `docs/install.md` does not exist (that ticket, PD-6, is in progress and not merged).
 
 ## Repo map
 

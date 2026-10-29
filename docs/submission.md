@@ -58,8 +58,8 @@ with `gh` and `git` (read-only). Run ledgers are in [`docs/agent-runs/`](agent-r
 | PD-10  | Screens: Score, what-ifs and guard                                         | **Built, awaiting device evidence.** Branch `feat/pd-10-score`, no PR yet, reviewed and fixed; no device report on the branch, the Score flow has never run on a device                                               |
 | PD-5   | Supabase: schema, RLS, personas, `explain` Edge Function                   | **Written, not merged, not deployed.** Branch `feat/pd-5-backend`, no PR. Real-stack checks never run (section 6)                                                                                                     |
 | PD-16  | This submission                                                            | This PR                                                                                                                                                                                                               |
-| PD-6   | Release APK proof and install guide                                        | **Not started.** No `docs/install.md`                                                                                                                                                                                 |
-| PD-15  | Hardening: demo path on a release APK, security pass, 200% font, final APK | **Not started**                                                                                                                                                                                                       |
+| PD-6   | Release APK proof and install guide                                        | **In progress, not merged.** No `docs/install.md` on this branch or `main`                                                                                                                                                                                 |
+| PD-15  | Hardening: demo path on a release APK, security pass, 200% font, final APK | **In progress, not merged**                                                                                                                                                                                                       |
 | PD-12  | Bureau linking flow with a demo provider (PRD 5.1)                         | **Not built.** No commits                                                                                                                                                                                             |
 | PD-13  | Reminders (PRD 5.7)                                                        | **Parked.** Built on branch `feat/pd-13-reminders` (7 commits, ledger and journal on the branch), no PR, not merged, no device evidence; not part of the judged path                                                  |
 | PD-14  | Admin control center (PRD 6)                                               | **Not built.** `apps/admin` is still the stock Next scaffold                                                                                                                                                          |
@@ -206,7 +206,7 @@ These come from `CLAUDE.md` and are the reason several reviews exist. Each has a
 ## 6. Honest limits and what the owner still has to do
 
 1. **No release APK for judges exists yet.** The APKs built so far (30 to 68 MB; all but the first x86_64 only) were
-   evidence builds of earlier commits for the emulator. The all-ABI APK is a PD-15 task and was not started. Until it is attached to a GitHub release,
+   evidence builds of earlier commits for the emulator. The all-ABI APK is a PD-15 task, in progress and not merged. Until it is attached to a GitHub release,
    a judge has to build from source (README quick-start, track C) or watch the video.
 2. **PD-8, PD-9, PD-10 are unmerged.** PD-8 and PD-9 have device reports; PD-10 still needs its Maestro run on a phone.
    Each needs a committed report before the `maestro-evidence` gate lets it merge. Merge order from the coordinator ledger:
@@ -214,8 +214,8 @@ These come from `CLAUDE.md` and are the reason several reviews exist. Each has a
 3. **The Supabase backend is not deployed and its real-stack checks were never run.** `supabase db reset`,
    `supabase test db` (real pgTAP), the Edge Function under Deno and the live Anthropic call are written and not
    executed (no Docker, no Deno on the build machine). The owner's commands are in `supabase/OWNER-STEPS.md` on the
-   PD-5 branch. The app is built to work with the function absent: "Why this plan?" falls back to the template, and
-   the app never depends on the LLM.
+   PD-5 branch. The app does not sign in to Supabase at all today, so "Why this plan?" always shows the template. It is built to work with the function absent, and
+   it never depends on the LLM.
 4. **"Why this plan?" is template text with no AI label on any build today.** The PD-9 Plan screen still calls its own
    template; swapping in the PD-11 hook is a recorded one-line follow-up. The hook labels AI text as AI-written only
    if the deployed function answered.
