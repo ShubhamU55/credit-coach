@@ -159,8 +159,19 @@ const ABBREVIATIONS = new Set([
   'dec',
 ]);
 
+/** The ASCII letters that end just before `stop`, lower-cased. A backward scan: `/[A-Za-z]+$/` is quadratic. */
+function wordBefore(text: string, stop: number): string {
+  let start = stop;
+  for (; start > 0; start -= 1) {
+    const code = text.charCodeAt(start - 1);
+    const letter = (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+    if (!letter) break;
+  }
+  return text.slice(start, stop).toLowerCase();
+}
+
 function endsAbbreviatedNumber(text: string, stop: number): boolean {
-  const word = /([A-Za-z]+)$/.exec(text.slice(0, stop))?.[1]?.toLowerCase() ?? '';
+  const word = wordBefore(text, stop);
   return ABBREVIATIONS.has(word) && /^\s*[\d₹]/.test(text.slice(stop + 1));
 }
 
@@ -238,7 +249,7 @@ function sentenceGrounded(sentence: string, facts: Facts): boolean {
   if (NON_ASCII_NUMERAL.test(rest)) return false;
   for (const match of rest.matchAll(/\d[\d,]*(?:\.\d+)?/g)) {
     const raw = match[0];
-    const value = Number(raw.replace(/,+$/, '').split(',').join(''));
+    const value = Number(raw.split(',').join(''));
     const start = match.index ?? 0;
     const context = { before: rest.slice(0, start), after: rest.slice(start + raw.length) };
     if (!Number.isFinite(value) || !tokenOk(facts, value, context, named)) return false;
@@ -264,7 +275,30 @@ const SCORE_CLAIM =
   'improv(?:e|es|ed|ing)|increas(?:e|es|ed|ing)|go(?:es)? up|going up';
 
 /** Wording a short plan note must never contain, whatever the numbers say. Each hit means "use the template". */
-const FORBIDDEN: readonly RegExp[] = [
+/**
+ * A markdown link, `[text](target)`. One pass: the regex form backtracks quadratically on a long run of
+ * `[`. A link exists when a `](` follows a `[` with no `]` between, and a `)` comes later.
+ */
+function hasMarkdownLink(text: string): boolean {
+  const lastClose = text.lastIndexOf(')');
+  let opened = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text.charAt(i);
+    if (ch === '[') opened = true;
+    else if (ch === ']') {
+      if (opened && text.charAt(i + 1) === '(' && lastClose > i + 1) return true;
+      opened = false;
+    }
+  }
+  return false;
+}
+
+/** Anything with a `test(text)` method: the wording rules are regexes plus the link scan. */
+interface WordingRule {
+  test(text: string): boolean;
+}
+
+const FORBIDDEN: readonly WordingRule[] = [
   // A score claim: "your score could reach...", "this will lift your score".
   new RegExp(`\\bscores?\\b[^.!?]*\\b(?:${SCORE_CLAIM})\\b`, 'i'),
   new RegExp(`\\b(?:${SCORE_CLAIM})\\b[^.!?]*\\bscores?\\b`, 'i'),
@@ -290,8 +324,10 @@ const FORBIDDEN: readonly RegExp[] = [
   new RegExp(`\\b(?:${SPELLED_NUMBERS})\\b`, 'i'),
   // Links and markdown.
   /https?:\/\/|\bwww\.|\b[a-z0-9-]+\.(?:com|in|org|net|io|co|app|me)\b/i,
-  /\[[^\]]*\]\([^)]*\)/,
-  /[`*_#>]{2,}|^\s*[-*•]\s|^\s*#/m,
+  { test: hasMarkdownLink },
+  // Repeated marks, or a bullet or heading opening a line. The indent is spaces and tabs only: `^\s*`
+  // would also run across blank lines and backtrack quadratically.
+  /[`*_#>]{2,}|^[^\S\n\r\u2028\u2029]*(?:[-*•]\s|#)/m,
 ];
 
 /** True when the text contains wording that must not reach the user. */
