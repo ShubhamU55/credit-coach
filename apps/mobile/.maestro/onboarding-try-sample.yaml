@@ -1,50 +1,92 @@
 appId: com.creditcoach.app
 ---
-# Welcome -> "Try sample profile" -> Home stub, then every other route is reachable and
-# Mark as paid lowers Axis Neo's outstanding through the shared in-memory repository.
+# Welcome -> "Try sample profile" -> Home with the Aarav numbers (docs/design.md section 8), then
+# every route is reachable and Mark as paid lowers Axis Neo's statement through the shared
+# in-memory repository. No typing anywhere.
 - launchApp:
     clearState: true
-- assertVisible:
-    id: 'welcome-screen'
-# The visible label itself (PRD copy), not only the testID.
+- extendedWaitUntil:
+    visible:
+      id: 'welcome-screen'
+    timeout: 20000
 - assertVisible: 'Try sample profile'
+- assertVisible: 'No sign-up · 10 seconds'
 - tapOn:
     id: 'welcome-try-sample'
-- assertVisible:
-    id: 'home-screen'
-- assertVisible:
-    id: 'home-axis-outstanding'
-    text: 'Axis Neo outstanding: 15600'
 
-# Plan and back
-- tapOn:
-    id: 'home-link-plan'
+# Home: top of the screen
+- extendedWaitUntil:
+    visible:
+      id: 'home-screen'
+    timeout: 10000
+- assertVisible: 'Aarav, one payment keeps you on track.'
+- assertVisible: 'SAMPLE PROFILE ·'
 - assertVisible:
-    id: 'plan-screen'
+    id: 'hero-card'
+- assertVisible: '₹12,400'
+
+# Home: stat tiles (overall utilization 45.0%, estimate 708-736), cards and Coming up
+- scrollUntilVisible:
+    element:
+      id: 'home-stat-utilization'
+- assertVisible: '45.0%'
+- assertVisible: '708–736'
+- scrollUntilVisible:
+    element:
+      id: 'home-card-hdfc-millennia'
+- assertVisible: 'YOUR CARDS · 3'
+- scrollUntilVisible:
+    element:
+      id: 'date-block-row-1'
+- assertVisible: '₹3,710'
+- assertVisible: '₹70,490'
+- scrollUntilVisible:
+    element:
+      id: 'disclaimer'
+- assertVisible: 'Estimates only. Not your official CIBIL score. Not financial advice.'
+
+# Plan and back (the stub Plan screen has a link home)
+- tapOn:
+    id: 'nav-tab-plan'
+- extendedWaitUntil:
+    visible:
+      id: 'plan-screen'
+    timeout: 10000
 - tapOn:
     id: 'plan-link-home'
-- assertVisible:
-    id: 'home-screen'
+- extendedWaitUntil:
+    visible:
+      id: 'home-screen'
+    timeout: 10000
 
 # Score and back
 - tapOn:
-    id: 'home-link-score'
-- assertVisible:
-    id: 'score-screen'
+    id: 'nav-tab-score'
+- extendedWaitUntil:
+    visible:
+      id: 'score-screen'
+    timeout: 10000
 - tapOn:
     id: 'score-link-home'
-- assertVisible:
-    id: 'home-screen'
+- extendedWaitUntil:
+    visible:
+      id: 'home-screen'
+    timeout: 10000
 
-# Mark as paid sheet records a payment and Home shows the lower outstanding
+# Mark as paid sheet records Axis Neo's minimum (620) and the hero shows the statement left (11,780)
+- scrollUntilVisible:
+    element:
+      id: 'hero-mark-paid'
 - tapOn:
-    id: 'home-link-mark-paid'
-- assertVisible:
-    id: 'mark-paid-screen'
+    id: 'hero-mark-paid'
+- extendedWaitUntil:
+    visible:
+      id: 'mark-paid-screen'
+    timeout: 10000
 - tapOn:
     id: 'mark-paid-record-axis-minimum'
-- assertVisible:
-    id: 'home-screen'
-- assertVisible:
-    id: 'home-axis-outstanding'
-    text: 'Axis Neo outstanding: 14980'
+- extendedWaitUntil:
+    visible:
+      id: 'home-screen'
+    timeout: 10000
+- assertVisible: '₹11,780'
