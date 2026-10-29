@@ -45,6 +45,8 @@ describe('buildHomeModel with the Aarav sample profile', () => {
       dueChip: 'BY THU, 22 OCT',
       amount: '₹12,400',
       dateText: 'Thu, 22 Oct',
+      middleText: ' — clears your full statement, so ',
+      emphasisText: 'zero interest.',
       minimumLine: '₹620 of it is your minimum.',
     });
     expect(hero?.clearsStatement).toBe(true);
@@ -67,6 +69,8 @@ describe('buildHomeModel with the Aarav sample profile', () => {
 
     expect(score.range).toBe('708–736');
     expect(score.withPlanRange).toBe('724–752');
+    expect(score.barPercent).toBe(70.3);
+    expect(score.targetPercent).toBe(73);
     expect(score.band).toBe('Good');
   });
 
@@ -74,6 +78,7 @@ describe('buildHomeModel with the Aarav sample profile', () => {
     const model = aaravModel((repository) => repository.recordPayment('axis-neo', 620, DEMO_TODAY));
 
     expect(model.stepsDone).toBe(1);
+    expect(model.hero?.amount).toBe('₹11,780');
     expect(model.hero?.cardName).toBe('Axis Neo');
   });
 
@@ -92,7 +97,9 @@ describe('buildHomeModel with the Aarav sample profile', () => {
 describe('cards without a usable limit (PRD 5.2)', () => {
   it('excludes a limit-0 card from utilization and flags it', () => {
     const repository = createDemoRepository();
-    const cards = repository.listCards().map((c) => (c.id === 'sbi-simplyclick' ? { ...c, limit: 0 } : c));
+    const cards = repository
+      .listCards()
+      .map((c) => (c.id === 'sbi-simplyclick' ? { ...c, limit: 0 } : c));
 
     const model = buildHomeModel({
       profile: repository.getProfile(),

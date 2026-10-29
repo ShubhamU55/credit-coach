@@ -49,8 +49,10 @@ export interface HeroModel {
   dueChip: string;
   /** The bold date in the sentence, for example `Thu, 22 Oct`. */
   dateText: string;
-  /** The rest of the sentence after the date. */
-  restText: string;
+  /** The sentence between the bold date and the bold ending, starting with " — ". */
+  middleText: string;
+  /** The bold ending, for example `zero interest.`; empty when there is none. */
+  emphasisText: string;
   amount: string;
   clearsStatement: boolean;
   minimumLine: string;
@@ -70,7 +72,14 @@ export interface HomeModel {
   comingUp: DateBlockItem[];
   stepsTotal: number;
   stepsDone: number;
-  score: { range: string; band: string; withPlanRange: string | null };
+  score: {
+    range: string;
+    band: string;
+    withPlanRange: string | null;
+    /** Where the range sits on the 300-900 scale, in percent (for the tile bar and tick). */
+    barPercent: number;
+    targetPercent: number;
+  };
   /** The planner's note when there is nothing left to pay. */
   nothingToDo: string | null;
 }
@@ -164,8 +173,8 @@ function buildHero(
   const clearsStatement = cycle.remainingStatement > 0 && planned >= cycle.remainingStatement;
   const amount = clearsStatement ? cycle.remainingStatement : planned;
   const dateText = formatShortDate(first.payBy);
-  const restText = clearsStatement
-    ? ' — clears your full statement, so zero interest.'
+  const middleText = clearsStatement
+    ? ' — clears your full statement, so '
     : ` — ${first.reason.text}`;
   const minimumLine =
     cycle.remainingMinimum > 0 && first.kind !== 'prepay'
@@ -179,7 +188,8 @@ function buildHero(
       finish: finishById.get(card.id) ?? 'graphite',
       dueChip: `BY ${dateText.toUpperCase()}`,
       dateText,
-      restText,
+      middleText,
+      emphasisText: clearsStatement ? 'zero interest.' : '',
       amount: formatINR(amount),
       clearsStatement,
       minimumLine,
@@ -286,7 +296,17 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
       range: formatScoreRange(current.low, current.high),
       band: current.band,
       withPlanRange: afterPlan ? formatScoreRange(afterPlan.low, afterPlan.high) : null,
+      barPercent: scalePercent(current.low, current.high),
+      targetPercent: afterPlan
+        ? scalePercent(afterPlan.low, afterPlan.high)
+        : scalePercent(current.low, current.high),
     },
     nothingToDo: plan.items.length === 0 ? (plan.leftoverReason?.text ?? plan.summary.text) : null,
   };
+}
+
+/** The midpoint of a score range as a percent of the 300-900 scale. */
+function scalePercent(low: number, high: number): number {
+  const percent = ((low + high) / 2 - 300) / 6;
+  return Math.min(100, Math.max(0, Math.round(percent * 10) / 10));
 }
