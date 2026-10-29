@@ -1,0 +1,105 @@
+// Plain demo-data types. Deliberately independent of @credit-coach/engine (PD-1 is
+// publishing the engine's own Card/CoachRules types); screen streams adapt these.
+// Money is integer rupees. Dates are ISO strings (YYYY-MM-DD).
+
+export type IsoDate = string;
+
+export type ReportingBasis = 'statement' | 'weekly_current';
+
+export interface DemoCard {
+  id: string;
+  name: string;
+  issuer: string;
+  initials: string;
+  /** Months since the card was opened (feeds the predictor's credit-age factor). */
+  ageMonths: number;
+  /** FD-backed or otherwise secured. */
+  isSecured: boolean;
+  limit: number;
+  outstanding: number;
+  lastStatementBalance: number;
+  /** Day of the month the statement is generated (1-31). */
+  statementDay: number;
+  /**
+   * Day of the month payment is due (1-31), or null when nothing is due this cycle
+   * (a card paid in full, like SBI SimplyClick). Adapters that need the engine's numeric
+   * `Card.dueDay` map null themselves. No dates are stored: screens get statement and
+   * due dates from the engine's `cardCycle(card, DEMO_TODAY)`.
+   */
+  dueDay: number | null;
+  minimumDue: number;
+  paidSinceStatement: number;
+}
+
+export interface DemoRules {
+  thresholdPct: number;
+  excellentPct: number;
+  reportingBasis: ReportingBasis;
+  aimFor10: boolean;
+}
+
+export interface DemoCreditHistory {
+  anchorScore: number;
+  anchorDate: IsoDate;
+  monthsWithZeroMissed: number;
+  missedPayments: number;
+  hardInquiries6m: number;
+  hardInquiries12m: number;
+  oldestAccountCardId: string;
+  oldestAccountMonths: number;
+  securedAccounts: number;
+  unsecuredAccounts: number;
+}
+
+export interface DemoProfile {
+  id: string;
+  name: string;
+  firstName: string;
+  isSample: boolean;
+  persona: string;
+  panMasked: string;
+  mobileMasked: string;
+  cashForCards: number;
+  history: DemoCreditHistory;
+}
+
+export interface DemoSeed {
+  profile: DemoProfile;
+  rules: DemoRules;
+  cards: DemoCard[];
+}
+
+export interface DemoPayment {
+  id: string;
+  cardId: string;
+  amount: number;
+  date: IsoDate;
+}
+
+export type RepositoryErrorCode =
+  'unknown_card' | 'invalid_amount' | 'amount_exceeds_outstanding' | 'invalid_date';
+
+export class RepositoryError extends Error {
+  readonly code: RepositoryErrorCode;
+
+  constructor(code: RepositoryErrorCode, message: string) {
+    super(message);
+    this.name = 'RepositoryError';
+    this.code = code;
+  }
+}
+
+export interface DemoRepository {
+  getProfile(): DemoProfile;
+  listCards(): DemoCard[];
+  getRules(): DemoRules;
+  /** Lowers the card's outstanding by `amount` and raises its paidSinceStatement. */
+  recordPayment(cardId: string, amount: number, date: IsoDate): DemoPayment;
+  listPayments(): DemoPayment[];
+  /** Restores the seed data and clears recorded payments. */
+  reset(): void;
+  /** Increments after every successful recordPayment/reset; a stable snapshot for subscribers. */
+  getVersion(): number;
+  /** Called after recordPayment/reset change state. Returns an unsubscribe function. */
+  subscribe(listener: () => void): () => void;
+}

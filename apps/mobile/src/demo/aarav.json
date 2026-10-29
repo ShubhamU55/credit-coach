@@ -1,0 +1,77 @@
+{
+  "profile": {
+    "id": "aarav-mehta",
+    "name": "Aarav Mehta (sample)",
+    "firstName": "Aarav",
+    "isSample": true,
+    "persona": "high-utilizer",
+    "panMasked": "ABXXXXX34F",
+    "mobileMasked": "+91 98XXXXX210",
+    "cashForCards": 120000,
+    "history": {
+      "anchorScore": 724,
+      "anchorDate": "2026-10-02",
+      "monthsWithZeroMissed": 36,
+      "missedPayments": 0,
+      "hardInquiries6m": 1,
+      "hardInquiries12m": 1,
+      "oldestAccountCardId": "hdfc-millennia",
+      "oldestAccountMonths": 74,
+      "securedAccounts": 0,
+      "unsecuredAccounts": 3
+    }
+  },
+  "rules": {
+    "thresholdPct": 30,
+    "excellentPct": 10,
+    "reportingBasis": "statement",
+    "aimFor10": false
+  },
+  "cards": [
+    {
+      "id": "hdfc-millennia",
+      "name": "HDFC Millennia",
+      "issuer": "HDFC Bank",
+      "initials": "HD",
+      "ageMonths": 74,
+      "isSecured": false,
+      "limit": 100000,
+      "outstanding": 81000,
+      "lastStatementBalance": 74200,
+      "statementDay": 15,
+      "dueDay": 4,
+      "minimumDue": 3710,
+      "paidSinceStatement": 0
+    },
+    {
+      "id": "sbi-simplyclick",
+      "name": "SBI SimplyClick",
+      "issuer": "SBI Card",
+      "initials": "SB",
+      "ageMonths": 38,
+      "isSecured": false,
+      "limit": 120000,
+      "outstanding": 38400,
+      "lastStatementBalance": 0,
+      "statementDay": 25,
+      "dueDay": null,
+      "minimumDue": 0,
+      "paidSinceStatement": 0
+    },
+    {
+      "id": "axis-neo",
+      "name": "Axis Neo",
+      "issuer": "Axis Bank",
+      "initials": "AX",
+      "ageMonths": 20,
+      "isSecured": false,
+      "limit": 80000,
+      "outstanding": 15600,
+      "lastStatementBalance": 12400,
+      "statementDay": 2,
+      "dueDay": 22,
+      "minimumDue": 620,
+      "paidSinceStatement": 0
+    }
+  ]
+}

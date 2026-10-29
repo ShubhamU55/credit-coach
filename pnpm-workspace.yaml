@@ -6,6 +6,7 @@ packages:
 allowBuilds:
   sharp: false
   unrs-resolver: false
+  '@parcel/watcher': false
 
 # Expo/React Native native builds on Windows hit CMake path limits under the isolated .pnpm layout.
 nodeLinker: hoisted

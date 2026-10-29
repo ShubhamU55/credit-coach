@@ -82,3 +82,16 @@ describe('.claude/rules content that does not fit this project', () => {
     expect(rule('typescript.md').text).not.toMatch(/See hooks for automatic detection/);
   });
 });
+
+describe('.claude/rules workflow and agent rules are current', () => {
+  it.each(['agents.md', 'development-workflow.md'])(
+    '%s makes no "planned, not yet built" claims (the workflows and agents all exist)',
+    (file) => {
+      expect(rule(file).text).not.toMatch(/not (yet )?built|planned roster|planned pipeline/i);
+    },
+  );
+
+  it('agents.md keeps the Delegation Completion Contract', () => {
+    expect(rule('agents.md').text).toMatch(/^## Delegation Completion Contract$/m);
+  });
+});
