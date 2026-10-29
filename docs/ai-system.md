@@ -134,15 +134,18 @@ reads an `## Agent stats` ledger table that no ledger emits yet, so it has no da
 
 ## Honest limits (as of 29 Oct 2026)
 
-- Two workflows have run live, and the ledgers show only these two runs. An earlier version of
-  `feature-build` and `qa` ran once, in the W2-2 dry run, with injected faults. `pr-review` ran
-  once, on a throwaway PR (#3) with one scratch file. That proves the plumbing, not review quality.
+- Two live workflow runs are on record, covering three workflows, and the ledgers show only these
+  two runs. An earlier version of `feature-build` and `qa` ran once, in the W2-2 dry run, with
+  injected faults. `pr-review` ran once, on a throwaway PR (#3) with one scratch file. That proves the plumbing, not review quality.
   Every later change to `feature-build` and `qa` is unit-tested only: `6316f15`, `ae9c8fc`,
   `3485e8c`, `d37f0a8` and `fd7f0a6`. `feature-analyze`, `bugfix` and `retro` have only run on the
   test harness's fake runtime. The first real `/feature` → `/build` → `/qa` → `/pr-review` run on a
   product task is their real test.
-- The product tickets PD-1 to PD-4 and PD-7 were built by hand, test-first, with no workflow and
-  no subagents (the ledgers call it the manual fallback). They are not evidence for the workflows.
+- The product tickets PD-1 to PD-4 and PD-7 were built test-first without `/build` or any
+  Workflow script. PD-1 and PD-2 each ran as an implementer session dispatched by the
+  parallel-streams coordinator (the PD-2 ledger header calls it an implementer subagent), and the
+  coordinator ran the reviewer passes on all of them. Only the PD-3 and PD-7 ledgers call this the
+  manual fallback. None of these tickets is evidence for the workflows.
 - `main` is protected (ledger `2026-10-23-branch-protection.md`, checked with the GitHub API on 29
   Oct 2026). The required checks are `verify`, `admin-e2e`, `secrets`, `deps`, `codeql`, `CodeQL`,
   `sonar`, `maestro-evidence`, `changes` and `hold-check`. Admins are included, force pushes are
