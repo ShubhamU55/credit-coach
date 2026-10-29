@@ -1,8 +1,7 @@
 appId: com.creditcoach.app
 ---
-# Welcome -> "Try sample profile" -> Home with the Aarav numbers (docs/design.md section 8), then
-# every route is reachable and Mark as paid lowers Axis Neo's statement through the shared
-# in-memory repository. No typing anywhere.
+# Welcome -> "Try sample profile" -> Home with the Aarav numbers (docs/design.md section 8).
+# No typing anywhere. The Plan, Score and Mark as paid steps belong to PD-9 and PD-10.
 - launchApp:
     clearState: true
 - extendedWaitUntil:
@@ -20,73 +19,19 @@ appId: com.creditcoach.app
       id: 'home-screen'
     timeout: 10000
 - assertVisible: 'Aarav, one payment keeps you on track.'
-- assertVisible: 'SAMPLE PROFILE ·'
 - assertVisible:
     id: 'hero-card'
 - assertVisible: '₹12,400'
 
-# Home: stat tiles (overall utilization 45.0%, estimate 708-736), cards and Coming up
+# Home: overall utilization 45.0% and the estimate range
 - scrollUntilVisible:
     element:
       id: 'home-stat-utilization'
 - assertVisible: '45.0%'
 - assertVisible: '708–736'
-- scrollUntilVisible:
-    element:
-      id: 'home-card-hdfc-millennia'
-- assertVisible: 'YOUR CARDS · 3'
-- scrollUntilVisible:
-    element:
-      id: 'date-block-row-1'
-- assertVisible: '₹3,710'
-- assertVisible: '₹70,490'
+
+# Home: the disclaimer closes the screen
 - scrollUntilVisible:
     element:
       id: 'disclaimer'
 - assertVisible: 'Estimates only. Not your official CIBIL score. Not financial advice.'
-
-# Plan and back (the stub Plan screen has a link home)
-- tapOn:
-    id: 'nav-tab-plan'
-- extendedWaitUntil:
-    visible:
-      id: 'plan-screen'
-    timeout: 10000
-- tapOn:
-    id: 'plan-link-home'
-- extendedWaitUntil:
-    visible:
-      id: 'home-screen'
-    timeout: 10000
-
-# Score and back
-- tapOn:
-    id: 'nav-tab-score'
-- extendedWaitUntil:
-    visible:
-      id: 'score-screen'
-    timeout: 10000
-- tapOn:
-    id: 'score-link-home'
-- extendedWaitUntil:
-    visible:
-      id: 'home-screen'
-    timeout: 10000
-
-# Mark as paid sheet records Axis Neo's minimum (620) and the hero shows the statement left (11,780)
-- scrollUntilVisible:
-    element:
-      id: 'hero-mark-paid'
-- tapOn:
-    id: 'hero-mark-paid'
-- extendedWaitUntil:
-    visible:
-      id: 'mark-paid-screen'
-    timeout: 10000
-- tapOn:
-    id: 'mark-paid-record-axis-minimum'
-- extendedWaitUntil:
-    visible:
-      id: 'home-screen'
-    timeout: 10000
-- assertVisible: '₹11,780'

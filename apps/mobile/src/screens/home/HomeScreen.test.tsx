@@ -1,3 +1,4 @@
+import { AccessibilityInfo, Dimensions } from 'react-native';
 import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import { router } from 'expo-router';
 
@@ -33,7 +34,7 @@ describe('HomeScreen with the Aarav sample profile', () => {
       screen.getByRole('header', { name: /Aarav, one payment keeps you on track\./ }),
     ).toBeTruthy();
     expect(screen.getByText('SAMPLE PROFILE ·')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'AM, account settings' })).toBeTruthy();
+    expect(screen.getByLabelText('Credit Coach')).toBeTruthy();
   });
 
   it('shows overall utilization 45.0% with the totals and the after-plan delta', async () => {
@@ -63,19 +64,20 @@ describe('HomeScreen with the Aarav sample profile', () => {
     expect(hero.getByText('BY THU, 22 OCT')).toBeTruthy();
     expect(hero.getByText('₹620 of it is your minimum.')).toBeTruthy();
     expect(hero.getByText(/clears your full statement/)).toBeTruthy();
-    expect(hero.getByText(/THIS MONTH'S PLAN · 0 of 5 done/)).toBeTruthy();
+    expect(hero.getByText(/THIS MONTH'S PLAN · 0 of 3 done/)).toBeTruthy();
   });
 
   it('lists the three cards with colour-coded utilization and words', async () => {
     await renderHome();
 
     expect(screen.getByText('YOUR CARDS · 3')).toBeTruthy();
-    ['HDFC Millennia', 'SBI SimplyClick', 'Axis Neo'].forEach((name) => {
-      expect(
-        within(screen.getByTestId(`home-card-${name.toLowerCase().replace(' ', '-')}`)).getByText(
-          name,
-        ),
-      ).toBeTruthy();
+    const ids = {
+      'HDFC Millennia': 'hdfc-millennia',
+      'SBI SimplyClick': 'sbi-simplyclick',
+      'Axis Neo': 'axis-neo',
+    };
+    Object.entries(ids).forEach(([name, id]) => {
+      expect(within(screen.getByTestId(`home-card-${id}`)).getByText(name)).toBeTruthy();
     });
     expect(within(screen.getByTestId('home-card-hdfc-millennia')).getByText('81.0%')).toBeTruthy();
     expect(
@@ -176,7 +178,7 @@ describe('HomeScreen state changes', () => {
 
     await act(async () => repository.recordPayment('axis-neo', 12400, DEMO_TODAY));
 
-    expect(await screen.findByText(/1 of \d done/)).toBeTruthy();
+    expect(await screen.findByText(/THIS MONTH'S PLAN · 1 of 3 done/)).toBeTruthy();
     expect(within(screen.getByTestId('home-card-axis-neo')).getByText('4.0%')).toBeTruthy();
   });
 
@@ -205,6 +207,106 @@ describe('HomeScreen state changes', () => {
     await renderHome(repository);
 
     expect(screen.queryByTestId('hero-card')).toBeNull();
-    expect(screen.getByTestId('home-nothing-to-do')).toBeTruthy();
+    expect(screen.getByTestId('home-nothing-to-do')).toHaveTextContent(
+      'Nothing left to pay right now.',
+    );
+  });
+
+  it('does not count a minimum-only payment as a done step while the hero still asks for more', async () => {
+    const repository = await renderHome();
+
+    await act(async () => repository.recordPayment('axis-neo', 620, DEMO_TODAY));
+
+    expect(await screen.findByText(/THIS MONTH'S PLAN · 0 of 3 done/)).toBeTruthy();
+    expect(within(screen.getByTestId('hero-card')).getByText('₹11,780')).toBeTruthy();
+  });
+});
+
+describe('HomeScreen without a usable card (F2, F3)', () => {
+  function emptySeed(limitZero: boolean) {
+    const repository = createDemoRepository();
+    return {
+      profile: repository.getProfile(),
+      rules: repository.getRules(),
+      cards: limitZero ? repository.listCards().map((c) => ({ ...c, limit: 0 })) : [],
+    };
+  }
+
+  it.each([
+    ['no cards', false],
+    ['only cards without a limit', true],
+  ])('shows no score estimate and no card count for %s', async (_label, limitZero) => {
+    await renderHome(createDemoRepository(emptySeed(limitZero)));
+
+    expect(screen.queryByTestId('home-stat-score')).toBeNull();
+    expect(screen.getByTestId('home-score-empty')).toHaveTextContent(
+      /Add a card with a limit to see an estimate./,
+    );
+    expect(screen.queryByText(/[0-9]{3}–[0-9]{3}/)).toBeNull();
+    expect(screen.queryByText(/YOUR CARDS/)).toBeNull();
+    if (!limitZero) {
+      expect(screen.getByTestId('home-nothing-to-do')).toHaveTextContent(
+        'Add a card with a limit to see your plan.',
+      );
+    }
+    expect(screen.queryByText(/cash|left over|leftover/i)).toBeNull();
+  });
+});
+
+describe('HomeScreen controls that have no screen yet', () => {
+  it('offers no reminders or account button', async () => {
+    await renderHome();
+
+    expect(screen.queryByRole('button', { name: /reminders/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /account settings/i })).toBeNull();
+  });
+
+  it('says so when the Cards tab is pressed instead of staying silent', async () => {
+    const spy = jest.spyOn(AccessibilityInfo, 'announceForAccessibility').mockImplementation();
+    await renderHome();
+
+    await fireEvent.press(screen.getByTestId('nav-tab-cards'));
+
+    expect(spy).toHaveBeenCalledWith('The Cards screen is not available yet.');
+    expect(mockRouter.push).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it('leaves the excluded-card note as plain text, not an alert', async () => {
+    const repository = createDemoRepository();
+    const seed = {
+      profile: repository.getProfile(),
+      rules: repository.getRules(),
+      cards: repository.listCards().map((c) => (c.id === 'axis-neo' ? { ...c, limit: 0 } : c)),
+    };
+    await renderHome(createDemoRepository(seed));
+
+    expect(screen.getByTestId('home-excluded-note').props.accessibilityRole).toBeUndefined();
+  });
+});
+
+describe('HomeScreen at large font sizes (F5)', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  function withFontScale(fontScale: number) {
+    jest.spyOn(Dimensions, 'get').mockReturnValue({ width: 360, height: 800, scale: 3, fontScale });
+  }
+
+  it('stacks the two stat tiles at 200% so a range never wraps', async () => {
+    withFontScale(2);
+    await renderHome();
+
+    expect(screen.getByTestId('home-stat-row').props.style).toMatchObject({
+      flexDirection: 'column',
+    });
+  });
+
+  it('keeps them side by side at normal font size', async () => {
+    withFontScale(1);
+    await renderHome();
+
+    expect(screen.getByTestId('home-stat-row').props.style).toMatchObject({
+      flexDirection: 'row',
+    });
   });
 });

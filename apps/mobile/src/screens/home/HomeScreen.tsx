@@ -1,7 +1,7 @@
 import { formatINR, formatPercent } from '@credit-coach/engine';
 import { router } from 'expo-router';
 import { useMemo } from 'react';
-import { ScrollView, View } from 'react-native';
+import { ScrollView, View, useWindowDimensions } from 'react-native';
 
 import { DEMO_TODAY } from '../../demo/config';
 import { useCards, usePayments, useProfile, useRules } from '../../state/DemoRepositoryContext';
@@ -9,19 +9,24 @@ import {
   CardTile,
   DateBlockTimeline,
   FloatingNav,
-  Header,
   HeroPaymentCard,
   Screen,
   StatTile,
   Text,
   TextAction,
+  announce,
+  color,
   fontFamily,
   space,
   type NavTab,
 } from '../../ui';
-import { buildHomeModel, type HeroModel } from './adapter';
+import { NO_ESTIMATE_TEXT, buildHomeModel, type HeroModel } from './adapter';
+import { HomeHeader } from './HomeHeader';
 
-const noop = () => undefined;
+/** Past this font scale the two stat tiles stack, so a range never has to shrink or wrap. */
+const STACK_FONT_SCALE = 1.3;
+
+export const CARDS_UNAVAILABLE = 'The Cards screen is not available yet.';
 
 const bold = { fontFamily: fontFamily.sans800 } as const;
 
@@ -73,12 +78,14 @@ export function HomeScreen() {
     [profile, cards, rules, payments],
   );
 
+  const stackTiles = useWindowDimensions().fontScale > STACK_FONT_SCALE;
   const openPlan = () => router.push('/plan');
   const openScore = () => router.push('/score');
   const navigate = (tab: NavTab) => {
-    // The Cards tab has no screen yet; Home is already open.
+    // Home is already open. The Cards tab has no screen yet, so say so instead of staying silent.
     if (tab === 'plan') openPlan();
     if (tab === 'score') openScore();
+    if (tab === 'cards') announce(CARDS_UNAVAILABLE);
   };
 
   const { overall, score } = model;
@@ -86,18 +93,12 @@ export function HomeScreen() {
     overall && model.overallAfter !== null && model.overallAfter < overall.pct
       ? `↓ ${formatPercent(model.overallAfter)} after plan`
       : undefined;
-  const scoreDelta = score.withPlanRange ? `↑ ${score.withPlanRange} with plan` : undefined;
+  const scoreDelta = score?.withPlanRange ? `↑ ${score.withPlanRange} with plan` : undefined;
 
   return (
     <View testID="home-screen" style={{ flex: 1 }}>
       <Screen scroll>
-        <Header
-          initials={model.initials}
-          remindersNew={0}
-          onReminders={noop}
-          onAccount={noop}
-          sample={model.isSample ? { onSwitch: () => router.replace('/') } : undefined}
-        />
+        <HomeHeader onSwitch={model.isSample ? () => router.replace('/') : undefined} />
 
         <Text variant="h1">
           {model.hero ? (
@@ -107,8 +108,10 @@ export function HomeScreen() {
             </>
           ) : (
             <>
-              {`${model.firstName}, you're all `}
-              <Italic>set for now.</Italic>
+              {model.hasCards
+                ? `${model.firstName}, you're all `
+                : `${model.firstName}, add a card to `}
+              <Italic>{model.hasCards ? 'set for now.' : 'get started.'}</Italic>
             </>
           )}
         </Text>
@@ -132,8 +135,11 @@ export function HomeScreen() {
           </Text>
         )}
 
-        <View style={{ flexDirection: 'row', gap: space.grid }}>
-          <View style={{ flex: 1 }}>
+        <View
+          testID="home-stat-row"
+          style={{ flexDirection: stackTiles ? 'column' : 'row', gap: space.grid }}
+        >
+          <View style={{ flex: stackTiles ? undefined : 1 }}>
             <StatTile
               testID="home-stat-utilization"
               overline="UTILIZATION"
@@ -150,24 +156,42 @@ export function HomeScreen() {
               onPress={openPlan}
             />
           </View>
-          <View style={{ flex: 1 }}>
-            <StatTile
-              testID="home-stat-score"
-              overline="EST. SCORE"
-              value={score.range}
-              barPercent={score.barPercent}
-              targetPercent={score.targetPercent}
-              caption={`estimate · ${score.band}`}
-              delta={scoreDelta}
-              onPress={openScore}
-            />
+          <View style={{ flex: stackTiles ? undefined : 1 }}>
+            {score ? (
+              <StatTile
+                testID="home-stat-score"
+                overline="EST. SCORE"
+                value={score.range}
+                barPercent={score.barPercent}
+                targetPercent={score.targetPercent}
+                caption={`estimate · ${score.band}`}
+                delta={scoreDelta}
+                onPress={openScore}
+              />
+            ) : (
+              <View
+                testID="home-score-empty"
+                style={{
+                  padding: space.cardPad,
+                  gap: 6,
+                  borderWidth: 1,
+                  borderColor: color.hairline,
+                  backgroundColor: color.surface,
+                }}
+              >
+                <Text variant="overline">EST. SCORE</Text>
+                <Text variant="bodyS">{NO_ESTIMATE_TEXT}</Text>
+              </View>
+            )}
           </View>
         </View>
 
         <View style={{ gap: space.grid }}>
-          <Text variant="overline" accessibilityRole="header">
-            {`YOUR CARDS · ${model.cards.length}`}
-          </Text>
+          {model.hasCards ? (
+            <Text variant="overline" accessibilityRole="header">
+              {`YOUR CARDS · ${model.cards.length}`}
+            </Text>
+          ) : null}
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -188,7 +212,7 @@ export function HomeScreen() {
             ))}
           </ScrollView>
           {model.excluded.length > 0 ? (
-            <Text variant="caption" testID="home-excluded-note" accessibilityRole="alert">
+            <Text variant="caption" testID="home-excluded-note">
               {excludedNote(model.excluded.map((card) => card.name))}
             </Text>
           ) : null}
@@ -207,7 +231,7 @@ export function HomeScreen() {
                 COMING UP
               </Text>
               <TextAction
-                label={`All ${model.stepsTotal} steps`}
+                label={`All ${model.planItemCount} steps`}
                 onPress={openPlan}
                 testID="home-all-steps"
               />

@@ -12,7 +12,6 @@ import {
   utilization,
   type Card,
   type CoachRules,
-  type Plan,
   type PlanItem,
   type PlanItemKind,
 } from '@credit-coach/engine';
@@ -58,6 +57,15 @@ export interface HeroModel {
   minimumLine: string;
 }
 
+export interface ScoreModel {
+  range: string;
+  band: string;
+  withPlanRange: string | null;
+  /** Where the range midpoint sits on the 300-900 scale, in percent (for the tile bar and tick). */
+  barPercent: number;
+  targetPercent: number;
+}
+
 export interface HomeModel {
   firstName: string;
   initials: string;
@@ -70,17 +78,20 @@ export interface HomeModel {
   excluded: { id: string; name: string }[];
   hero: HeroModel | null;
   comingUp: DateBlockItem[];
+  /**
+   * A "step" on Home is one payment to one card (its minimum and statement steps together).
+   * `stepsTotal` = cards still in the plan + cards that were paid off; `stepsDone` = the paid off.
+   * PD-9 will share one source for this with the Plan screen.
+   */
   stepsTotal: number;
   stepsDone: number;
-  score: {
-    range: string;
-    band: string;
-    withPlanRange: string | null;
-    /** Where the range sits on the 300-900 scale, in percent (for the tile bar and tick). */
-    barPercent: number;
-    targetPercent: number;
-  };
-  /** The planner's note when there is nothing left to pay. */
+  /** Number of items left in the plan (the "All N steps" link). */
+  planItemCount: number;
+  /** Null when no card has a usable limit: no estimate is built from nothing (non-negotiable 3). */
+  score: ScoreModel | null;
+  /** True when at least one card counts towards utilization. */
+  hasCards: boolean;
+  /** Shown instead of the hero when there is nothing to pay. */
   nothingToDo: string | null;
 }
 
@@ -91,15 +102,21 @@ const KIND_LABEL: Record<PlanItemKind, string> = {
   prepay: "Lower before it's reported",
 };
 
+export const NO_CARDS_TEXT = 'Add a card with a limit to see your plan.';
+export const NOTHING_TO_PAY_TEXT = 'Nothing left to pay right now.';
+export const NO_ESTIMATE_TEXT = 'Add a card with a limit to see an estimate.';
+
 /** The first letters of the first two words of the name; a trailing "(sample)" tag is ignored. */
 export function initialsOf(name: string): string {
-  return name
+  const initials = name
     .replace(/\(.*?\)/g, ' ')
     .split(/\s+/)
     .filter((word) => word.length > 0)
     .slice(0, 2)
-    .map((word) => word.charAt(0).toUpperCase())
+    // Array.from keeps a character outside the basic plane whole instead of splitting it.
+    .map((word) => (Array.from(word)[0] ?? '').toUpperCase())
     .join('');
+  return initials || '?';
 }
 
 const validLimit = (limit: number): boolean => Number.isFinite(limit) && limit > 0;
@@ -114,7 +131,7 @@ export function toEngineCards(cards: readonly DemoCard[]): Card[] {
     outstanding: card.outstanding,
     lastStatementBalance: card.lastStatementBalance,
     statementDay: card.statementDay,
-    // The engine needs a day; a card with nothing due this cycle never uses it.
+    // The engine needs a day. cardLine never shows a due date for a card whose dueDay is null.
     dueDay: card.dueDay ?? card.statementDay,
     minimumDue: card.minimumDue,
     paidSinceStatement: card.paidSinceStatement,
@@ -132,7 +149,7 @@ export function toEngineRules(rules: DemoRules): CoachRules {
 }
 
 /** `Thu, 22 Oct` to its `Thu`, `22` and `Oct`. */
-function dateParts(iso: IsoDate): { day: string; date: string; month: string } {
+export function dateParts(iso: IsoDate): { day: string; date: string; month: string } {
   const [day, date, month] = formatShortDate(iso).split(/[, ]+/);
   return { day, date, month };
 }
@@ -152,32 +169,37 @@ function reasonLine(item: PlanItem): string {
   return `${label} · ${change}`;
 }
 
+/**
+ * The hero is one payment: the earliest pay-by date (ties keep the planner's order) and every item
+ * for that card on that same date. The date, the amount and the sentence all come from that one
+ * set, so a prepay's date is never mixed with another step's amount.
+ */
 function buildHero(
-  plan: Plan,
+  items: readonly PlanItem[],
   engineCards: readonly Card[],
   finishById: ReadonlyMap<string, CardFinish>,
   today: IsoDate,
 ): { hero: HeroModel; heroItems: Set<PlanItem> } | null {
-  // The hero is the earliest pay-by date; ties keep the planner's order.
-  const first = [...plan.items].sort((a, b) => a.payBy.localeCompare(b.payBy))[0];
+  const first = [...items].sort((a, b) => a.payBy.localeCompare(b.payBy))[0];
   if (!first) return null;
   const card = engineCards.find((c) => c.id === first.cardId);
   if (!card) return null;
   const cycle = cardCycle(card, today);
-  // One card's minimum and statement steps are one payment from the user's side.
   const heroItems = new Set(
-    plan.items.filter((item) => item.cardId === first.cardId && item.kind !== 'prepay'),
+    items.filter((item) => item.cardId === first.cardId && item.payBy === first.payBy),
   );
-  if (heroItems.size === 0) heroItems.add(first);
   const planned = [...heroItems].reduce((sum, item) => sum + item.amount, 0);
-  const clearsStatement = cycle.remainingStatement > 0 && planned >= cycle.remainingStatement;
+  const paysStatement = [...heroItems].some((item) => item.kind === 'statement');
+  const clearsStatement =
+    paysStatement && cycle.remainingStatement > 0 && planned >= cycle.remainingStatement;
   const amount = clearsStatement ? cycle.remainingStatement : planned;
   const dateText = formatShortDate(first.payBy);
-  const middleText = clearsStatement
-    ? ' — clears your full statement, so '
-    : ` — ${first.reason.text}`;
+  const paysMinimum = [...heroItems].some(
+    (item) =>
+      item.kind === 'minimum' || item.kind === 'overdue_minimum' || item.kind === 'statement',
+  );
   const minimumLine =
-    cycle.remainingMinimum > 0 && first.kind !== 'prepay'
+    paysMinimum && cycle.remainingMinimum > 0
       ? `${formatINR(Math.min(cycle.remainingMinimum, amount))} of it is your minimum.`
       : 'No minimum is due on this payment.';
   return {
@@ -188,7 +210,9 @@ function buildHero(
       finish: finishById.get(card.id) ?? 'graphite',
       dueChip: `BY ${dateText.toUpperCase()}`,
       dateText,
-      middleText,
+      middleText: clearsStatement
+        ? ' — clears your full statement, so '
+        : ` — ${first.reason.text}`,
       emphasisText: clearsStatement ? 'zero interest.' : '',
       amount: formatINR(amount),
       clearsStatement,
@@ -197,9 +221,16 @@ function buildHero(
   };
 }
 
-function cardLine(card: Card, today: IsoDate): string {
+function cardLine(card: Card, demo: DemoCard | undefined, today: IsoDate): string {
   const cycle = cardCycle(card, today);
-  const due = cycle.dueDate === null ? 'nothing due' : `due ${dayAndMonth(cycle.dueDate)}`;
+  let due = 'nothing due';
+  if (cycle.remainingStatement > 0) {
+    // A null dueDay with a balance owed means the due date is unknown: never invent one.
+    due =
+      demo?.dueDay === null || cycle.dueDate === null
+        ? 'due date unknown'
+        : `due ${dayAndMonth(cycle.dueDate)}`;
+  }
   const balance = `${formatINR(card.outstanding)} / ${formatINR(card.limit)}`;
   return `${balance} · ${due} · statement ${dayAndMonth(cycle.nextStatementDate)}`;
 }
@@ -222,25 +253,32 @@ function estimate(input: HomeModelInput, overallPct: number, maxPct: number, ope
   });
 }
 
+/** The midpoint of a score range as a percent of the 300-900 scale. */
+function scalePercent(low: number, high: number): number {
+  const percent = ((low + high) / 2 - 300) / 6;
+  return Math.min(100, Math.max(0, Math.round(percent * 10) / 10));
+}
+
 export function buildHomeModel(input: HomeModelInput): HomeModel {
   const { profile, rules, payments, today } = input;
   const engineCards = toEngineCards(input.cards);
-  const engineRules = toEngineRules(rules);
   const plan = planPayments({
     cards: engineCards,
     cash: profile.cashForCards,
     today,
-    rules: engineRules,
+    rules: toEngineRules(rules),
   });
 
   const finishById = new Map(engineCards.map((c, i) => [c.id, finishForIndex(i)] as const));
+  const demoById = new Map(input.cards.map((c) => [c.id, c] as const));
   const counted = engineCards.filter((c) => validLimit(c.limit));
   const excluded = engineCards
     .filter((c) => !validLimit(c.limit))
     .map((c) => ({ id: c.id, name: c.name }));
+  const hasCards = counted.length > 0;
 
   const overallPct = overallUtilization(counted);
-  const heroResult = buildHero(plan, engineCards, finishById, today);
+  const heroResult = buildHero(plan.items, engineCards, finishById, today);
   const comingUp = plan.items
     .filter((item) => !heroResult?.heroItems.has(item))
     .slice(0, 2)
@@ -254,18 +292,37 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
       };
     });
 
-  const current = estimate(input, overallPct ?? 0, plan.highestCardBefore ?? 0, counted.length);
-  const afterPlan =
-    plan.items.length > 0
-      ? estimate(
-          input,
-          plan.overallUtilizationAfter ?? 0,
-          plan.highestCardAfter ?? 0,
-          counted.length,
-        )
-      : null;
+  let score: ScoreModel | null = null;
+  if (hasCards) {
+    const current = estimate(input, overallPct ?? 0, plan.highestCardBefore ?? 0, counted.length);
+    const afterPlan =
+      plan.items.length > 0
+        ? estimate(
+            input,
+            plan.overallUtilizationAfter ?? 0,
+            plan.highestCardAfter ?? 0,
+            counted.length,
+          )
+        : null;
+    score = {
+      range: formatScoreRange(current.low, current.high),
+      band: current.band,
+      withPlanRange: afterPlan ? formatScoreRange(afterPlan.low, afterPlan.high) : null,
+      barPercent: scalePercent(current.low, current.high),
+      targetPercent: afterPlan
+        ? scalePercent(afterPlan.low, afterPlan.high)
+        : scalePercent(current.low, current.high),
+    };
+  }
 
-  const stepsDone = payments.length;
+  const planCardIds = new Set(plan.items.map((item) => item.cardId));
+  const paidOffIds = new Set(
+    payments.map((p) => p.cardId).filter((cardId) => !planCardIds.has(cardId)),
+  );
+
+  let nothingToDo: string | null = null;
+  if (plan.items.length === 0) nothingToDo = hasCards ? NOTHING_TO_PAY_TEXT : NO_CARDS_TEXT;
+
   return {
     firstName: profile.firstName,
     initials: initialsOf(profile.name),
@@ -285,28 +342,16 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
       name: c.name,
       finish: finishById.get(c.id) ?? 'graphite',
       utilPercent: utilization(c.outstanding, c.limit) ?? 0,
-      line: cardLine(c, today),
+      line: cardLine(c, demoById.get(c.id), today),
     })),
     excluded,
     hero: heroResult?.hero ?? null,
     comingUp,
-    stepsTotal: plan.items.length + stepsDone,
-    stepsDone,
-    score: {
-      range: formatScoreRange(current.low, current.high),
-      band: current.band,
-      withPlanRange: afterPlan ? formatScoreRange(afterPlan.low, afterPlan.high) : null,
-      barPercent: scalePercent(current.low, current.high),
-      targetPercent: afterPlan
-        ? scalePercent(afterPlan.low, afterPlan.high)
-        : scalePercent(current.low, current.high),
-    },
-    nothingToDo: plan.items.length === 0 ? (plan.leftoverReason?.text ?? plan.summary.text) : null,
+    stepsTotal: planCardIds.size + paidOffIds.size,
+    stepsDone: paidOffIds.size,
+    planItemCount: plan.items.length,
+    score,
+    hasCards,
+    nothingToDo,
   };
-}
-
-/** The midpoint of a score range as a percent of the 300-900 scale. */
-function scalePercent(low: number, high: number): number {
-  const percent = ((low + high) / 2 - 300) / 6;
-  return Math.min(100, Math.max(0, Math.round(percent * 10) / 10));
 }

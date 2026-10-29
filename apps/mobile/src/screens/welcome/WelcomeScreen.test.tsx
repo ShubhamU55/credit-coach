@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import { router } from 'expo-router';
+import { Dimensions } from 'react-native';
 
 import { DEMO_TODAY } from '../../demo/config';
 import { createDemoRepository } from '../../demo/repository';
@@ -68,5 +69,32 @@ describe('WelcomeScreen', () => {
       screen.getByTestId('welcome-card-stack', { includeHiddenElements: true }).props
         .importantForAccessibility,
     ).toBe('no-hide-descendants');
+  });
+
+  it('ignores a second tap while the first one is navigating', async () => {
+    const repository = createDemoRepository();
+    const reset = jest.spyOn(repository, 'reset');
+    await renderWelcome(repository);
+
+    await fireEvent.press(screen.getByTestId('welcome-try-sample'));
+    await fireEvent.press(screen.getByTestId('welcome-try-sample'));
+
+    expect(reset).toHaveBeenCalledTimes(1);
+    expect(mockRouter.replace).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    [2, 'column'],
+    [1, 'row'],
+  ])('lays the three steps out for font scale %s as a %s', async (fontScale, direction) => {
+    const spy = jest
+      .spyOn(Dimensions, 'get')
+      .mockReturnValue({ width: 360, height: 800, scale: 3, fontScale });
+    await renderWelcome();
+
+    expect(screen.getByTestId('welcome-steps').props.style).toMatchObject({
+      flexDirection: direction,
+    });
+    spy.mockRestore();
   });
 });

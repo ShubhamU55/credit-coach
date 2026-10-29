@@ -1,5 +1,6 @@
 import { router } from 'expo-router';
-import { View } from 'react-native';
+import { useRef } from 'react';
+import { View, useWindowDimensions } from 'react-native';
 
 import { useDemoRepository } from '../../state/DemoRepositoryContext';
 import { PopButton, Screen, Text, cardFinish, color, fontFamily, shadow, space } from '../../ui';
@@ -15,6 +16,9 @@ const hidden = {
   accessibilityElementsHidden: true,
   importantForAccessibility: 'no-hide-descendants',
 } as const;
+
+/** Past this font scale the three steps stack, so their labels are never squeezed or clipped. */
+const STACK_FONT_SCALE = 1.3;
 
 const CARD_WIDTH = 220;
 const CARD_HEIGHT = 136;
@@ -89,7 +93,13 @@ function CardStack() {
 export function WelcomeScreen() {
   const repository = useDemoRepository();
 
+  const started = useRef(false);
+  const stackSteps = useWindowDimensions().fontScale > STACK_FONT_SCALE;
+
   function trySampleProfile() {
+    // A second tap while the first is navigating must not reset or navigate again.
+    if (started.current) return;
+    started.current = true;
     repository.reset();
     router.replace('/home');
   }
@@ -113,12 +123,15 @@ export function WelcomeScreen() {
             </Text>
           </Text>
         </View>
-        <View style={{ flexDirection: 'row', gap: space.grid }}>
+        <View
+          testID="welcome-steps"
+          style={{ flexDirection: stackSteps ? 'column' : 'row', gap: space.grid }}
+        >
           {STEPS.map((step) => (
             <View
               key={step.number}
               style={{
-                flex: 1,
+                flex: stackSteps ? undefined : 1,
                 gap: 4,
                 paddingTop: 8,
                 borderTopWidth: 2,

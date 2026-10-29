@@ -1,6 +1,16 @@
 import { DEMO_TODAY } from '../../demo/config';
 import { createDemoRepository } from '../../demo/repository';
-import { buildHomeModel, initialsOf, toEngineCards } from './adapter';
+import { planPayments } from '@credit-coach/engine';
+
+import {
+  NOTHING_TO_PAY_TEXT,
+  NO_CARDS_TEXT,
+  buildHomeModel,
+  dateParts,
+  initialsOf,
+  toEngineCards,
+  toEngineRules,
+} from './adapter';
 
 function aaravModel(mutate?: (repository: ReturnType<typeof createDemoRepository>) => void) {
   const repository = createDemoRepository();
@@ -60,12 +70,14 @@ describe('buildHomeModel with the Aarav sample profile', () => {
       ['HDFC Millennia', '₹70,490', '4', 'Nov'],
     ]);
     expect(model.comingUp[0].reason).toBe('Pay the minimum · 81.0% → 77.3%');
-    expect(model.stepsTotal).toBe(5);
+    expect(model.planItemCount).toBe(5);
+    expect(model.stepsTotal).toBe(3);
     expect(model.stepsDone).toBe(0);
   });
 
   it('gives a score range with and without the plan, never one number', () => {
     const { score } = aaravModel();
+    if (!score) throw new Error('expected a score');
 
     expect(score.range).toBe('708–736');
     expect(score.withPlanRange).toBe('724–752');
@@ -74,12 +86,23 @@ describe('buildHomeModel with the Aarav sample profile', () => {
     expect(score.band).toBe('Good');
   });
 
-  it('counts a recorded payment as a done step and keeps the plan recomputed', () => {
+  it('does not count a minimum-only payment as a done step while the hero still asks for more', () => {
     const model = aaravModel((repository) => repository.recordPayment('axis-neo', 620, DEMO_TODAY));
 
-    expect(model.stepsDone).toBe(1);
+    expect(model.stepsDone).toBe(0);
+    expect(model.stepsTotal).toBe(3);
     expect(model.hero?.amount).toBe('₹11,780');
     expect(model.hero?.cardName).toBe('Axis Neo');
+  });
+
+  it('counts a card as one done step once its whole payment is made', () => {
+    const model = aaravModel((repository) =>
+      repository.recordPayment('axis-neo', 12400, DEMO_TODAY),
+    );
+
+    expect(model.stepsDone).toBe(1);
+    expect(model.stepsTotal).toBe(3);
+    expect(model.hero?.cardName).toBe('SBI SimplyClick');
   });
 
   it('has no hero once every card is cleared', () => {
@@ -91,6 +114,8 @@ describe('buildHomeModel with the Aarav sample profile', () => {
 
     expect(model.hero).toBeNull();
     expect(model.comingUp).toEqual([]);
+    expect(model.nothingToDo).toBe(NOTHING_TO_PAY_TEXT);
+    expect(model.nothingToDo).not.toMatch(/cash|left over|leftover/i);
   });
 });
 
@@ -122,9 +147,102 @@ describe('cards without a usable limit (PRD 5.2)', () => {
   });
 });
 
+describe('the hero is one payment (F6)', () => {
+  it('takes date, amount and sentence from the same items under weekly_current', () => {
+    const repository = createDemoRepository();
+    const rules = { ...repository.getRules(), reportingBasis: 'weekly_current' as const };
+    const cards = repository.listCards();
+    const plan = planPayments({
+      cards: toEngineCards(cards),
+      cash: repository.getProfile().cashForCards,
+      today: DEMO_TODAY,
+      rules: toEngineRules(rules),
+    });
+    const first = [...plan.items].sort((a, b) => a.payBy.localeCompare(b.payBy))[0];
+    const sameDate = plan.items.filter((i) => i.cardId === first.cardId && i.payBy === first.payBy);
+    const sum = sameDate.reduce((total, i) => total + i.amount, 0);
+
+    const model = buildHomeModel({
+      profile: repository.getProfile(),
+      cards,
+      rules,
+      payments: [],
+      today: DEMO_TODAY,
+    });
+
+    expect(model.hero?.cardId).toBe(first.cardId);
+    expect(model.hero?.dueChip).toContain(dateParts(first.payBy).date);
+    if (first.kind === 'prepay') {
+      expect(model.hero?.amount).toBe(`₹${sum.toLocaleString('en-IN')}`);
+      expect(model.hero?.clearsStatement).toBe(false);
+    }
+    expect(sameDate.length).toBeGreaterThan(0);
+  });
+});
+
+describe('cards with an unknown due date (F1)', () => {
+  it('shows "due date unknown" and invents no date when dueDay is null but a balance is owed', () => {
+    const repository = createDemoRepository();
+    const cards = repository
+      .listCards()
+      .map((c) => (c.id === 'hdfc-millennia' ? { ...c, dueDay: null } : c));
+
+    const model = buildHomeModel({
+      profile: repository.getProfile(),
+      cards,
+      rules: repository.getRules(),
+      payments: [],
+      today: DEMO_TODAY,
+    });
+
+    expect(model.cards[0].line).toBe('₹81,000 / ₹1,00,000 · due date unknown · statement 15 Nov');
+  });
+});
+
+describe('no card with a usable limit (F2, F3)', () => {
+  const emptyModel = (cards: Parameters<typeof buildHomeModel>[0]['cards']) => {
+    const repository = createDemoRepository();
+    return buildHomeModel({
+      profile: repository.getProfile(),
+      cards,
+      rules: repository.getRules(),
+      payments: [],
+      today: DEMO_TODAY,
+    });
+  };
+
+  it('builds no score estimate from nothing', () => {
+    expect(emptyModel([]).score).toBeNull();
+    const allZero = createDemoRepository()
+      .listCards()
+      .map((c) => ({ ...c, limit: 0 }));
+    expect(emptyModel(allZero).score).toBeNull();
+    expect(emptyModel(allZero).overall).toBeNull();
+  });
+
+  it('uses its own empty copy, with no cash or leftover wording', () => {
+    const model = emptyModel([]);
+
+    expect(model.hasCards).toBe(false);
+    expect(model.hero).toBeNull();
+    expect(model.nothingToDo).toBe(NO_CARDS_TEXT);
+    expect(model.nothingToDo).not.toMatch(/cash|left over|leftover|cycle/i);
+  });
+});
+
+describe('dateParts', () => {
+  it('splits a short date into day name, date and month', () => {
+    expect(dateParts('2026-10-22')).toEqual({ day: 'Thu', date: '22', month: 'Oct' });
+    expect(dateParts('2026-11-04')).toEqual({ day: 'Wed', date: '4', month: 'Nov' });
+  });
+});
+
 describe('initialsOf', () => {
   it('takes the first letters of the first two words and ignores the sample tag', () => {
     expect(initialsOf('Aarav Mehta (sample)')).toBe('AM');
     expect(initialsOf('Priya')).toBe('P');
+    expect(initialsOf('')).toBe('?');
+    expect(initialsOf('(sample)')).toBe('?');
+    expect(initialsOf('𠮷田 太郎')).toBe('𠮷太');
   });
 });
