@@ -83,6 +83,27 @@ describe('WelcomeScreen', () => {
     expect(mockRouter.replace).toHaveBeenCalledTimes(1);
   });
 
+  it('shows an error and allows a retry when the reset throws', async () => {
+    const repository = createDemoRepository();
+    const reset = jest.spyOn(repository, 'reset').mockImplementationOnce(() => {
+      throw new Error('boom');
+    });
+    await renderWelcome(repository);
+
+    await fireEvent.press(screen.getByTestId('welcome-try-sample'));
+
+    expect(screen.getByTestId('welcome-error')).toHaveTextContent(
+      'Could not load the sample profile. Try again.',
+    );
+    expect(mockRouter.replace).not.toHaveBeenCalled();
+
+    await fireEvent.press(screen.getByTestId('welcome-try-sample'));
+
+    expect(reset).toHaveBeenCalledTimes(2);
+    expect(mockRouter.replace).toHaveBeenCalledWith('/home');
+    expect(screen.queryByTestId('welcome-error')).toBeNull();
+  });
+
   it.each([
     [2, 'column'],
     [1, 'row'],

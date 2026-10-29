@@ -46,8 +46,10 @@ export interface HeroModel {
   cardName: string;
   finish: CardFinish;
   dueChip: string;
-  /** The bold date in the sentence, for example `Thu, 22 Oct`. */
+  /** The bold date in the sentence, for example `Thu, 22 Oct`; `Due date unknown` when none is known. */
   dateText: string;
+  /** True when the card has no due date on file: no "By <date>" is shown (PRD F1). */
+  dateUnknown: boolean;
   /** The sentence between the bold date and the bold ending, starting with " — ". */
   middleText: string;
   /** The bold ending, for example `zero interest.`; empty when there is none. */
@@ -73,6 +75,8 @@ export interface HomeModel {
   threshold: number;
   overall: { pct: number; outstanding: number; limit: number } | null;
   overallAfter: number | null;
+  /** The utilization tile, already formatted. */
+  utilTile: { value: string; over: boolean; caption: string; delta: string | undefined };
   cards: CardTileModel[];
   /** Cards with a zero or missing limit: left out of utilization and flagged (PRD 5.2). */
   excluded: { id: string; name: string }[];
@@ -102,6 +106,7 @@ const KIND_LABEL: Record<PlanItemKind, string> = {
   prepay: "Lower before it's reported",
 };
 
+export const DUE_UNKNOWN = 'due date unknown';
 export const NO_CARDS_TEXT = 'Add a card with a limit to see your plan.';
 export const NOTHING_TO_PAY_TEXT = 'Nothing left to pay right now.';
 export const NO_ESTIMATE_TEXT = 'Add a card with a limit to see an estimate.';
@@ -159,14 +164,14 @@ const dayAndMonth = (iso: IsoDate): string => {
   return `${date} ${month}`;
 };
 
-function reasonLine(item: PlanItem): string {
+function reasonLine(item: PlanItem, dateUnknown: boolean): string {
   const label = KIND_LABEL[item.kind];
   if (item.utilizationBefore === null || item.utilizationAfter === null) return label;
   const change = formatBeforeAfter(
     formatPercent(item.utilizationBefore),
     formatPercent(item.utilizationAfter),
   );
-  return `${label} · ${change}`;
+  return dateUnknown ? `${label} · ${DUE_UNKNOWN} · ${change}` : `${label} · ${change}`;
 }
 
 /**
@@ -179,8 +184,13 @@ function buildHero(
   engineCards: readonly Card[],
   finishById: ReadonlyMap<string, CardFinish>,
   today: IsoDate,
+  isUnknown: (item: PlanItem) => boolean,
 ): { hero: HeroModel; heroItems: Set<PlanItem> } | null {
-  const first = [...items].sort((a, b) => a.payBy.localeCompare(b.payBy))[0];
+  // An owed payment with no known due date comes first (it is the one we cannot schedule), then
+  // the earliest pay-by date.
+  const first = [...items].sort(
+    (a, b) => Number(isUnknown(b)) - Number(isUnknown(a)) || a.payBy.localeCompare(b.payBy),
+  )[0];
   if (!first) return null;
   const card = engineCards.find((c) => c.id === first.cardId);
   if (!card) return null;
@@ -193,7 +203,8 @@ function buildHero(
   const clearsStatement =
     paysStatement && cycle.remainingStatement > 0 && planned >= cycle.remainingStatement;
   const amount = clearsStatement ? cycle.remainingStatement : planned;
-  const dateText = formatShortDate(first.payBy);
+  const dateUnknown = isUnknown(first);
+  const dateText = dateUnknown ? 'Due date unknown' : formatShortDate(first.payBy);
   const paysMinimum = [...heroItems].some(
     (item) =>
       item.kind === 'minimum' || item.kind === 'overdue_minimum' || item.kind === 'statement',
@@ -208,8 +219,9 @@ function buildHero(
       cardId: card.id,
       cardName: card.name,
       finish: finishById.get(card.id) ?? 'graphite',
-      dueChip: `BY ${dateText.toUpperCase()}`,
+      dueChip: dateUnknown ? 'DUE DATE UNKNOWN' : `BY ${dateText.toUpperCase()}`,
       dateText,
+      dateUnknown,
       middleText: clearsStatement
         ? ' — clears your full statement, so '
         : ` — ${first.reason.text}`,
@@ -254,7 +266,7 @@ function estimate(input: HomeModelInput, overallPct: number, maxPct: number, ope
 }
 
 /** The midpoint of a score range as a percent of the 300-900 scale. */
-function scalePercent(low: number, high: number): number {
+export function scalePercent(low: number, high: number): number {
   const percent = ((low + high) / 2 - 300) / 6;
   return Math.min(100, Math.max(0, Math.round(percent * 10) / 10));
 }
@@ -278,16 +290,21 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
   const hasCards = counted.length > 0;
 
   const overallPct = overallUtilization(counted);
-  const heroResult = buildHero(plan.items, engineCards, finishById, today);
+  // A card with no due day on file gets a stand-in day for the engine; its minimum and statement
+  // dates are not real and must never be shown.
+  const unknownDueIds = new Set(input.cards.filter((c) => c.dueDay === null).map((c) => c.id));
+  const isUnknown = (item: PlanItem) => unknownDueIds.has(item.cardId) && item.kind !== 'prepay';
+  const heroResult = buildHero(plan.items, engineCards, finishById, today, isUnknown);
   const comingUp = plan.items
     .filter((item) => !heroResult?.heroItems.has(item))
     .slice(0, 2)
     .map((item): DateBlockItem => {
       const card = engineCards.find((c) => c.id === item.cardId);
+      const unknown = isUnknown(item);
       return {
-        ...dateParts(item.payBy),
+        ...(unknown ? { day: '—', date: '?', month: '—' } : dateParts(item.payBy)),
         title: card?.name ?? item.cardId,
-        reason: reasonLine(item),
+        reason: reasonLine(item, unknown),
         amount: formatINR(item.amount),
       };
     });
@@ -320,6 +337,20 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
     payments.map((p) => p.cardId).filter((cardId) => !planCardIds.has(cardId)),
   );
 
+  const overallAfter = plan.items.length > 0 ? plan.overallUtilizationAfter : null;
+  const utilTile = {
+    value: overallPct === null ? '—' : formatPercent(overallPct),
+    over: overallPct !== null && overallPct > rules.thresholdPct,
+    caption:
+      overallPct === null
+        ? 'No card with a limit yet'
+        : `${formatINR(counted.reduce((s, c) => s + c.outstanding, 0))} of ${formatINR(counted.reduce((s, c) => s + c.limit, 0))} · target ${rules.thresholdPct}%`,
+    delta:
+      overallPct !== null && overallAfter !== null && overallAfter < overallPct
+        ? `↓ ${formatPercent(overallAfter)} after plan`
+        : undefined,
+  };
+
   let nothingToDo: string | null = null;
   if (plan.items.length === 0) nothingToDo = hasCards ? NOTHING_TO_PAY_TEXT : NO_CARDS_TEXT;
 
@@ -336,7 +367,8 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
             outstanding: counted.reduce((sum, c) => sum + c.outstanding, 0),
             limit: counted.reduce((sum, c) => sum + c.limit, 0),
           },
-    overallAfter: plan.items.length > 0 ? plan.overallUtilizationAfter : null,
+    overallAfter,
+    utilTile,
     cards: counted.map((c) => ({
       id: c.id,
       name: c.name,

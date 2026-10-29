@@ -1,13 +1,20 @@
+import {
+  formatINR,
+  formatScoreRange,
+  formatShortDate,
+  planPayments,
+  predictScore,
+} from '@credit-coach/engine';
+
 import { DEMO_TODAY } from '../../demo/config';
 import { createDemoRepository } from '../../demo/repository';
-import { planPayments } from '@credit-coach/engine';
-
 import {
   NOTHING_TO_PAY_TEXT,
   NO_CARDS_TEXT,
   buildHomeModel,
   dateParts,
   initialsOf,
+  scalePercent,
   toEngineCards,
   toEngineRules,
 } from './adapter';
@@ -147,36 +154,137 @@ describe('cards without a usable limit (PRD 5.2)', () => {
   });
 });
 
-describe('the hero is one payment (F6)', () => {
-  it('takes date, amount and sentence from the same items under weekly_current', () => {
+function payOff(repository: ReturnType<typeof createDemoRepository>, ids: string[]) {
+  repository.listCards().forEach((card) => {
+    if (ids.includes(card.id)) repository.recordPayment(card.id, card.outstanding, DEMO_TODAY);
+  });
+}
+
+describe.each(['statement', 'weekly_current'] as const)(
+  'a prepay-first hero is one payment under %s (F6)',
+  (reportingBasis) => {
+    it('takes date, amount and sentence from the prepay alone, with no minimum claimed', () => {
+      const repository = createDemoRepository();
+      payOff(repository, ['axis-neo', 'hdfc-millennia']);
+      const rules = { ...repository.getRules(), reportingBasis };
+      const cards = repository.listCards();
+      const profile = repository.getProfile();
+      const plan = planPayments({
+        cards: toEngineCards(cards),
+        cash: profile.cashForCards,
+        today: DEMO_TODAY,
+        rules: toEngineRules(rules),
+      });
+      const model = buildHomeModel({ profile, cards, rules, payments: [], today: DEMO_TODAY });
+      const [item] = plan.items;
+
+      expect(plan.items).toHaveLength(1);
+      expect(item.kind).toBe('prepay');
+      expect(model.hero).toEqual({
+        cardId: 'sbi-simplyclick',
+        cardName: 'SBI SimplyClick',
+        finish: 'navy',
+        dueChip: `BY ${formatShortDate(item.payBy).toUpperCase()}`,
+        dateText: formatShortDate(item.payBy),
+        dateUnknown: false,
+        middleText: ` — ${item.reason.text}`,
+        emphasisText: '',
+        amount: formatINR(item.amount),
+        clearsStatement: false,
+        minimumLine: 'No minimum is due on this payment.',
+      });
+    });
+  },
+);
+
+describe('the hero under weekly_current with the Aarav plan (F6)', () => {
+  it('uses the earliest pay-by date and only that card and date for the amount', () => {
     const repository = createDemoRepository();
     const rules = { ...repository.getRules(), reportingBasis: 'weekly_current' as const };
-    const cards = repository.listCards();
-    const plan = planPayments({
-      cards: toEngineCards(cards),
-      cash: repository.getProfile().cashForCards,
-      today: DEMO_TODAY,
-      rules: toEngineRules(rules),
-    });
-    const first = [...plan.items].sort((a, b) => a.payBy.localeCompare(b.payBy))[0];
-    const sameDate = plan.items.filter((i) => i.cardId === first.cardId && i.payBy === first.payBy);
-    const sum = sameDate.reduce((total, i) => total + i.amount, 0);
 
     const model = buildHomeModel({
       profile: repository.getProfile(),
-      cards,
+      cards: repository.listCards(),
       rules,
       payments: [],
       today: DEMO_TODAY,
     });
 
-    expect(model.hero?.cardId).toBe(first.cardId);
-    expect(model.hero?.dueChip).toContain(dateParts(first.payBy).date);
-    if (first.kind === 'prepay') {
-      expect(model.hero?.amount).toBe(`₹${sum.toLocaleString('en-IN')}`);
-      expect(model.hero?.clearsStatement).toBe(false);
-    }
-    expect(sameDate.length).toBeGreaterThan(0);
+    expect(model.hero?.cardId).toBe('axis-neo');
+    expect(model.hero?.dueChip).toBe('BY THU, 22 OCT');
+    expect(model.hero?.amount).toBe('₹12,400');
+    expect(model.hero?.clearsStatement).toBe(true);
+  });
+});
+
+describe('utilization tile and score edges', () => {
+  it('has no "after plan" delta when the plan does not lower utilization', () => {
+    const repository = createDemoRepository();
+    const profile = { ...repository.getProfile(), cashForCards: 100 };
+
+    const model = buildHomeModel({
+      profile,
+      cards: repository.listCards(),
+      rules: repository.getRules(),
+      payments: [],
+      today: DEMO_TODAY,
+    });
+
+    expect(model.overallAfter).toBe(45);
+    expect(model.utilTile.delta).toBeUndefined();
+    expect(model.utilTile.value).toBe('45.0%');
+    expect(model.utilTile.over).toBe(true);
+    expect(model.utilTile.caption).toBe('₹1,35,000 of ₹3,00,000 · target 30%');
+  });
+
+  it('has no with-plan range when cards exist but the plan is empty', () => {
+    const model = aaravModel((repository) =>
+      payOff(repository, ['axis-neo', 'hdfc-millennia', 'sbi-simplyclick']),
+    );
+
+    expect(model.hasCards).toBe(true);
+    expect(model.score?.withPlanRange).toBeNull();
+    expect(model.utilTile.delta).toBeUndefined();
+  });
+
+  it('clamps the scale position to 0 and 100', () => {
+    expect(scalePercent(300, 300)).toBe(0);
+    expect(scalePercent(100, 200)).toBe(0);
+    expect(scalePercent(900, 900)).toBe(100);
+    expect(scalePercent(950, 990)).toBe(100);
+  });
+
+  it.each([300, 900])('names the zone the engine gives for an anchor of %s', (anchorScore) => {
+    const repository = createDemoRepository();
+    const profile = repository.getProfile();
+    profile.history.anchorScore = anchorScore;
+    const history = profile.history;
+
+    const model = buildHomeModel({
+      profile,
+      cards: repository.listCards(),
+      rules: repository.getRules(),
+      payments: [],
+      today: DEMO_TODAY,
+    });
+    const expected = predictScore({
+      anchor: { score: anchorScore, date: history.anchorDate },
+      today: DEMO_TODAY,
+      onTimePayments: history.monthsWithZeroMissed,
+      missedPayments: history.missedPayments,
+      overallUtilizationPct: 45,
+      maxCardUtilizationPct: 81,
+      hardInquiries6m: history.hardInquiries6m,
+      hardInquiries12m: history.hardInquiries12m,
+      oldestAccountMonths: history.oldestAccountMonths,
+      openAccounts: 3,
+      securedAccounts: history.securedAccounts,
+      unsecuredAccounts: history.unsecuredAccounts,
+    });
+
+    expect(model.score?.band).toBe(expected.band);
+    expect(model.score?.band).not.toBe('Good');
+    expect(model.score?.range).toBe(formatScoreRange(expected.low, expected.high));
   });
 });
 
@@ -196,6 +304,70 @@ describe('cards with an unknown due date (F1)', () => {
     });
 
     expect(model.cards[0].line).toBe('₹81,000 / ₹1,00,000 · due date unknown · statement 15 Nov');
+  });
+});
+
+describe('a card with no due day never gets an invented date (F1)', () => {
+  function withNullDue(...ids: string[]) {
+    const repository = createDemoRepository();
+    const cards = repository
+      .listCards()
+      .map((c) => (ids.includes(c.id) ? { ...c, dueDay: null } : c));
+    return buildHomeModel({
+      profile: repository.getProfile(),
+      cards,
+      rules: repository.getRules(),
+      payments: [],
+      today: DEMO_TODAY,
+    });
+  }
+
+  it('says the due date is unknown in the hero when that card is the next payment', () => {
+    const model = withNullDue('axis-neo');
+
+    expect(model.hero?.cardId).toBe('axis-neo');
+    expect(model.hero?.dueChip).toBe('DUE DATE UNKNOWN');
+    expect(model.hero?.dateUnknown).toBe(true);
+    expect(model.hero?.dateText).toBe('Due date unknown');
+  });
+
+  it('says it in Coming up too, with no date block filled in', () => {
+    const model = withNullDue('axis-neo', 'hdfc-millennia');
+
+    expect(model.comingUp).toEqual([
+      {
+        day: '—',
+        date: '?',
+        month: '—',
+        title: 'HDFC Millennia',
+        reason: 'Pay the minimum · due date unknown · 81.0% → 77.3%',
+        amount: '₹3,710',
+      },
+      {
+        day: '—',
+        date: '?',
+        month: '—',
+        title: 'HDFC Millennia',
+        reason: 'Clear the statement · due date unknown · 77.3% → 6.8%',
+        amount: '₹70,490',
+      },
+    ]);
+  });
+
+  it('keeps the Aarav output unchanged: SBI has no due day and owes nothing', () => {
+    const model = aaravModel();
+
+    expect(model.planItemCount).toBe(5);
+    expect(model.hero?.dueChip).toBe('BY THU, 22 OCT');
+    expect(model.comingUp.every((i) => i.date !== '?')).toBe(true);
+    expect(model.cards[1].line).toContain('nothing due');
+  });
+
+  it('does not mark a prepay as having an unknown date', () => {
+    const model = withNullDue('sbi-simplyclick');
+
+    expect(model.hero?.dueChip).toBe('BY THU, 22 OCT');
+    expect(model.planItemCount).toBe(5);
   });
 });
 

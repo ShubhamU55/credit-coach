@@ -1,4 +1,4 @@
-import { AccessibilityInfo, Dimensions } from 'react-native';
+import { Dimensions } from 'react-native';
 import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import { router } from 'expo-router';
 
@@ -63,8 +63,10 @@ describe('HomeScreen with the Aarav sample profile', () => {
     expect(hero.getByText('₹12,400')).toBeTruthy();
     expect(hero.getByText('BY THU, 22 OCT')).toBeTruthy();
     expect(hero.getByText('₹620 of it is your minimum.')).toBeTruthy();
-    expect(hero.getByText(/clears your full statement/)).toBeTruthy();
-    expect(hero.getByText(/THIS MONTH'S PLAN · 0 of 3 done/)).toBeTruthy();
+    expect(
+      hero.getByText('By Thu, 22 Oct — clears your full statement, so zero interest.'),
+    ).toBeTruthy();
+    expect(hero.getByText("THIS MONTH'S PLAN · 0 of 3 done")).toBeTruthy();
   });
 
   it('lists the three cards with colour-coded utilization and words', async () => {
@@ -178,7 +180,7 @@ describe('HomeScreen state changes', () => {
 
     await act(async () => repository.recordPayment('axis-neo', 12400, DEMO_TODAY));
 
-    expect(await screen.findByText(/THIS MONTH'S PLAN · 1 of 3 done/)).toBeTruthy();
+    expect(await screen.findByText("THIS MONTH'S PLAN · 1 of 3 done")).toBeTruthy();
     expect(within(screen.getByTestId('home-card-axis-neo')).getByText('4.0%')).toBeTruthy();
   });
 
@@ -217,7 +219,7 @@ describe('HomeScreen state changes', () => {
 
     await act(async () => repository.recordPayment('axis-neo', 620, DEMO_TODAY));
 
-    expect(await screen.findByText(/THIS MONTH'S PLAN · 0 of 3 done/)).toBeTruthy();
+    expect(await screen.findByText("THIS MONTH'S PLAN · 0 of 3 done")).toBeTruthy();
     expect(within(screen.getByTestId('hero-card')).getByText('₹11,780')).toBeTruthy();
   });
 });
@@ -261,15 +263,33 @@ describe('HomeScreen controls that have no screen yet', () => {
     expect(screen.queryByRole('button', { name: /account settings/i })).toBeNull();
   });
 
-  it('says so when the Cards tab is pressed instead of staying silent', async () => {
-    const spy = jest.spyOn(AccessibilityInfo, 'announceForAccessibility').mockImplementation();
+  it('shows a visible alert when the Cards tab is pressed, and goes nowhere', async () => {
     await renderHome();
+    expect(screen.queryByTestId('home-cards-notice')).toBeNull();
 
     await fireEvent.press(screen.getByTestId('nav-tab-cards'));
 
-    expect(spy).toHaveBeenCalledWith('The Cards screen is not available yet.');
+    const notice = screen.getByTestId('home-cards-notice');
+    expect(notice).toHaveTextContent('The Cards screen is not available yet.');
+    expect(notice.props.accessibilityRole).toBe('alert');
     expect(mockRouter.push).not.toHaveBeenCalled();
-    spy.mockRestore();
+  });
+
+  it('says the due date is unknown in the hero for a card with no due day', async () => {
+    const repository = createDemoRepository();
+    const seed = {
+      profile: repository.getProfile(),
+      rules: repository.getRules(),
+      cards: repository.listCards().map((c) => (c.id === 'axis-neo' ? { ...c, dueDay: null } : c)),
+    };
+    await renderHome(createDemoRepository(seed));
+
+    const hero = within(screen.getByTestId('hero-card'));
+    expect(hero.getByText('DUE DATE UNKNOWN')).toBeTruthy();
+    expect(
+      hero.getByText('Due date unknown — clears your full statement, so zero interest.'),
+    ).toBeTruthy();
+    expect(hero.queryByText(/By /)).toBeNull();
   });
 
   it('leaves the excluded-card note as plain text, not an alert', async () => {

@@ -1,9 +1,10 @@
 import { router } from 'expo-router';
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { View, useWindowDimensions } from 'react-native';
 
 import { useDemoRepository } from '../../state/DemoRepositoryContext';
-import { PopButton, Screen, Text, cardFinish, color, fontFamily, shadow, space } from '../../ui';
+import { PopButton, Screen, Text, cardFinish, color, shadow, space } from '../../ui';
+import { Italic, STACK_FONT_SCALE } from '../shared/headline';
 
 const STEPS = [
   { number: '01', label: 'Which card first' },
@@ -16,9 +17,6 @@ const hidden = {
   accessibilityElementsHidden: true,
   importantForAccessibility: 'no-hide-descendants',
 } as const;
-
-/** Past this font scale the three steps stack, so their labels are never squeezed or clipped. */
-const STACK_FONT_SCALE = 1.3;
 
 const CARD_WIDTH = 220;
 const CARD_HEIGHT = 136;
@@ -96,12 +94,20 @@ export function WelcomeScreen() {
   const started = useRef(false);
   const stackSteps = useWindowDimensions().fontScale > STACK_FONT_SCALE;
 
+  const [error, setError] = useState<string | null>(null);
+
   function trySampleProfile() {
     // A second tap while the first is navigating must not reset or navigate again.
     if (started.current) return;
     started.current = true;
-    repository.reset();
-    router.replace('/home');
+    try {
+      repository.reset();
+      router.replace('/home');
+      setError(null);
+    } catch {
+      started.current = false;
+      setError('Could not load the sample profile. Try again.');
+    }
   }
 
   return (
@@ -113,14 +119,7 @@ export function WelcomeScreen() {
           </Text>
           <CardStack />
           <Text variant="display">
-            Know exactly what to pay, where, and{' '}
-            <Text
-              variant="display"
-              accessibilityRole={undefined}
-              style={{ fontFamily: fontFamily.serifItalic }}
-            >
-              when.
-            </Text>
+            Know exactly what to pay, where, and <Italic variant="display">when.</Italic>
           </Text>
         </View>
         <View
@@ -154,6 +153,11 @@ export function WelcomeScreen() {
             onPress={trySampleProfile}
             testID="welcome-try-sample"
           />
+          {error ? (
+            <Text variant="caption" color="error" testID="welcome-error" accessibilityRole="alert">
+              {error}
+            </Text>
+          ) : null}
           <Text variant="caption" color="muted" style={{ textAlign: 'center' }}>
             No sign-up · 10 seconds
           </Text>

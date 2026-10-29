@@ -1,6 +1,5 @@
-import { formatINR, formatPercent } from '@credit-coach/engine';
 import { router } from 'expo-router';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { ScrollView, View, useWindowDimensions } from 'react-native';
 
 import { DEMO_TODAY } from '../../demo/config';
@@ -14,35 +13,23 @@ import {
   StatTile,
   Text,
   TextAction,
-  announce,
   color,
   fontFamily,
   space,
   type NavTab,
 } from '../../ui';
 import { NO_ESTIMATE_TEXT, buildHomeModel, type HeroModel } from './adapter';
+import { Italic, STACK_FONT_SCALE } from '../shared/headline';
 import { HomeHeader } from './HomeHeader';
-
-/** Past this font scale the two stat tiles stack, so a range never has to shrink or wrap. */
-const STACK_FONT_SCALE = 1.3;
 
 export const CARDS_UNAVAILABLE = 'The Cards screen is not available yet.';
 
 const bold = { fontFamily: fontFamily.sans800 } as const;
 
-/** The italic "so what" in a Fraunces headline (design.md 9). Not a second heading. */
-function Italic({ children }: { children: string }) {
-  return (
-    <Text variant="h1" accessibilityRole={undefined} style={{ fontFamily: fontFamily.serifItalic }}>
-      {children}
-    </Text>
-  );
-}
-
 function HeroSentence({ hero }: { hero: HeroModel }) {
   return (
     <>
-      {'By '}
+      {hero.dateUnknown ? null : 'By '}
       <Text variant="body" color="ink" style={bold}>
         {hero.dateText}
       </Text>
@@ -78,6 +65,7 @@ export function HomeScreen() {
     [profile, cards, rules, payments],
   );
 
+  const [cardsNotice, setCardsNotice] = useState(false);
   const stackTiles = useWindowDimensions().fontScale > STACK_FONT_SCALE;
   const openPlan = () => router.push('/plan');
   const openScore = () => router.push('/score');
@@ -85,14 +73,10 @@ export function HomeScreen() {
     // Home is already open. The Cards tab has no screen yet, so say so instead of staying silent.
     if (tab === 'plan') openPlan();
     if (tab === 'score') openScore();
-    if (tab === 'cards') announce(CARDS_UNAVAILABLE);
+    if (tab === 'cards') setCardsNotice(true);
   };
 
-  const { overall, score } = model;
-  const utilDelta =
-    overall && model.overallAfter !== null && model.overallAfter < overall.pct
-      ? `↓ ${formatPercent(model.overallAfter)} after plan`
-      : undefined;
+  const { score, utilTile } = model;
   const scoreDelta = score?.withPlanRange ? `↑ ${score.withPlanRange} with plan` : undefined;
 
   return (
@@ -143,16 +127,12 @@ export function HomeScreen() {
             <StatTile
               testID="home-stat-utilization"
               overline="UTILIZATION"
-              value={overall ? formatPercent(overall.pct) : '—'}
-              over={overall ? overall.pct > model.threshold : false}
-              barPercent={overall?.pct ?? 0}
+              value={utilTile.value}
+              over={utilTile.over}
+              barPercent={model.overall?.pct ?? 0}
               targetPercent={model.threshold}
-              caption={
-                overall
-                  ? `${formatINR(overall.outstanding)} of ${formatINR(overall.limit)} · target ${model.threshold}%`
-                  : 'No card with a limit yet'
-              }
-              delta={utilDelta}
+              caption={utilTile.caption}
+              delta={utilTile.delta}
               onPress={openPlan}
             />
           </View>
@@ -240,6 +220,24 @@ export function HomeScreen() {
           </View>
         ) : null}
       </Screen>
+      {cardsNotice ? (
+        <View
+          testID="home-cards-notice"
+          accessibilityRole="alert"
+          style={{
+            position: 'absolute',
+            left: 16,
+            right: 16,
+            bottom: 100,
+            padding: space.cardPad,
+            backgroundColor: color.surface,
+            borderWidth: 1,
+            borderColor: color.lineStrong,
+          }}
+        >
+          <Text variant="bodyS">{CARDS_UNAVAILABLE}</Text>
+        </View>
+      ) : null}
       <FloatingNav active="home" onNavigate={navigate} />
     </View>
   );
