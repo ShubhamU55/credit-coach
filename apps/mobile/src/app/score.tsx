@@ -1,14 +1,6 @@
-import { Link } from 'expo-router';
+import { ScoreScreen } from '../screens/score/ScoreScreen';
 
-import { StubScreen, stubTarget } from '../shell/StubScreen';
-
-// Stub: PD-10 replaces this body with the real Score screen; keep the `score-screen` testID.
+// The Score screen and its what-if views live in src/screens/score (PD-10). This route stays thin.
 export default function ScoreRoute() {
-  return (
-    <StubScreen title="Score" testID="score-screen">
-      <Link href="/home" testID="score-link-home" style={stubTarget}>
-        Back to Home
-      </Link>
-    </StubScreen>
-  );
+  return <ScoreScreen />;
 }

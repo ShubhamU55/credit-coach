@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "today": "2026-10-21",
+  "thresholdPct": 30,
+  "aimFor10": false,
+  "summaryCode": "all_within_threshold",
+  "items": [
+    {
+      "step": 1,
+      "kind": "minimum",
+      "card": "Axis Neo",
+      "amount": 620,
+      "payBy": "2026-10-22",
+      "reasonCode": "minimum_due_soon",
+      "utilizationBefore": 19.5,
+      "utilizationAfter": 18.7
+    },
+    {
+      "step": 2,
+      "kind": "minimum",
+      "card": "HDFC Millennia",
+      "amount": 3710,
+      "payBy": "2026-11-04",
+      "reasonCode": "minimum_due",
+      "utilizationBefore": 81,
+      "utilizationAfter": 77.3
+    },
+    {
+      "step": 3,
+      "kind": "statement",
+      "card": "Axis Neo",
+      "amount": 11780,
+      "payBy": "2026-10-22",
+      "reasonCode": "statement_full",
+      "utilizationBefore": 18.7,
+      "utilizationAfter": 4
+    },
+    {
+      "step": 4,
+      "kind": "statement",
+      "card": "HDFC Millennia",
+      "amount": 70490,
+      "payBy": "2026-11-04",
+      "reasonCode": "statement_full",
+      "utilizationBefore": 77.3,
+      "utilizationAfter": 6.8
+    },
+    {
+      "step": 5,
+      "kind": "prepay",
+      "card": "SBI SimplyClick",
+      "amount": 2400,
+      "payBy": "2026-10-24",
+      "reasonCode": "prepay_threshold",
+      "utilizationBefore": 32,
+      "utilizationAfter": 30
+    }
+  ],
+  "shortfalls": [],
+  "cashUsed": 89000,
+  "leftover": 31000,
+  "overallUtilizationBefore": 45,
+  "overallUtilizationAfter": 15.3,
+  "highestCardBefore": 81,
+  "highestCardAfter": 30,
+  "withinThreshold": true
+}

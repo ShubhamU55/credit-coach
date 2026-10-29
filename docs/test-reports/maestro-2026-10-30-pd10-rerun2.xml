@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<testsuites>
+  <testsuite name="Test Suite" device="ZD22299HZT" tests="4" failures="0" time="123.414" timestamp="2026-10-30T01:32:02">
+    <testcase id="kit-gallery" name="kit-gallery" classname="kit-gallery" file=".maestro\kit-gallery.yaml" time="77.131" timestamp="2026-10-30T01:32:02" status="SUCCESS"/>
+    <testcase id="onboarding-try-sample" name="onboarding-try-sample" classname="onboarding-try-sample" file=".maestro\onboarding-try-sample.yaml" time="13.869" timestamp="2026-10-30T01:33:19" status="SUCCESS"/>
+    <testcase id="score-whatif" name="score-whatif" classname="score-whatif" file=".maestro\score-whatif.yaml" time="29.342" timestamp="2026-10-30T01:33:33" status="SUCCESS"/>
+    <testcase id="smoke" name="smoke" classname="smoke" file=".maestro\smoke.yaml" time="3.019" timestamp="2026-10-30T01:34:02" status="SUCCESS"/>
+  </testsuite>
+</testsuites>

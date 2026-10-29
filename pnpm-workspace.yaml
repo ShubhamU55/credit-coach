@@ -1,6 +1,7 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+  - 'supabase'
   - '.claude/hooks'
 
 allowBuilds:
