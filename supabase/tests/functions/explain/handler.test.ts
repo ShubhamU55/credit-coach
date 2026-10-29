@@ -93,6 +93,8 @@ describe('explain handler: the AI path', () => {
     expect(MODEL).toBe('claude-haiku-4-5');
     expect(sent.max_tokens).toBeLessThanOrEqual(500);
     expect(sent.system).toContain('ONLY numbers');
+    // The instructions themselves must not teach the model a numeral the payload may lack.
+    expect(sent.system).not.toMatch(/\d/);
     expect(sent.messages).toHaveLength(1);
     expect(sent.messages[0].content).toContain(AARAV_TEMPLATE);
     expect(sent.messages[0].content).toContain(JSON.stringify(aarav));

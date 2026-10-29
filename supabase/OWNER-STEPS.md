@@ -101,6 +101,10 @@ the project's anon key (the app already sends it).
    the plan), `unusable_text`, `bad_reply`, `network`. The log never contains the key, the plan or
    the model's words.
 
+   If the call returns **401** before reaching the function, the gateway rejected the key: the function is deployed with
+   JWT verification on, and a newer non-JWT publishable key may not pass it. Use the legacy anon JWT key, or redeploy with
+   `pnpm exec supabase functions deploy explain --no-verify-jwt` (the function validates and caps its own input; the main
+   cost is that anyone who finds the URL can call it). The key behaviour is not confirmed against current Supabase docs.
 2. Bad input is refused: `curl ... --data '{"version":1}'` returns `400` with `{"error":"invalid_payload","field":"today"}`.
 3. Anonymous access: in the SQL editor, `select count(*) from public.sample_profiles;` is 3, and
    with only the anon key `GET /rest/v1/cards` must return `[]` or a permission error, never rows.
