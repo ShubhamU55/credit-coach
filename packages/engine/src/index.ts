@@ -74,3 +74,11 @@ export {
   payByFor,
 } from './reporting';
 export { planPayments } from './planner';
+export { buildExplainPayload, buildTemplateExplanation } from './explain';
+export type {
+  ExplainCard,
+  ExplainContext,
+  ExplainPayload,
+  ExplainPayloadItem,
+  ExplainPayloadShortfall,
+} from './explain';

@@ -1,0 +1,8 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<testsuites>
+  <testsuite name="Test Suite" device="Pixel_7" tests="3" failures="0" time="121.07" timestamp="2026-10-29T17:54:22">
+    <testcase id="kit-gallery" name="kit-gallery" classname="kit-gallery" file=".maestro\kit-gallery.yaml" time="85.217" timestamp="2026-10-29T17:54:22" status="SUCCESS"/>
+    <testcase id="onboarding-try-sample" name="onboarding-try-sample" classname="onboarding-try-sample" file=".maestro\onboarding-try-sample.yaml" time="29.486" timestamp="2026-10-29T17:55:47" status="SUCCESS"/>
+    <testcase id="smoke" name="smoke" classname="smoke" file=".maestro\smoke.yaml" time="6.282" timestamp="2026-10-29T17:56:16" status="SUCCESS"/>
+  </testsuite>
+</testsuites>
