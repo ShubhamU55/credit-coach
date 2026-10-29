@@ -150,3 +150,33 @@ Base: origin/main `2836b93`. Board: project 1 (ShubhamU55). Status option ids: R
 - 2026-10-29 late: PR #64 (PD-16 docs) MERGED by the owner. Issue #53 (PD-16) stays open until the final status update. Remaining: PD-8 evidence rerun + push + pr-review, PD-9/PD-10/PD-5 PRs (PD-10 report db5688b, PD-9 report 5716fe6 committed locally), PD-6, PD-15, final ledger PR.
 - 2026-10-30 00:30 IST: device evidence on the phone: PD-8 rerun PASS 3/3 (f5881e1, head a22235b), PD-9 PASS 4/4 (5716fe6, head 6471c8c), PD-10 PASS 4/4 (db5688b, head 020a88c). PD-5 (head 37427e8): arm64 build OK (C:\apk\pd5-37427e8-arm64.apk) but Maestro driver died 4 times (DeviceServerDiedException/UNAVAILABLE) with the phone awake on USB: no report; retry after the owner checks the phone for a dialog or replugs. #65 pushed at 60ea8eb (round 4 + evidence + main merges): needs pr-review on that head, then the owner merges. Then: rebase PD-9 and PD-10 onto main (their stack base is PD-8's old tip 25203a0; use `git rebase --onto origin/main 25203a0` and take PD-8's flow files), push and open PRs (#46, #47) with pr-body sections.
 - 2026-10-30 ~01:00 IST: PD-8 merged (#65, a5db311). PD-9 PR #68 (closes #46) and PD-10 PR #69 (closes #47) opened (rebased onto main; reports fbd3b39 / 364a750 valid). PD-5 is PR #67, advanced OUTSIDE this session (another session or the owner: merged main, committed its own device report c5932e9, and has uncommitted ReDoS/auth/grounding edits in cc-pd5): coordinator does NOT touch cc-pd5; no PD-5 evidence rerun from here unless the owner asks. Whole-product security review (PD-15 part) dispatched on main + the three branches.
+
+## FINAL (2026-10-30)
+
+State checked against git and `gh` on 2026-10-30; where this section and an earlier log line differ, this one wins.
+
+- **Merged to `main`:** PD-1, PD-2, PD-3, PD-4, PD-7 and PD-11 earlier; then #65 (PD-8, Welcome and Home), #67 (PD-5, backend schema, RLS and the explain function; merged by the owner outside this session), #68 (PD-9, Plan and Mark as paid), #69 (PD-10, Score, what-ifs and guard) and #64 (PD-16, submission docs).
+- **Open, not merged:** #70 (PD-15 hardening plus the PD-6 install guide). `pr-review` approved it in round 1 and it waits for the owner to merge. State at this commit: OPEN.
+- **Not shipped:** PD-13 reminders are parked (branch `feat/pd-13-reminders`, `cf916cd`). PD-12 (linking) and PD-14 (admin) were not built.
+- **`pr-review` as the Workflow:** #68 round 1 request-changes (sheet modal accessibility), round 2 approve. #69 round 1 request-changes (missing sample strip), round 2 approve, and a rerun on the merged head approve. #70 round 1 approve.
+- **Evidence:** every mobile PR has a physical-phone (moto g73 5G, arm64) Maestro report under `docs/test-reports`. The final all-ABI APK is 91,576,747 bytes, sha256 `337a6a61fabbf3e65a87f22d855b3dd8599d32fad3093583a09287142cd4b7e4` (`docs/test-reports/final-apk-2026-10-30.md`, lands with #70). PD-15 security review: no Critical finding.
+- **Owner steps still open:** `supabase db reset && supabase test db` has never been executed; set the Anthropic spend cap; check the proxy hop count; upload the APK with the submission.
+- **Known gaps:** the AI explanation is unreachable in the shipped app (the app does not sign in to Supabase, the function is not deployed, so the template is shown); no consent flow; the first full Maestro run on the final build was 4/6, then 6/6 (the kit-gallery cause is unproven); only the arm64 libraries were exercised on a device; the `demo-path.yaml` header still says "NOT YET RUN ON A DEVICE" (stale; changing it would force an evidence rerun); the `pr-reviewer` status is posted through the owner's own account (the harness flagged "Self-Approval" on #68 and #69; the review is a COMMENT kind); Sonar and CodeQL fixes on #67 (S8786 regexes; the mirrored `grounding.ts` is excluded from CPD in `sonar-project.properties`, an owner-read config) and a list edit in `.claude/hooks/tests/ci-config.test.mjs`.
+- **Rulings:** every ruling in every ledger, with its cost if wrong and a top five, is indexed in `docs/agent-runs/2026-10-30-rulings.md`.
+
+### Per-agent usage
+
+Figures exist for one agent only. The ledger recorded no other token counts, so none are given; "not recorded" is not zero.
+
+| Agent (id)                                   | Model        | Job                                                          | Tokens       |
+| -------------------------------------------- | ------------ | ------------------------------------------------------------ | ------------ |
+| afaa13530758fb04e                            | opus         | PD-1 implementer                                             | not recorded |
+| a4213384394a9d2ae                            | opus         | PD-2 implementer                                             | not recorded |
+| ac323292c210c6aab                            | sonnet       | PD-3 implementer                                             | not recorded |
+| ab9fb84c4d9831b18                            | sonnet       | PD-4 implementer                                             | not recorded |
+| aa546894e745247fa                            | not recorded | PD-4 evidence runner (first attempt died on a network error) | not recorded |
+| PD-4 evidence rerun runner (id not recorded) | not recorded | PD-4 evidence rerun, commit 8fcbda3                          | 96,530       |
+| ab6015fde59f817f3                            | sonnet       | PD-7 implementer                                             | not recorded |
+| ad987675cb51225d1                            | sonnet       | PD-7 finalize implementer                                    | not recorded |
+
+The reviewer, re-reviewer and PD-8 to PD-16 sessions are logged in this file and the per-ticket ledgers without figures.
