@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
-import { useMemo, useState } from 'react';
-import { ScrollView, View, useWindowDimensions } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
 
 import { DEMO_TODAY } from '../../demo/config';
 import { useCards, usePayments, useProfile, useRules } from '../../state/DemoRepositoryContext';
@@ -22,6 +22,8 @@ import { NO_ESTIMATE_TEXT, buildHomeModel, type HeroModel } from './adapter';
 import { Italic, STACK_FONT_SCALE } from '../shared/headline';
 import { HomeHeader } from './HomeHeader';
 
+const NOTICE_MS = 4000;
+
 export const CARDS_UNAVAILABLE = 'The Cards screen is not available yet.';
 
 const bold = { fontFamily: fontFamily.sans800 } as const;
@@ -29,7 +31,7 @@ const bold = { fontFamily: fontFamily.sans800 } as const;
 function HeroSentence({ hero }: { hero: HeroModel }) {
   return (
     <>
-      {hero.dateUnknown ? null : 'By '}
+      {hero.isDateUnknown ? null : 'By '}
       <Text variant="body" color="ink" style={bold}>
         {hero.dateText}
       </Text>
@@ -66,6 +68,11 @@ export function HomeScreen() {
   );
 
   const [cardsNotice, setCardsNotice] = useState(false);
+  useEffect(() => {
+    if (!cardsNotice) return undefined;
+    const timer = setTimeout(() => setCardsNotice(false), NOTICE_MS);
+    return () => clearTimeout(timer);
+  }, [cardsNotice]);
   const stackTiles = useWindowDimensions().fontScale > STACK_FONT_SCALE;
   const openPlan = () => router.push('/plan');
   const openScore = () => router.push('/score');
@@ -128,7 +135,7 @@ export function HomeScreen() {
               testID="home-stat-utilization"
               overline="UTILIZATION"
               value={utilTile.value}
-              over={utilTile.over}
+              over={utilTile.isOver}
               barPercent={model.overall?.pct ?? 0}
               targetPercent={model.threshold}
               caption={utilTile.caption}
@@ -221,14 +228,17 @@ export function HomeScreen() {
         ) : null}
       </Screen>
       {cardsNotice ? (
-        <View
+        <Pressable
           testID="home-cards-notice"
           accessibilityRole="alert"
+          accessibilityHint="Tap to dismiss"
+          onPress={() => setCardsNotice(false)}
           style={{
             position: 'absolute',
             left: 16,
             right: 16,
             bottom: 100,
+            minHeight: space.touch,
             padding: space.cardPad,
             backgroundColor: color.surface,
             borderWidth: 1,
@@ -236,7 +246,7 @@ export function HomeScreen() {
           }}
         >
           <Text variant="bodyS">{CARDS_UNAVAILABLE}</Text>
-        </View>
+        </Pressable>
       ) : null}
       <FloatingNav active="home" onNavigate={navigate} />
     </View>

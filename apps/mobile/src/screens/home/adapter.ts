@@ -49,13 +49,13 @@ export interface HeroModel {
   /** The bold date in the sentence, for example `Thu, 22 Oct`; `Due date unknown` when none is known. */
   dateText: string;
   /** True when the card has no due date on file: no "By <date>" is shown (PRD F1). */
-  dateUnknown: boolean;
+  isDateUnknown: boolean;
   /** The sentence between the bold date and the bold ending, starting with " — ". */
   middleText: string;
   /** The bold ending, for example `zero interest.`; empty when there is none. */
   emphasisText: string;
   amount: string;
-  clearsStatement: boolean;
+  isStatementCleared: boolean;
   minimumLine: string;
 }
 
@@ -76,7 +76,7 @@ export interface HomeModel {
   overall: { pct: number; outstanding: number; limit: number } | null;
   overallAfter: number | null;
   /** The utilization tile, already formatted. */
-  utilTile: { value: string; over: boolean; caption: string; delta: string | undefined };
+  utilTile: { value: string; isOver: boolean; caption: string; delta: string | undefined };
   cards: CardTileModel[];
   /** Cards with a zero or missing limit: left out of utilization and flagged (PRD 5.2). */
   excluded: { id: string; name: string }[];
@@ -156,6 +156,8 @@ export function toEngineRules(rules: DemoRules): CoachRules {
 /** `Thu, 22 Oct` to its `Thu`, `22` and `Oct`. */
 export function dateParts(iso: IsoDate): { day: string; date: string; month: string } {
   const [day, date, month] = formatShortDate(iso).split(/[, ]+/);
+  // formatShortDate throws on a bad date; this guards a format that stops matching `Thu, 22 Oct`.
+  if (!day || !date || !month) return { day: '—', date: '?', month: '—' };
   return { day, date, month };
 }
 
@@ -164,14 +166,14 @@ const dayAndMonth = (iso: IsoDate): string => {
   return `${date} ${month}`;
 };
 
-function reasonLine(item: PlanItem, dateUnknown: boolean): string {
+function reasonLine(item: PlanItem, isDateUnknown: boolean): string {
   const label = KIND_LABEL[item.kind];
   if (item.utilizationBefore === null || item.utilizationAfter === null) return label;
   const change = formatBeforeAfter(
     formatPercent(item.utilizationBefore),
     formatPercent(item.utilizationAfter),
   );
-  return dateUnknown ? `${label} · ${DUE_UNKNOWN} · ${change}` : `${label} · ${change}`;
+  return isDateUnknown ? `${label} · ${DUE_UNKNOWN} · ${change}` : `${label} · ${change}`;
 }
 
 /**
@@ -179,7 +181,32 @@ function reasonLine(item: PlanItem, dateUnknown: boolean): string {
  * for that card on that same date. The date, the amount and the sentence all come from that one
  * set, so a prepay's date is never mixed with another step's amount.
  */
-function buildHero(
+function missingCardHero(
+  first: PlanItem,
+  heroItems: Set<PlanItem>,
+  isDateUnknown: boolean,
+): { hero: HeroModel; heroItems: Set<PlanItem> } {
+  const dateText = isDateUnknown ? 'Due date unknown' : formatShortDate(first.payBy);
+  const amount = [...heroItems].reduce((sum, item) => sum + item.amount, 0);
+  return {
+    heroItems,
+    hero: {
+      cardId: first.cardId,
+      cardName: first.cardId,
+      finish: 'graphite',
+      dueChip: isDateUnknown ? 'DUE DATE UNKNOWN' : `BY ${dateText.toUpperCase()}`,
+      dateText,
+      isDateUnknown,
+      middleText: ` — ${first.reason.text}`,
+      emphasisText: '',
+      amount: formatINR(amount),
+      isStatementCleared: false,
+      minimumLine: 'No minimum is due on this payment.',
+    },
+  };
+}
+
+export function buildHero(
   items: readonly PlanItem[],
   engineCards: readonly Card[],
   finishById: ReadonlyMap<string, CardFinish>,
@@ -193,18 +220,20 @@ function buildHero(
   )[0];
   if (!first) return null;
   const card = engineCards.find((c) => c.id === first.cardId);
-  if (!card) return null;
-  const cycle = cardCycle(card, today);
   const heroItems = new Set(
     items.filter((item) => item.cardId === first.cardId && item.payBy === first.payBy),
   );
+  // A plan item whose card is missing from the list must still be shown as a payment, never hidden
+  // behind "all set": fall back to the card id as its name.
+  if (!card) return missingCardHero(first, heroItems, isUnknown(first));
+  const cycle = cardCycle(card, today);
   const planned = [...heroItems].reduce((sum, item) => sum + item.amount, 0);
   const paysStatement = [...heroItems].some((item) => item.kind === 'statement');
-  const clearsStatement =
+  const isStatementCleared =
     paysStatement && cycle.remainingStatement > 0 && planned >= cycle.remainingStatement;
-  const amount = clearsStatement ? cycle.remainingStatement : planned;
-  const dateUnknown = isUnknown(first);
-  const dateText = dateUnknown ? 'Due date unknown' : formatShortDate(first.payBy);
+  const amount = isStatementCleared ? cycle.remainingStatement : planned;
+  const isDateUnknown = isUnknown(first);
+  const dateText = isDateUnknown ? 'Due date unknown' : formatShortDate(first.payBy);
   const paysMinimum = [...heroItems].some(
     (item) =>
       item.kind === 'minimum' || item.kind === 'overdue_minimum' || item.kind === 'statement',
@@ -219,15 +248,15 @@ function buildHero(
       cardId: card.id,
       cardName: card.name,
       finish: finishById.get(card.id) ?? 'graphite',
-      dueChip: dateUnknown ? 'DUE DATE UNKNOWN' : `BY ${dateText.toUpperCase()}`,
+      dueChip: isDateUnknown ? 'DUE DATE UNKNOWN' : `BY ${dateText.toUpperCase()}`,
       dateText,
-      dateUnknown,
-      middleText: clearsStatement
+      isDateUnknown,
+      middleText: isStatementCleared
         ? ' — clears your full statement, so '
         : ` — ${first.reason.text}`,
-      emphasisText: clearsStatement ? 'zero interest.' : '',
+      emphasisText: isStatementCleared ? 'zero interest.' : '',
       amount: formatINR(amount),
-      clearsStatement,
+      isStatementCleared,
       minimumLine,
     },
   };
@@ -340,7 +369,7 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
   const overallAfter = plan.items.length > 0 ? plan.overallUtilizationAfter : null;
   const utilTile = {
     value: overallPct === null ? '—' : formatPercent(overallPct),
-    over: overallPct !== null && overallPct > rules.thresholdPct,
+    isOver: overallPct !== null && overallPct > rules.thresholdPct,
     caption:
       overallPct === null
         ? 'No card with a limit yet'

@@ -292,6 +292,45 @@ describe('HomeScreen controls that have no screen yet', () => {
     expect(hero.queryByText(/By /)).toBeNull();
   });
 
+  it('uses the plural note for several cards without a limit', async () => {
+    const repository = createDemoRepository();
+    const seed = {
+      profile: repository.getProfile(),
+      rules: repository.getRules(),
+      cards: repository
+        .listCards()
+        .map((c) => (c.id === 'axis-neo' || c.id === 'sbi-simplyclick' ? { ...c, limit: 0 } : c)),
+    };
+    await renderHome(createDemoRepository(seed));
+
+    expect(screen.getByTestId('home-excluded-note')).toHaveTextContent(
+      'SBI SimplyClick and Axis Neo have no credit limit on file, so they are left out of your utilization.',
+    );
+  });
+
+  it('dismisses the Cards notice after a few seconds', async () => {
+    jest.useFakeTimers();
+    await renderHome();
+    await fireEvent.press(screen.getByTestId('nav-tab-cards'));
+    expect(screen.getByTestId('home-cards-notice')).toBeTruthy();
+
+    await act(async () => {
+      jest.advanceTimersByTime(4100);
+    });
+
+    expect(screen.queryByTestId('home-cards-notice')).toBeNull();
+    jest.useRealTimers();
+  });
+
+  it('dismisses the Cards notice on tap', async () => {
+    await renderHome();
+    await fireEvent.press(screen.getByTestId('nav-tab-cards'));
+
+    await fireEvent.press(screen.getByTestId('home-cards-notice'));
+
+    expect(screen.queryByTestId('home-cards-notice')).toBeNull();
+  });
+
   it('leaves the excluded-card note as plain text, not an alert', async () => {
     const repository = createDemoRepository();
     const seed = {

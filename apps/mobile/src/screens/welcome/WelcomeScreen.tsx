@@ -104,8 +104,14 @@ export function WelcomeScreen() {
       repository.reset();
       router.replace('/home');
       setError(null);
-    } catch {
+    } catch (caught) {
       started.current = false;
+      // Reason only (the error name), never data.
+      if (__DEV__)
+        console.warn(
+          'welcome: try sample failed',
+          caught instanceof Error ? caught.name : 'unknown',
+        );
       setError('Could not load the sample profile. Try again.');
     }
   }

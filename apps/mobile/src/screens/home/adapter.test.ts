@@ -11,6 +11,7 @@ import { createDemoRepository } from '../../demo/repository';
 import {
   NOTHING_TO_PAY_TEXT,
   NO_CARDS_TEXT,
+  buildHero,
   buildHomeModel,
   dateParts,
   initialsOf,
@@ -66,7 +67,7 @@ describe('buildHomeModel with the Aarav sample profile', () => {
       emphasisText: 'zero interest.',
       minimumLine: '₹620 of it is your minimum.',
     });
-    expect(hero?.clearsStatement).toBe(true);
+    expect(hero?.isStatementCleared).toBe(true);
   });
 
   it('shows the next two steps other than the hero under Coming up', () => {
@@ -186,11 +187,11 @@ describe.each(['statement', 'weekly_current'] as const)(
         finish: 'navy',
         dueChip: `BY ${formatShortDate(item.payBy).toUpperCase()}`,
         dateText: formatShortDate(item.payBy),
-        dateUnknown: false,
+        isDateUnknown: false,
         middleText: ` — ${item.reason.text}`,
         emphasisText: '',
         amount: formatINR(item.amount),
-        clearsStatement: false,
+        isStatementCleared: false,
         minimumLine: 'No minimum is due on this payment.',
       });
     });
@@ -213,7 +214,7 @@ describe('the hero under weekly_current with the Aarav plan (F6)', () => {
     expect(model.hero?.cardId).toBe('axis-neo');
     expect(model.hero?.dueChip).toBe('BY THU, 22 OCT');
     expect(model.hero?.amount).toBe('₹12,400');
-    expect(model.hero?.clearsStatement).toBe(true);
+    expect(model.hero?.isStatementCleared).toBe(true);
   });
 });
 
@@ -233,7 +234,7 @@ describe('utilization tile and score edges', () => {
     expect(model.overallAfter).toBe(45);
     expect(model.utilTile.delta).toBeUndefined();
     expect(model.utilTile.value).toBe('45.0%');
-    expect(model.utilTile.over).toBe(true);
+    expect(model.utilTile.isOver).toBe(true);
     expect(model.utilTile.caption).toBe('₹1,35,000 of ₹3,00,000 · target 30%');
   });
 
@@ -327,7 +328,7 @@ describe('a card with no due day never gets an invented date (F1)', () => {
 
     expect(model.hero?.cardId).toBe('axis-neo');
     expect(model.hero?.dueChip).toBe('DUE DATE UNKNOWN');
-    expect(model.hero?.dateUnknown).toBe(true);
+    expect(model.hero?.isDateUnknown).toBe(true);
     expect(model.hero?.dateText).toBe('Due date unknown');
   });
 
@@ -399,6 +400,46 @@ describe('no card with a usable limit (F2, F3)', () => {
     expect(model.hero).toBeNull();
     expect(model.nothingToDo).toBe(NO_CARDS_TEXT);
     expect(model.nothingToDo).not.toMatch(/cash|left over|leftover|cycle/i);
+  });
+});
+
+describe('a plan item whose card is missing (never "all set")', () => {
+  it('still produces a hero named by the card id', () => {
+    const repository = createDemoRepository();
+    const plan = planPayments({
+      cards: toEngineCards(repository.listCards()),
+      cash: repository.getProfile().cashForCards,
+      today: DEMO_TODAY,
+      rules: toEngineRules(repository.getRules()),
+    });
+
+    const result = buildHero(plan.items, [], new Map(), DEMO_TODAY, () => false);
+
+    expect(result?.hero.cardName).toBe('axis-neo');
+    expect(result?.hero.amount).toBe('₹12,400');
+    expect(result?.hero.dueChip).toBe('BY THU, 22 OCT');
+    expect(result?.hero.isStatementCleared).toBe(false);
+  });
+});
+
+describe('a zero-limit card with a payment due', () => {
+  it('may still be the hero, while utilization leaves it out', () => {
+    const repository = createDemoRepository();
+    const cards = repository.listCards().map((c) => (c.id === 'axis-neo' ? { ...c, limit: 0 } : c));
+
+    const model = buildHomeModel({
+      profile: repository.getProfile(),
+      cards,
+      rules: repository.getRules(),
+      payments: [],
+      today: DEMO_TODAY,
+    });
+
+    // The money is still owed, so the payment is shown; the card is not counted in utilization.
+    expect(model.hero?.cardId).toBe('axis-neo');
+    expect(model.excluded.map((c) => c.id)).toEqual(['axis-neo']);
+    expect(model.cards.map((c) => c.id)).toEqual(['hdfc-millennia', 'sbi-simplyclick']);
+    expect(model.overall).toEqual({ pct: 54.3, outstanding: 119400, limit: 220000 });
   });
 });
 
