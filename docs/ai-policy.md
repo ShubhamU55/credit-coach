@@ -53,7 +53,7 @@ The PRD commits to the spirit of India's DPDP Act: consent, purpose limitation, 
 - Before branch protection, commits reached `main` directly, with no pull request and no required checks. That includes the AI configuration in `.claude/`. Since PR #1, every first-parent commit on `main` carries its pull request number, `(#N)`, which shows what was reviewed. The owner squash-merges, and `main` requires linear history, so there are no merge commits. Check any commit with `git log --first-parent origin/main`: a commit without a `(#N)` in its title did not go through a pull request.
 - "Every change goes through a pull request with CI green" is practice. GitHub does not yet enforce a pull request requirement, so the owner holds to it by hand.
 - Aim for pull requests of at most about 400 changed lines, and split larger work by ticket.
-- CI lives in `.github/workflows/`: verification, secret scanning, dependency audit, CodeQL, Sonar and the end-to-end evidence checks.
+- CI lives in `.github/workflows/`: verification, secret scanning, dependency audit, CodeQL, Sonar, the end-to-end evidence checks and the `pr-body` check, which requires a `pnpm verify` result and the AI-assisted disclosure in the pull request description.
 - `/pr-review` posts the agent review verdict, and a separate adversarial verifier must confirm a finding before it blocks. That verdict supports the owner's decision and does not replace it.
 - A change to agent configuration (`CLAUDE.md`, `.claude/`, the nested `AGENTS.md` files, `.github/`) gets the owner's own read of the diff before it merges, never on an agent verdict alone.
 - An agent reports a check as passing only if it ran the check in that session and read the output.
