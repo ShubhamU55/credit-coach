@@ -111,6 +111,14 @@ describe('buildPlanView timeline and shortfalls', () => {
     expect(v.timelineLabel).not.toContain('14 November');
   });
 
+  it('puts each lane payBy at the earliest open step date, chronologically', () => {
+    const v = view();
+    const iso = (name: string) => v.lanes.find((l) => l.cardName === name)?.payBy?.iso;
+    expect(iso('Axis Neo')).toBe('2026-10-22');
+    expect(iso('SBI SimplyClick')).toBe('2026-10-24');
+    expect(iso('HDFC Millennia')).toBe('2026-11-04');
+  });
+
   it('shows a shortfall instead of hiding it', () => {
     const v = view(createDemoRepository(), false, 1000);
     expect(v.shortfalls.length).toBeGreaterThan(0);

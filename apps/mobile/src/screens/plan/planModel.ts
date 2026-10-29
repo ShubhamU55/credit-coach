@@ -154,6 +154,11 @@ function payByLabel(payBy: IsoDate, today: IsoDate): string {
 }
 
 /** Earliest pay-by first, ties by step number. */
+/** ISO dates sort chronologically as plain strings; an explicit comparator keeps that order. */
+function compareIso(a: IsoDate, b: IsoDate): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 export function compareSteps(a: StepView, b: StepView): number {
   if (a.payBy !== b.payBy) return a.payBy < b.payBy ? -1 : 1;
   return a.step - b.step;
@@ -225,7 +230,7 @@ function buildLanes(
 ): LaneView[] {
   return cards.map((card) => {
     const open = steps.filter((s) => s.cardId === card.id && s.state !== 'paid');
-    const earliest = open.map((s) => s.payBy).sort()[0];
+    const earliest = open.map((s) => s.payBy).sort(compareIso)[0];
     const cycle = cardCycle(card, today);
     const lane: LaneView = {
       cardId: card.id,
