@@ -146,3 +146,46 @@ describe('buildExplainPayload', () => {
     expect(JSON.parse(JSON.stringify(payload))).toEqual(payload);
   });
 });
+
+describe('buildTemplateExplanation wording rules', () => {
+  const overdueAxis: Card = { ...AXIS, dueDay: 10 };
+
+  it('says "Pay the rest now" for an unfunded overdue minimum, with no due date', () => {
+    const plan = planPayments(input({ cards: [overdueAxis], cash: 100 }));
+
+    const text = buildTemplateExplanation(plan, [overdueAxis]);
+
+    expect(plan.shortfalls[0]?.kind).toBe('overdue_minimum');
+    expect(text).toContain('Pay the rest now.');
+    expect(text).not.toMatch(/Pay the rest by/);
+  });
+
+  it('uses overdue wording for an overdue minimum that is funded', () => {
+    const plan = planPayments(input({ cards: [overdueAxis], cash: 100000 }));
+
+    const text = buildTemplateExplanation(plan, [overdueAxis]);
+
+    expect(plan.items[0]?.kind).toBe('overdue_minimum');
+    expect(text).toMatch(/overdue/i);
+  });
+
+  it('only claims no interest when the statement is paid in full', () => {
+    const partial = planPayments(input({ cash: 5000 }));
+    const full = planPayments(input());
+
+    expect(partial.items.some((i) => i.reason.code === 'statement_partial')).toBe(true);
+    const partialText = buildTemplateExplanation(partial, CARDS);
+    expect(partialText).toContain('toward the statement');
+    expect(partialText).not.toContain('no interest');
+    expect(buildTemplateExplanation(full, CARDS)).toContain('no interest');
+  });
+
+  it('explains the aimFor10 Aarav plan with the SBI 26,400 prepay and 7,000 left over', () => {
+    const plan = planPayments(input({}, { aimFor10: true }));
+
+    const text = buildTemplateExplanation(plan, CARDS);
+
+    expect(text).toContain('₹26,400');
+    expect(text).toContain('₹7,000 is left over');
+  });
+});

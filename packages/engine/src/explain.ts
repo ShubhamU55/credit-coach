@@ -122,15 +122,22 @@ export function buildTemplateExplanation(plan: Plan, cards: readonly ExplainCard
 
   const minimums = plan.items.filter((i) => MINIMUM_KINDS.includes(i.kind));
   if (minimums.length > 0) {
+    const lead = minimums.some((i) => i.kind === 'overdue_minimum')
+      ? 'Overdue minimums come first'
+      : 'Minimums come first';
     sentences.push(
-      `Minimums come first: ${joinList(minimums.map((i) => pay(i)))}. A missed payment hurts your score the most.`,
+      `${lead}: ${joinList(minimums.map((i) => pay(i)))}. A missed payment hurts your score the most.`,
     );
   }
 
   const statements = plan.items.filter((i) => i.kind === 'statement');
   if (statements.length > 0) {
+    const allFull = statements.every((i) => i.reason.code === 'statement_full');
+    const list = joinList(statements.map((i) => pay(i)));
     sentences.push(
-      `Then the full statement: ${joinList(statements.map((i) => pay(i)))}. Paying it in full means no interest.`,
+      allFull
+        ? `Then the full statement: ${list}. Paying it in full means no interest.`
+        : `Then toward the statement: ${list}.`,
     );
   }
 
@@ -142,8 +149,12 @@ export function buildTemplateExplanation(plan: Plan, cards: readonly ExplainCard
   }
 
   for (const s of plan.shortfalls) {
+    const next =
+      s.kind === 'overdue_minimum'
+        ? 'Pay the rest now.'
+        : `Pay the rest by ${formatShortDate(s.dueDate)}.`;
     sentences.push(
-      `You are ${formatINR(s.shortfall)} short of the ${formatINR(s.required)} minimum on ${name(s.cardId)}. Pay the rest by ${formatShortDate(s.dueDate)}.`,
+      `You are ${formatINR(s.shortfall)} short of the ${formatINR(s.required)} minimum on ${name(s.cardId)}. ${next}`,
     );
   }
 
