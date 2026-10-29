@@ -1,0 +1,105 @@
+appId: com.creditcoach.app
+# Plan 4a task 11: walk the kit gallery section by section and take one screenshot of each, for the
+# visual review against docs/design.md. Needs a release build (pnpm --filter @credit-coach/mobile
+# android:release) with Metro stopped. Screenshots land in docs/test-reports/ui-kit/.
+#
+# Most sections are taller than one screen, so the flow scrolls to a small title anchor
+# (kit-<section>-title), which can be fully visible, then shoots once.
+# NOT YET RUN ON A DEVICE: the scroll distances and the screenshot base path need confirming.
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible:
+      id: 'welcome-screen'
+    timeout: 20000
+- openLink: creditcoach://kit
+- extendedWaitUntil:
+    visible:
+      id: 'kit-buttons-title'
+    timeout: 20000
+
+# Buttons
+- scrollUntilVisible:
+    element:
+      id: 'kit-buttons-title'
+- assertVisible:
+    id: 'kit-buttons-title'
+- scroll
+- takeScreenshot: kit-buttons-1
+
+# Form controls
+- scrollUntilVisible:
+    element:
+      id: 'kit-form-title'
+- assertVisible:
+    id: 'kit-form-title'
+- scroll
+- takeScreenshot: kit-form-1
+
+# Information blocks
+- scrollUntilVisible:
+    element:
+      id: 'kit-info-title'
+- assertVisible:
+    id: 'kit-info-title'
+- scroll
+- takeScreenshot: kit-info-1
+
+# Card surfaces
+- scrollUntilVisible:
+    element:
+      id: 'kit-cards-title'
+- assertVisible:
+    id: 'kit-cards-title'
+- scroll
+- takeScreenshot: kit-cards-1
+
+# Plan visuals
+- scrollUntilVisible:
+    element:
+      id: 'kit-plan-title'
+- assertVisible:
+    id: 'kit-plan-title'
+- scroll
+- takeScreenshot: kit-plan-1
+
+# Score visuals
+- scrollUntilVisible:
+    element:
+      id: 'kit-score-title'
+- assertVisible:
+    id: 'kit-score-title'
+- scroll
+- assertVisible:
+    id: 'kit-range-xl'
+    text: '708–736'
+- takeScreenshot: kit-score-1
+
+# App chrome
+- scrollUntilVisible:
+    element:
+      id: 'kit-chrome-title'
+    speed: 30
+    visibilityPercentage: 50
+- assertVisible:
+    id: 'kit-chrome-title'
+- scroll
+- takeScreenshot: kit-chrome-1
+
+# The bottom sheet: open it, check the fixed note, close it
+- scrollUntilVisible:
+    element:
+      id: 'kit-open-sheet'
+- tapOn:
+    id: 'kit-open-sheet'
+- assertVisible: 'MARK AS PAID'
+- assertVisible: 'This only records it here. Pay in your bank or UPI app.'
+- takeScreenshot: kit-chrome-sheet
+- tapOn: 'Close'
+- assertNotVisible: 'This only records it here. Pay in your bank or UPI app.'
+
+# The gallery ends with the fixed disclaimer (Screen always renders it last)
+- scrollUntilVisible:
+    element:
+      text: 'Estimates only. Not your official CIBIL score. Not financial advice.'

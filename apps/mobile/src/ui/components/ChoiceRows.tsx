@@ -47,7 +47,7 @@ function ChoiceRow<K extends string>({
   return (
     <Pressable
       accessibilityRole="radio"
-      accessibilityLabel={[option.label, option.sub, option.amount].filter(Boolean).join(', ')}
+      accessibilityLabel={[option.label, option.sub, option.amount].filter((part) => Boolean(part)).join(', ')}
       accessibilityState={{ checked: selected, disabled }}
       disabled={disabled}
       onPress={() => onChange(option.key)}

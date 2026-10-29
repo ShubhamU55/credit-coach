@@ -1,4 +1,5 @@
-import { AccessibilityInfo, Pressable, View } from 'react-native';
+import { Pressable, View } from 'react-native';
+import { announce } from '../primitives/announce';
 import { Text } from '../primitives/Text';
 import { usePressed } from '../primitives/usePressed';
 import { color, shadow, space } from '../theme';
@@ -42,7 +43,7 @@ export function SwitchRow({
   const toggle = () => {
     const next = !value;
     onValueChange(next);
-    AccessibilityInfo.announceForAccessibility(next ? captionOn : captionOff);
+    announce(next ? captionOn : captionOff);
   };
   return (
     <Pressable
