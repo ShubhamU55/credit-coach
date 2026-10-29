@@ -1,0 +1,86 @@
+appId: com.creditcoach.app
+# PD-15: the whole judge demo path, unaided, from a fresh install: Try sample -> Home -> Plan ->
+# Mark as paid -> Score. No typing, no sign-up. Needs a release build with Metro stopped.
+# The Score range after a recorded payment may differ from the sample range, so only its shape is asserted.
+# NOT YET RUN ON A DEVICE: an evidence runner records the report.
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible:
+      id: 'welcome-screen'
+    timeout: 20000
+- tapOn:
+    id: 'welcome-try-sample'
+- extendedWaitUntil:
+    visible:
+      id: 'home-screen'
+    timeout: 20000
+- assertVisible:
+    id: 'home-screen'
+- takeScreenshot: demo-home
+
+# Plan
+- scrollUntilVisible:
+    element:
+      id: 'home-all-steps'
+- tapOn:
+    id: 'home-all-steps'
+- extendedWaitUntil:
+    visible:
+      id: 'plan-screen'
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      id: 'plan-step-1-mark-paid'
+- takeScreenshot: demo-plan
+
+# Mark as paid (minimum only)
+- tapOn:
+    id: 'plan-step-1-mark-paid'
+- extendedWaitUntil:
+    visible:
+      id: 'mark-paid-sheet'
+    timeout: 10000
+- tapOn:
+    id: 'mark-paid-choices-minimum'
+- assertVisible:
+    id: 'mark-paid-amount'
+    text: '₹620'
+- tapOn:
+    id: 'mark-paid-confirm'
+- extendedWaitUntil:
+    visible:
+      id: 'mark-paid-recorded'
+    timeout: 10000
+- assertVisible:
+    id: 'mark-paid-recorded'
+    text: 'Recorded ₹620.'
+- takeScreenshot: demo-paid
+- tapOn:
+    id: 'mark-paid-back'
+- extendedWaitUntil:
+    visible:
+      id: 'plan-screen'
+    timeout: 10000
+
+# Back to Home, then Score
+- back
+- extendedWaitUntil:
+    visible:
+      id: 'home-screen'
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      id: 'home-stat-score'
+    direction: UP
+- tapOn:
+    id: 'home-stat-score'
+- extendedWaitUntil:
+    visible:
+      id: 'score-screen'
+    timeout: 10000
+- assertVisible:
+    id: 'score-range'
+    text: '[0-9]{3}–[0-9]{3}'
+- takeScreenshot: demo-score
