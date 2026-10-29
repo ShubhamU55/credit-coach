@@ -5,6 +5,9 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { parsePlanTasks } from './plan-tasks.mjs';
 
+// The bin tests start a child process; on a loaded machine that exceeds the 5 s default.
+const SPAWN_TIMEOUT_MS = 60_000;
+
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '../../..');
 const PLAN_4A = 'docs/superpowers/plans/2026-10-21-plan-4a-mobile-ui-kit.md';
@@ -250,7 +253,7 @@ describe('parsePlanTasks on inline markdown', () => {
   });
 });
 
-describe('bin/plan-tasks.mjs', () => {
+describe('bin/plan-tasks.mjs', { timeout: SPAWN_TIMEOUT_MS }, () => {
   const bin = path.join(repoRoot, '.claude/hooks/bin/plan-tasks.mjs');
 
   it('prints the selected tasks as JSON', () => {

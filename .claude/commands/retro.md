@@ -1,5 +1,6 @@
 ---
 description: 'Run the retro Workflow over recent run ledgers (per-agent stats, then proposed prompt edits for owner approval). Use after several workflow runs, to find agents whose prompts need work.'
+disable-model-invocation: true
 argument-hint: '[how many recent ledgers, default 5]'
 ---
 
