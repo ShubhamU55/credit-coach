@@ -11,7 +11,13 @@ import { MarkPaidSheet } from './MarkPaidSheet';
 import { PlanScreen } from './PlanScreen';
 
 jest.mock('expo-router', () => ({
-  router: { push: jest.fn(), replace: jest.fn(), back: jest.fn(), navigate: jest.fn() },
+  router: {
+    push: jest.fn(),
+    replace: jest.fn(),
+    back: jest.fn(),
+    navigate: jest.fn(),
+    canGoBack: jest.fn(() => true),
+  },
 }));
 
 const mockRouter = router as jest.Mocked<typeof router>;
@@ -77,7 +83,7 @@ describe('PlanScreen (golden, design.md section 8)', () => {
 
     expect(mockRouter.push).toHaveBeenCalledWith({
       pathname: '/mark-paid',
-      params: { cardId: 'axis-neo' },
+      params: { cardId: 'axis-neo', aim10: '0', cash: '120000' },
     });
   });
 

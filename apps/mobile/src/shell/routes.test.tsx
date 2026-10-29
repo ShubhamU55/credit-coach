@@ -9,7 +9,13 @@ import { createDemoRepository } from '../demo/repository';
 import { DemoRepositoryProvider } from '../state/DemoRepositoryContext';
 
 jest.mock('expo-router', () => ({
-  router: { push: jest.fn(), replace: jest.fn(), back: jest.fn(), navigate: jest.fn() },
+  router: {
+    push: jest.fn(),
+    replace: jest.fn(),
+    back: jest.fn(),
+    navigate: jest.fn(),
+    canGoBack: jest.fn(() => true),
+  },
   useLocalSearchParams: jest.fn(() => ({})),
   Link: ({ children, testID }: { children: React.ReactNode; testID?: string }) => {
     const { Text } = jest.requireActual<typeof import('react-native')>('react-native');

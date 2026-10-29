@@ -8,7 +8,13 @@ import { DemoRepositoryProvider } from '../../state/DemoRepositoryContext';
 import { MarkPaidSheet } from './MarkPaidSheet';
 
 jest.mock('expo-router', () => ({
-  router: { push: jest.fn(), replace: jest.fn(), back: jest.fn(), navigate: jest.fn() },
+  router: {
+    push: jest.fn(),
+    replace: jest.fn(),
+    back: jest.fn(),
+    navigate: jest.fn(),
+    canGoBack: jest.fn(() => true),
+  },
 }));
 
 const mockRouter = router as jest.Mocked<typeof router>;

@@ -24,12 +24,20 @@ import {
 } from '../../ui';
 import { buildPlanView, type PlanView, type StepView } from './planModel';
 
-function initialsOf(name: string): string {
-  const words = name.split(' ').filter((w) => /^[A-Za-z]/.test(w));
-  return words
-    .slice(0, 2)
-    .map((w) => w.charAt(0).toUpperCase())
-    .join('');
+/** The plan state the sheet needs to show the same steps as this screen. */
+interface SharedPlanParams {
+  aim10: '0' | '1';
+  cash: string;
+}
+
+/** First letters of the first two words (any script), or "?" when there are none. */
+export function initialsOf(name: string): string {
+  const words = name
+    .split(' ')
+    .map((w) => w.replace(/^[^\p{L}\p{N}]+/u, ''))
+    .filter((w) => w.length > 0);
+  const letters = words.slice(0, 2).map((w) => Array.from(w)[0].toUpperCase());
+  return letters.length > 0 ? letters.join('') : '?';
 }
 
 function openNav(tab: NavTab) {
@@ -47,35 +55,79 @@ function explainText(view: PlanView): string {
   return parts.join(' ');
 }
 
-function Steps({ steps }: { steps: StepView[] }) {
+/**
+ * A paid step: collapsed and struck through, never removed (design 6.8). The kit card also draws
+ * an Undo button, but the repository cannot undo a payment, so this row leaves it out.
+ */
+function PaidStep({ step, index }: { step: StepView; index: number }) {
   return (
-    <View style={{ gap: space.cardPad }}>
-      {steps.map((s, index) => (
-        <PlanStepCard
-          key={s.id}
-          index={index}
-          testID={s.id}
-          kind={s.kind}
-          cardName={s.cardName}
-          amount={s.amountLabel}
-          payBy={{ label: s.payByLabel, soon: s.soon }}
-          reason={s.reason}
-          beforePercent={s.before}
-          afterPercent={s.after}
-          barLabel={s.barLabel}
-          state={s.state}
-          paidLabel={s.paidLabel}
-          onMarkPaid={() => router.push({ pathname: '/mark-paid', params: { cardId: s.cardId } })}
-          onUndo={() => announce('Undo is not available in the demo yet.')}
-        />
-      ))}
+    <View testID={step.id} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+      <Text
+        variant="numM"
+        color="muted"
+        accessibilityLabel={`Step ${index + 1}`}
+        style={{ minWidth: 36 }}
+      >
+        {String(index + 1).padStart(2, '0')}
+      </Text>
+      <View
+        accessible
+        accessibilityLabel={`${step.cardName}, ${step.amountLabel}, paid ${step.paidLabel ?? ''}`.trim()}
+        style={{
+          flex: 1,
+          gap: 8,
+          padding: space.cardPad,
+          borderWidth: 1,
+          borderColor: color.hairline,
+          backgroundColor: color.surface,
+        }}
+      >
+        <Text variant="title" color="muted" style={{ textDecorationLine: 'line-through' }}>
+          {`${step.cardName} · ${step.amountLabel}`}
+        </Text>
+        <Text variant="overline" color="success">
+          {step.paidLabel ? `✓ PAID · ${step.paidLabel}` : '✓ PAID'}
+        </Text>
+      </View>
     </View>
   );
 }
 
-function CashRow({ cash, onChange }: { cash: string; onChange: (digits: string) => void }) {
+function Steps({ steps, params }: { steps: StepView[]; params: SharedPlanParams }) {
+  return (
+    <View style={{ gap: space.cardPad }}>
+      {steps.map((s, index) =>
+        s.state === 'paid' ? (
+          <PaidStep key={s.id} step={s} index={index} />
+        ) : (
+          <PlanStepCard
+            key={s.id}
+            index={index}
+            testID={s.id}
+            kind={s.kind}
+            cardName={s.cardName}
+            amount={s.amountLabel}
+            payBy={{ label: s.payByLabel, soon: s.soon }}
+            reason={s.reason}
+            beforePercent={s.before}
+            afterPercent={s.after}
+            barLabel={s.barLabel}
+            state={s.state}
+            paidLabel={s.paidLabel}
+            onMarkPaid={() =>
+              router.push({ pathname: '/mark-paid', params: { cardId: s.cardId, ...params } })
+            }
+            onUndo={() => undefined}
+          />
+        ),
+      )}
+    </View>
+  );
+}
+
+function CashRow({ cash, onChange }: { cash: number; onChange: (digits: string) => void }) {
   const [editing, setEditing] = useState(false);
-  const shown = formatINR(cash === '' ? 0 : Number(cash));
+  const shown = formatINR(cash);
   return (
     <View style={{ gap: 4 }}>
       <Text variant="overline">CASH FOR CARDS</Text>
@@ -85,13 +137,13 @@ function CashRow({ cash, onChange }: { cash: string; onChange: (digits: string) 
             <AmountInput
               inline
               label="Cash for cards"
-              value={cash}
+              value={String(cash)}
               onChangeText={onChange}
               testID="plan-cash-input"
             />
           </View>
         ) : (
-          <Text variant="numM" numberOfLines={1} testID="plan-cash">
+          <Text variant="numM" testID="plan-cash">
             {shown}
           </Text>
         )}
@@ -172,7 +224,11 @@ export function PlanScreen() {
   const profile = useProfile();
   const [aimFor10, setAimFor10] = useState(rules.aimFor10);
   const [cashText, setCashText] = useState(String(profile.cashForCards));
+  // cashText is the cash at plan time; what is left to pay with is that minus what is recorded.
   const cash = cashText === '' ? 0 : Number(cashText);
+  const paidTotal = payments.reduce((total, p) => total + p.amount, 0);
+  const cashLeft = Math.max(0, cash - paidTotal);
+  const shared: SharedPlanParams = { aim10: aimFor10 ? '1' : '0', cash: String(cash) };
 
   // Recomputed from the repository's current state on every change (PRD 5.3: never frozen).
   const view = useMemo(
@@ -201,7 +257,10 @@ export function PlanScreen() {
             </Text>
           </Text>
         </View>
-        <CashRow cash={cashText} onChange={setCashText} />
+        <CashRow
+          cash={cashLeft}
+          onChange={(digits) => setCashText(String(Number(digits || 0) + paidTotal))}
+        />
         <Outcome view={view} />
         <PaymentTimelineStrip
           todayIso={DEMO_TODAY}
@@ -213,7 +272,7 @@ export function PlanScreen() {
           <Text variant="overline" testID="plan-steps-heading">
             {`${view.steps.length} ${view.steps.length === 1 ? 'STEP' : 'STEPS'}, IN ORDER`}
           </Text>
-          <Steps steps={view.steps} />
+          <Steps steps={view.steps} params={shared} />
         </View>
         <View
           style={{

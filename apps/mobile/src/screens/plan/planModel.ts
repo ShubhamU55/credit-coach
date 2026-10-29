@@ -41,6 +41,7 @@ export interface StepView {
 }
 
 export interface LaneView {
+  cardId: string;
   cardName: string;
   payBy?: { iso: string; label: string };
   due?: string;
@@ -97,9 +98,9 @@ export function dayMonthUpper(iso: IsoDate): string {
 }
 
 /** `2026-10-22` -> `22 Oct`. */
-function shortDayMonth(iso: IsoDate): string {
+export function shortDayMonth(iso: IsoDate): string {
   const upper = dayMonthUpper(iso);
-  const [day, month] = upper.split(' ');
+  const [day, month = ''] = upper.split(' ');
   return `${day} ${month.charAt(0)}${month.slice(1).toLowerCase()}`;
 }
 
@@ -152,6 +153,30 @@ function payByLabel(payBy: IsoDate, today: IsoDate): string {
   return `BY ${text.toUpperCase()}`;
 }
 
+/** Earliest pay-by first, ties by step number. */
+export function compareSteps(a: StepView, b: StepView): number {
+  if (a.payBy !== b.payBy) return a.payBy < b.payBy ? -1 : 1;
+  return a.step - b.step;
+}
+
+/** How much of a step a card's payments have covered: settled, or what is still to pay. */
+function settle(
+  run: PaymentRun | undefined,
+  start: number,
+  end: number,
+  full: number,
+): { settled: boolean; amount: number; paidDate?: IsoDate } {
+  const paidTotal = run?.total ?? 0;
+  if (paidTotal >= end) {
+    return {
+      settled: true,
+      amount: full,
+      paidDate: run?.cumulative.find((c) => c.total >= end)?.date,
+    };
+  }
+  return { settled: false, amount: Math.min(full, end - Math.max(paidTotal, start)) };
+}
+
 function buildSteps(
   plan: Plan,
   cardsById: Map<string, DemoCard>,
@@ -163,14 +188,7 @@ function buildSteps(
     const start = endOfCard.get(item.cardId) ?? 0;
     const end = start + item.amount;
     endOfCard.set(item.cardId, end);
-    const run = runs.get(item.cardId);
-    const paidTotal = run?.total ?? 0;
-    const settled = paidTotal >= end;
-    const remaining = settled
-      ? item.amount
-      : Math.min(item.amount, end - Math.max(paidTotal, start));
-    const paidDate = settled ? run?.cumulative.find((c) => c.total >= end)?.date : undefined;
-    const amount = settled ? item.amount : remaining;
+    const { settled, amount, paidDate } = settle(runs.get(item.cardId), start, end, item.amount);
     return {
       step: item.step,
       id: `plan-step-${item.step}`,
@@ -194,9 +212,7 @@ function buildSteps(
       paidLabel: paidDate ? dayMonthUpper(paidDate) : undefined,
     };
   });
-  const primary = steps
-    .filter((s) => s.state !== 'paid')
-    .sort((a, b) => (a.payBy === b.payBy ? a.step - b.step : a.payBy < b.payBy ? -1 : 1))[0];
+  const primary = steps.filter((s) => s.state !== 'paid').sort(compareSteps)[0];
   if (primary) primary.state = 'primary';
   return steps;
 }
@@ -212,6 +228,7 @@ function buildLanes(
     const earliest = open.map((s) => s.payBy).sort()[0];
     const cycle = cardCycle(card, today);
     const lane: LaneView = {
+      cardId: card.id,
       cardName: card.name,
       statement: nextReportingPoint(card, today, rules).date,
     };
@@ -233,11 +250,22 @@ function laneSentence(lane: LaneView): string {
   return `${lane.cardName}: ${parts.join(', ')}.`;
 }
 
-function shortfallText(plan: Plan, cardsById: Map<string, DemoCard>): ShortfallView[] {
-  return plan.shortfalls.map((s) => ({
-    cardId: s.cardId,
-    text: `${cardsById.get(s.cardId)?.name ?? s.cardId}: ${formatINR(s.shortfall)} short of the ${formatINR(s.required)} minimum due ${formatShortDate(s.dueDate)}. Your cash covers ${formatINR(s.funded)}. Pay the rest by the due date to avoid a missed payment.`,
-  }));
+function shortfallText(
+  plan: Plan,
+  cardsById: Map<string, DemoCard>,
+  runs: Map<string, PaymentRun>,
+): ShortfallView[] {
+  return plan.shortfalls
+    .flatMap((s) => {
+      // Money the user has recorded on this card counts, even if the cash figure could not fund it.
+      const covered = Math.max(s.funded, runs.get(s.cardId)?.total ?? 0);
+      const short = Math.max(0, s.required - covered);
+      return short > 0 ? [{ ...s, shortfall: short }] : [];
+    })
+    .map((s) => ({
+      cardId: s.cardId,
+      text: `${cardsById.get(s.cardId)?.name ?? s.cardId}: ${formatINR(s.shortfall)} short of the ${formatINR(s.required)} minimum due ${formatShortDate(s.dueDate)}. Your cash covers ${formatINR(s.funded)}. Pay the rest by the due date to avoid a missed payment.`,
+    }));
 }
 
 const pct = (value: number | null): string => (value === null ? 'N/A' : formatPercent(value));
@@ -256,6 +284,15 @@ export function buildPlanView(input: PlanViewInput): PlanView {
   const plan = planPayments({ cards: engineCards, cash: input.cash, today, rules });
   const steps = buildSteps(plan, cardsById, runs, today);
   const lanes = buildLanes(steps, engineCards, rules, today);
+  // Payments beyond what the plan asked of a card come out of what is left over.
+  const extra = plan.items
+    .map((i) => i.cardId)
+    .filter((id, n, all) => all.indexOf(id) === n)
+    .reduce((t, id) => {
+      const planned = plan.items.filter((i) => i.cardId === id).reduce((a, i) => a + i.amount, 0);
+      return t + Math.max(0, (runs.get(id)?.total ?? 0) - planned);
+    }, 0);
+  const leftover = Math.max(0, plan.leftover - extra);
   return {
     plan,
     steps,
@@ -266,9 +303,9 @@ export function buildPlanView(input: PlanViewInput): PlanView {
     utilizationAfter: pct(plan.overallUtilizationAfter),
     highestBefore: pct(plan.highestCardBefore),
     highestAfter: pct(plan.highestCardAfter),
-    leftover: plan.leftover,
-    leftoverLabel: formatINR(plan.leftover),
+    leftover,
+    leftoverLabel: formatINR(leftover),
     summary: plan.summary.text,
-    shortfalls: shortfallText(plan, cardsById),
+    shortfalls: shortfallText(plan, cardsById, runs),
   };
 }

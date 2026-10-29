@@ -1,8 +1,8 @@
 import { router } from 'expo-router';
-import { useMemo, useRef, useState } from 'react';
-import { View } from 'react-native';
+import { useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
+import { AccessibilityInfo, View } from 'react-native';
 
-import { formatINR, formatShortDate } from '@credit-coach/engine';
+import { formatINR } from '@credit-coach/engine';
 
 import { DEMO_TODAY } from '../../demo/config';
 import { RepositoryError } from '../../demo/types';
@@ -25,53 +25,52 @@ import {
   space,
 } from '../../ui';
 import {
+  parsePlanParams,
+  recordAndSummarise,
   resolveMarkPaid,
   validateOther,
   type MarkPaidParams,
   type OptionKey,
+  type PaymentSummary,
 } from './markPaidModel';
-import { buildPlanView } from './planModel';
+import { buildPlanView, shortDayMonth } from './planModel';
 
 const TILE = 52;
 
-interface Recorded {
-  amount: number;
-  line: string;
+/** Back to wherever the sheet was opened from; a cold deep link has no history, so go to the plan. */
+function leave() {
+  if (router.canGoBack()) router.back();
+  else router.replace('/plan');
 }
 
-/** The one sentence under "Recorded ₹X.": which steps are done and whether the statement is cleared. */
-function resultLine(args: {
-  cardName: string;
-  newlyPaid: number[];
-  statementCleared: boolean;
-}): string {
-  const { cardName, newlyPaid, statementCleared } = args;
-  const nums = newlyPaid.map((n) => String(n).padStart(2, '0'));
-  let steps = '';
-  if (nums.length === 1) steps = `Step ${nums[0]} is done. `;
-  else if (nums.length > 1)
-    steps = `Steps ${nums.slice(0, -1).join(', ')} and ${nums.at(-1)} are done. `;
-  const tail = statementCleared
-    ? `${cardName}'s statement is cleared — no interest this cycle.`
-    : `The plan is updated for ${cardName}.`;
-  return `${steps}${tail}`;
+/** Moves screen-reader focus to the returned node once it is mounted. */
+function useFocusOnMount() {
+  const ref = useRef<ComponentRef<typeof View>>(null);
+  useEffect(() => {
+    if (ref.current) AccessibilityInfo.sendAccessibilityEvent(ref.current, 'focus');
+  }, []);
+  return ref;
 }
 
-function Invalid({ message }: { message: string }) {
+function Invalid({ title, message }: { title: string; message: string }) {
+  const focusRef = useFocusOnMount();
   return (
     <View testID="mark-paid-invalid" style={{ gap: space.section, padding: space.gutter }}>
-      <Text variant="h1">Nothing to mark as paid</Text>
+      <View ref={focusRef} accessible accessibilityRole="header">
+        <Text variant="h1">{title}</Text>
+      </View>
       <Text variant="body" accessibilityRole="alert">
         {message}
       </Text>
-      <SecondaryButton label="Close" onPress={() => router.back()} testID="mark-paid-close" />
+      <SecondaryButton label="Close" onPress={leave} testID="mark-paid-close" />
     </View>
   );
 }
 
-function Done({ recorded }: { recorded: Recorded }) {
+function Done({ recorded }: { recorded: PaymentSummary }) {
+  const focusRef = useFocusOnMount();
   return (
-    <View testID="mark-paid-done" style={{ gap: space.section }}>
+    <View testID="mark-paid-done" style={{ gap: space.section, padding: space.gutter }}>
       <View
         accessibilityElementsHidden
         importantForAccessibility="no-hide-descendants"
@@ -89,51 +88,78 @@ function Done({ recorded }: { recorded: Recorded }) {
           ✓
         </Text>
       </View>
-      <Text variant="confirmation" accessibilityRole="header" testID="mark-paid-recorded">
-        {`Recorded ${formatINR(recorded.amount)}.`}
-      </Text>
+      <View ref={focusRef} accessible accessibilityRole="header">
+        <Text variant="confirmation" testID="mark-paid-recorded">
+          {`Recorded ${formatINR(recorded.amount)}.`}
+        </Text>
+      </View>
       <Text variant="body" testID="mark-paid-result">
         {recorded.line}
       </Text>
-      <PopButton
-        label="Back to plan"
-        size="screen"
-        onPress={() => router.back()}
-        testID="mark-paid-back"
-      />
+      <PopButton label="Back to plan" size="screen" onPress={leave} testID="mark-paid-back" />
     </View>
   );
 }
 
-export function MarkPaidSheet({ cardId, amount }: MarkPaidParams) {
+export function MarkPaidSheet(props: MarkPaidParams) {
   const repository = useDemoRepository();
   const cards = useCards();
   const payments = usePayments();
   const rules = useRules();
   const profile = useProfile();
-  const params = useMemo(() => ({ cardId, amount }), [cardId, amount]);
+  const [recorded, setRecorded] = useState<PaymentSummary | null>(null);
+  const { aimFor10, cash } = parsePlanParams(props, {
+    aimFor10: rules.aimFor10,
+    cash: profile.cashForCards,
+  });
   const view = useMemo(
-    () =>
-      buildPlanView({
-        cards,
-        payments,
-        rules,
-        cash: profile.cashForCards,
-        today: DEMO_TODAY,
-        aimFor10: rules.aimFor10,
-      }),
-    [cards, payments, rules, profile.cashForCards],
+    () => buildPlanView({ cards, payments, rules, cash, today: DEMO_TODAY, aimFor10 }),
+    [cards, payments, rules, cash, aimFor10],
   );
-  const resolved = useMemo(() => resolveMarkPaid({ cards, view, params }), [cards, view, params]);
+  const { cardId, amount } = props;
+  const resolved = useMemo(
+    () => resolveMarkPaid({ cards, view, params: { cardId, amount } }),
+    [cards, view, cardId, amount],
+  );
 
+  if (recorded) return <Done recorded={recorded} />;
+  if (resolved.kind === 'invalid') {
+    return <Invalid title={resolved.title} message={resolved.message} />;
+  }
+  return (
+    <SheetForm
+      resolved={resolved}
+      onConfirm={(card, payAmount) => {
+        const summary = recordAndSummarise({
+          repository,
+          card,
+          amount: payAmount,
+          today: DEMO_TODAY,
+          cash,
+          aimFor10,
+          before: view,
+        });
+        setRecorded(summary);
+        announce(`Recorded ${formatINR(summary.amount)}. ${summary.line}`);
+      }}
+    />
+  );
+}
+
+type OkResolved = Extract<ReturnType<typeof resolveMarkPaid>, { kind: 'ok' }>;
+
+function SheetForm({
+  resolved,
+  onConfirm,
+}: {
+  resolved: OkResolved;
+  onConfirm: (card: OkResolved['card'], amount: number) => void;
+}) {
+  const headerRef = useFocusOnMount();
   const [choice, setChoice] = useState<OptionKey | null>(null);
   const [otherText, setOtherText] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [recorded, setRecorded] = useState<Recorded | null>(null);
   const submitted = useRef(false);
-
-  if (recorded) return <Done recorded={recorded} />;
-  if (resolved.kind === 'invalid') return <Invalid message={resolved.message} />;
 
   const selected = choice ?? resolved.defaultOption;
   const other = otherText ?? resolved.prefill ?? '';
@@ -142,61 +168,30 @@ export function MarkPaidSheet({ cardId, amount }: MarkPaidParams) {
   const isOther = selected === 'other';
   const payAmount = isOther ? Number(other || 0) : (option?.amountValue ?? 0);
   const canConfirm = isOther ? validation.canConfirm : payAmount > 0;
-  const confirmLabel = isOther ? validation.confirmLabel : 'Confirm payment';
 
   function confirm() {
     if (submitted.current || !canConfirm) return;
-    const { card } = resolved as Extract<typeof resolved, { kind: 'ok' }>;
-    const before = new Set(view.steps.filter((s) => s.state === 'paid').map((s) => s.step));
     try {
-      repository.recordPayment(card.id, payAmount, DEMO_TODAY);
+      onConfirm(resolved.card, payAmount);
+      submitted.current = true;
     } catch (caught) {
-      if (caught instanceof RepositoryError) {
-        setError(caught.message);
-        return;
-      }
-      throw caught;
+      if (!(caught instanceof RepositoryError)) throw caught;
+      setError(caught.message);
     }
-    submitted.current = true;
-    const after = buildPlanView({
-      cards: repository.listCards(),
-      payments: repository.listPayments(),
-      rules: repository.getRules(),
-      cash: profile.cashForCards,
-      today: DEMO_TODAY,
-      aimFor10: rules.aimFor10,
-    });
-    const newlyPaid = after.steps
-      .filter((s) => s.cardId === card.id && s.state === 'paid' && !before.has(s.step))
-      .map((s) => s.step);
-    const updated = repository.listCards().find((c) => c.id === card.id);
-    const statementCleared =
-      !!updated &&
-      Math.max(0, updated.lastStatementBalance - updated.paidSinceStatement) === 0 &&
-      card.lastStatementBalance - card.paidSinceStatement > 0;
-    const line = resultLine({ cardName: card.name, newlyPaid, statementCleared });
-    setError(null);
-    setRecorded({ amount: payAmount, line });
-    announce(`Recorded ${formatINR(payAmount)}. ${line}`);
   }
 
   return (
     <View testID="mark-paid-sheet" style={{ gap: space.section, padding: space.gutter }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.grid }}>
-        <View style={{ flex: 1 }} accessible accessibilityRole="header">
+        <View ref={headerRef} style={{ flex: 1 }} accessible accessibilityRole="header">
           <Text variant="overline">MARK AS PAID</Text>
           <Text variant="title" testID="mark-paid-subtitle">
             {resolved.subtitle}
           </Text>
         </View>
-        <SecondaryButton
-          label="Close"
-          accessibilityLabel="Close"
-          onPress={() => router.back()}
-          testID="mark-paid-close"
-        />
+        <SecondaryButton label="Close" onPress={leave} testID="mark-paid-close" />
       </View>
-      <Text variant="numL" numberOfLines={1} testID="mark-paid-amount">
+      <Text variant="numL" testID="mark-paid-amount">
         {formatINR(payAmount)}
       </Text>
       <ChoiceRows
@@ -219,7 +214,7 @@ export function MarkPaidSheet({ cardId, amount }: MarkPaidParams) {
         />
       ) : null}
       <Text variant="bodyS" testID="mark-paid-note">
-        {`Paid on today, ${formatShortDate(DEMO_TODAY).split(', ')[1]} · ${RECORD_NOTE}`}
+        {`Paid on today, ${shortDayMonth(DEMO_TODAY)} · ${RECORD_NOTE}`}
       </Text>
       {error ? (
         <Text variant="bodyS" color="error" accessibilityRole="alert" testID="mark-paid-error">
@@ -227,7 +222,7 @@ export function MarkPaidSheet({ cardId, amount }: MarkPaidParams) {
         </Text>
       ) : null}
       <PopButton
-        label={confirmLabel}
+        label={isOther ? validation.confirmLabel : 'Confirm payment'}
         size="screen"
         disabled={!canConfirm}
         onPress={confirm}

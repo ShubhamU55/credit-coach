@@ -1,7 +1,7 @@
 import { formatINR, formatShortDate } from '@credit-coach/engine';
 
-import type { DemoCard } from '../../demo/types';
-import type { PlanView, StepView } from './planModel';
+import type { DemoCard, DemoRepository, IsoDate } from '../../demo/types';
+import { buildPlanView, shortDayMonth, type PlanView, type StepView } from './planModel';
 
 export type OptionKey = 'full' | 'minimum' | 'planned' | 'other';
 
@@ -16,10 +16,24 @@ export interface SheetOption {
 export interface MarkPaidParams {
   cardId?: string;
   amount?: string;
+  /** '1' or '0': the Plan screen's "Aim for 10%" switch. Anything else means the stored rules. */
+  aim10?: string;
+  /** Whole rupees: the Plan screen's cash figure. Anything else means the stored cash. */
+  cash?: string;
+}
+
+/** The plan inputs the sheet shares with the Plan screen, validated (deep-link params are untrusted). */
+export function parsePlanParams(
+  params: MarkPaidParams,
+  stored: { aimFor10: boolean; cash: number },
+): { aimFor10: boolean; cash: number } {
+  const aimFor10 = params.aim10 === '1' || (params.aim10 !== '0' && stored.aimFor10);
+  const cash = /^(0|[1-9]\d{0,8})$/.test(params.cash ?? '') ? Number(params.cash) : stored.cash;
+  return { aimFor10, cash };
 }
 
 export type Resolved =
-  | { kind: 'invalid'; message: string }
+  | { kind: 'invalid'; title: string; message: string }
   | {
       kind: 'ok';
       card: DemoCard;
@@ -55,10 +69,6 @@ function stepsCovered(open: StepView[], amount: number): StepView[] {
 
 const isPositiveWhole = (text: string | undefined): text is string =>
   text !== undefined && /^[1-9]\d{0,8}$/.test(text);
-
-function shortDay(iso: string): string {
-  return formatShortDate(iso).split(', ')[1] ?? iso;
-}
 
 function makeOption(key: OptionKey, label: string, sub: string, amountValue: number): SheetOption {
   return { key, label, sub, amountValue, amount: amountValue > 0 ? formatINR(amountValue) : '' };
@@ -122,17 +132,25 @@ export function resolveMarkPaid(args: {
   const { cards, view, params } = args;
   const cardId = params.cardId ?? view.steps.find((s) => s.state === 'primary')?.cardId;
   const card = cards.find((c) => c.id === cardId);
+  if (!params.cardId && !card) {
+    return {
+      kind: 'invalid',
+      title: 'All paid',
+      message: 'Every step in your plan is marked paid. Nothing left to record.',
+    };
+  }
   if (!card || card.outstanding <= 0) {
     return {
       kind: 'invalid',
+      title: 'Nothing to mark as paid',
       message: card
         ? `Nothing is outstanding on ${card.name}.`
-        : "We couldn't find that card, or there is nothing left to mark as paid.",
+        : "We couldn't find that card. Open Mark as paid from a step on your plan.",
     };
   }
   const open = view.steps.filter((s) => s.cardId === card.id && s.state !== 'paid');
   const options = buildOptions(card, open);
-  const lane = view.lanes.find((l) => l.cardName === card.name);
+  const lane = view.lanes.find((l) => l.cardId === card.id);
   const subtitle = lane?.due
     ? `${card.name} · due ${formatShortDate(lane.due)}`
     : `${card.name} · nothing due this cycle`;
@@ -149,7 +167,7 @@ export function resolveMarkPaid(args: {
     prefill,
     outstanding: card.outstanding,
     minimum: Math.min(card.outstanding, Math.max(0, card.minimumDue - card.paidSinceStatement)),
-    dueLabel: lane?.due ? shortDay(lane.due) : '',
+    dueLabel: lane?.due ? shortDayMonth(lane.due) : '',
   };
 }
 
@@ -191,4 +209,62 @@ export function validateOther(
     };
   }
   return { status: 'default', canConfirm: true, confirmLabel: 'Confirm payment' };
+}
+
+export interface PaymentSummary {
+  amount: number;
+  line: string;
+}
+
+/** The sentence under "Recorded ₹X.": which steps are done and whether the statement is cleared. */
+export function resultLine(
+  cardName: string,
+  newlyPaid: number[],
+  statementCleared: boolean,
+): string {
+  const nums = newlyPaid.map((n) => pad(n));
+  let steps = '';
+  if (nums.length === 1) steps = `Step ${nums[0]} is done. `;
+  else if (nums.length > 1) {
+    steps = `Steps ${nums.slice(0, -1).join(', ')} and ${nums[nums.length - 1]} are done. `;
+  }
+  const tail = statementCleared
+    ? `${cardName}'s statement is cleared — no interest this cycle.`
+    : `The plan is updated for ${cardName}.`;
+  return `${steps}${tail}`;
+}
+
+/**
+ * Records the payment (throws RepositoryError if the repository rejects it) and works out what
+ * it settled. Pure apart from the one repository write.
+ */
+export function recordAndSummarise(args: {
+  repository: DemoRepository;
+  card: DemoCard;
+  amount: number;
+  today: IsoDate;
+  cash: number;
+  aimFor10: boolean;
+  before: PlanView;
+}): PaymentSummary {
+  const { repository, card, amount, today, cash, aimFor10, before } = args;
+  repository.recordPayment(card.id, amount, today);
+  const after = buildPlanView({
+    cards: repository.listCards(),
+    payments: repository.listPayments(),
+    rules: repository.getRules(),
+    cash,
+    today,
+    aimFor10,
+  });
+  const alreadyPaid = new Set(before.steps.filter((s) => s.state === 'paid').map((s) => s.step));
+  const newlyPaid = after.steps
+    .filter((s) => s.cardId === card.id && s.state === 'paid' && !alreadyPaid.has(s.step))
+    .map((s) => s.step);
+  const updated = repository.listCards().find((c) => c.id === card.id);
+  const owedBefore = Math.max(0, card.lastStatementBalance - card.paidSinceStatement);
+  const owedAfter = updated
+    ? Math.max(0, updated.lastStatementBalance - updated.paidSinceStatement)
+    : owedBefore;
+  return { amount, line: resultLine(card.name, newlyPaid, owedBefore > 0 && owedAfter === 0) };
 }

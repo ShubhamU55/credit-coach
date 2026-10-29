@@ -17,7 +17,7 @@ appId: com.creditcoach.app
       id: 'home-screen'
     timeout: 20000
 - tapOn:
-    id: 'home-link-plan'
+    id: 'home-all-steps'
 - extendedWaitUntil:
     visible:
       id: 'plan-screen'
