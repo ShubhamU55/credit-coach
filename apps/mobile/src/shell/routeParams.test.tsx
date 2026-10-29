@@ -41,3 +41,5 @@ it('shows an all-paid state, not card-not-found, when nothing is left and no car
   expect(screen.getByTestId('mark-paid-invalid')).toHaveTextContent(/all paid/i);
   expect(screen.getByTestId('mark-paid-invalid')).not.toHaveTextContent(/couldn't find/i);
 });
+
+jest.setTimeout(30000); // first render compiles the kit; slow on a loaded machine

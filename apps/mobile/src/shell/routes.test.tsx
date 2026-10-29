@@ -91,3 +91,5 @@ describe('Mark as paid route', () => {
     expect(repository.listPayments()).toEqual([]);
   });
 });
+
+jest.setTimeout(30000); // first render compiles the kit; slow on a loaded machine

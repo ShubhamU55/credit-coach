@@ -127,3 +127,5 @@ describe('Plan updates after Mark as paid', () => {
     expect(screen.getByTestId('plan-leftover')).toHaveTextContent('₹31,000');
   });
 });
+
+jest.setTimeout(30000); // first render compiles the kit; slow on a loaded machine

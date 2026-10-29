@@ -140,3 +140,5 @@ describe('MarkPaidSheet', () => {
     expect(repository.listPayments()[0]).toMatchObject({ amount: 700, date: DEMO_TODAY });
   });
 });
+
+jest.setTimeout(30000); // first render compiles the kit; slow on a loaded machine

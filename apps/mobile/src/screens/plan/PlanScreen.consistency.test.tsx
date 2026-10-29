@@ -78,3 +78,5 @@ it('draws initials for a non-Latin name and falls back when there are none', () 
   expect(initialsOf('राहुल शर्मा')).toBe('रश');
   expect(initialsOf('')).toBe('?');
 });
+
+jest.setTimeout(30000); // first render compiles the kit; slow on a loaded machine

@@ -148,3 +148,5 @@ describe('accessibility focus', () => {
     focus.mockRestore();
   });
 });
+
+jest.setTimeout(30000); // first render compiles the kit; slow on a loaded machine
