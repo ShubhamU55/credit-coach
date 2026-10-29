@@ -34,7 +34,7 @@ jobs:
               - 'apps/admin/**'
               - 'packages/engine/**'
             mobile:
-              - 'apps/mobile/**'
+              - 'apps/mobile/**/!(*.md)'
             supabase:
               - 'supabase/**'
 
