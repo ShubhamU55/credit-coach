@@ -232,10 +232,11 @@ describe('sonar-project.properties', () => {
     expect(text).toMatch(/^sonar\.qualitygate\.wait=true$/m);
   });
 
-  it('excludes the pasted contracts copies from duplication (CPD)', () => {
+  it('excludes the pasted contracts copies and the grounding mirror from duplication (CPD)', () => {
     expect(listProperty('sonar.cpd.exclusions')).toEqual([
       '.claude/workflows/**',
       '.claude/hooks/lib/contracts.mjs',
+      'apps/mobile/src/explain/grounding.ts',
     ]);
   });
 
