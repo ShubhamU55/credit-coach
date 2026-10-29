@@ -2,6 +2,17 @@
 
 > Read this first when starting a new session. Update it at the end of every session (newest entry on top).
 
+## 2026-10-29 (product build: PD-1 to PD-4, PD-7 and PD-11 merged; PD-8 to PD-10 built and awaiting evidence)
+
+Newest entry. Where it differs from the entries below, this one wins. Full detail, every ruling and its cost if wrong: `docs/agent-runs/2026-10-28-coordinator.md`.
+
+- **Everything is pushed to the remote; `main` has the product work.** Merged: PD-1 (planner), PD-2 (predictor, what-ifs, guard), PD-3 and PD-7 (mobile kit), PD-4 (app shell, demo repository, Aarav data), PD-11 (explanations, PR #62). The earlier "Nothing is pushed" lines below are history.
+- **Built, reviewed and fixed, not yet pushed:** PD-8 (Welcome, Home), PD-9 (Plan, Mark as paid), PD-10 (Score, what-ifs, guard). Each needs one Maestro release-APK report, because CI's `maestro-evidence` check needs a passing report committed after the last `apps/mobile` commit. Merge order: PD-8, then PD-9 and PD-10 (rebase; take PD-8's trimmed `onboarding-try-sample.yaml`).
+- **Not started:** PD-5 (Supabase; the owner must start Docker Desktop and deploy), PD-6 (install guide), PD-12 to PD-14 (cut first), PD-15 (hardening and the final all-ABI APK), PD-16 (submission docs).
+- **What the UI looked like in a screenshot (white screen "Credit Coach / Welcome / Try sample profile / Engine OK: 30%"):** the pre-PD-4 placeholder APK left on the emulator, not the current app. The real screens are in PD-8 to PD-10.
+- **Evidence-run environment facts:** release builds on Windows need a short checkout path plus `buildStagingDirectory` (MAX_PATH); the emulator needs about 3 GB of free RAM beyond its own 4 to 5 GB, so close browsers; `pnpm verify` and the Stop gate time out on `.claude/hooks` tests under load but pass with `--testTimeout=60000`.
+- **Open owner calls:** merge #62 and then each PR as it opens; start Docker Desktop for PD-5; the board token needs `gh auth refresh -s project,read:project`.
+
 ## 2026-10-28 (W5-2 board built and backfilled; the AI-setup hardening series landed; Plan 1c is done)
 
 Newest entry. Where it differs from the entries below, this one wins.
@@ -40,7 +51,7 @@ Superseded by the entry above where they differ. The entry below it describes th
 - **`main` is at `fd7f0a6`.** W4-1..W4-4 are all merged fast-forward under the bootstrap rule (no push before W5-1).
 - **Branch `feat/1c-w4-5-judge-docs`** (worktree `../cc-1c-w4-5`) adds the Wave 4 ledger, the docs commits and the review-fix commit on top of `fd7f0a6`. It is not merged yet; merge it fast-forward the same way.
 - **`pnpm verify` is green on the branch:** 1555 hooks tests across 26 files, and 30 engine tests at 98.76% line coverage.
-- **Nothing is pushed.** No remote-tracking branch exists locally.
+- **Nothing is pushed.** No remote-tracking branch exists locally. (Superseded: everything has since been pushed; see the 2026-10-29 entry.)
 - **The owner has unmerged `chore/ai-setup-*` branches** (at the time of writing: `docs-drift`, `command-policy` and `guards`).
 - **Superseded:** the 2026-10-26 entry below says "Wave 3 is next". Waves 3 and 4 are done.
 - **Why Waves 3 and 4 have no entries of their own here:** neither wave's hotspot table named a `docs/status.md` owner until W4-5, so under the parallel-wave exception their handoffs went into the run ledgers. This entry summarizes both.
