@@ -122,7 +122,7 @@ describe('kit-gallery.yaml', () => {
     // whole section (scrollUntilVisible wants 100% of the element visible).
     expect(flow).toContain(`id: "${id}-title"`);
     expect(flow).not.toContain(`id: "${id}"`);
-    expect(flow).toContain(`takeScreenshot: ../../docs/test-reports/ui-kit/${id}-1`);
+    expect(flow).toContain(`takeScreenshot: ${id}-1`);
   });
 
   test('every section the flow scrolls to exists in the gallery', async () => {
