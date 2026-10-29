@@ -2,7 +2,7 @@
 --
 -- The persona data lives here, in one place, so a hosted `supabase db push` (which does not run
 -- seed.sql) gets it too. supabase/seed.sql only calls reset_demo_data(). A vitest case parses the
--- $json$ block below and runs the engine planner on the Aarav cards (docs/design.md section 8).
+-- dollar-quoted JSON block below and runs the engine planner on the Aarav cards (docs/design.md section 8).
 --
 -- Persona sources: Aarav = docs/design.md section 8. Rohan and Ishita = the INFORMATION_ARCHITECTURE
 -- edge-state personas and PRD section 6; limits, outstanding balances and statement days the docs do
