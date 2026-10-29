@@ -1,8 +1,10 @@
 appId: com.creditcoach.app
 ---
+# Smoke: the app launches to the real Welcome screen. Nothing else.
 - launchApp:
     clearState: true
-- assertVisible: "Credit Coach"
-- assertVisible:
-    id: "engine-check"
-    text: "Engine OK: 30%"
+- extendedWaitUntil:
+    visible:
+      id: 'welcome-screen'
+    timeout: 20000
+- assertVisible: 'Try sample profile'

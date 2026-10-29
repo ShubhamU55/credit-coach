@@ -1,50 +1,37 @@
 appId: com.creditcoach.app
 ---
-# Welcome -> "Try sample profile" -> Home stub, then every other route is reachable and
-# Mark as paid lowers Axis Neo's outstanding through the shared in-memory repository.
+# Welcome -> "Try sample profile" -> Home with the Aarav numbers (docs/design.md section 8).
+# No typing anywhere. The Plan, Score and Mark as paid steps belong to PD-9 and PD-10.
 - launchApp:
     clearState: true
-- assertVisible:
-    id: 'welcome-screen'
-# The visible label itself (PRD copy), not only the testID.
+- extendedWaitUntil:
+    visible:
+      id: 'welcome-screen'
+    timeout: 20000
 - assertVisible: 'Try sample profile'
+- assertVisible: 'No sign-up · 10 seconds'
 - tapOn:
     id: 'welcome-try-sample'
-- assertVisible:
-    id: 'home-screen'
-- assertVisible:
-    id: 'home-axis-outstanding'
-    text: 'Axis Neo outstanding: 15600'
 
-# Plan and back
-- tapOn:
-    id: 'home-link-plan'
+# Home: top of the screen
+- extendedWaitUntil:
+    visible:
+      id: 'home-screen'
+    timeout: 10000
+- assertVisible: 'Aarav, one payment keeps you on track.'
 - assertVisible:
-    id: 'plan-screen'
-- tapOn:
-    id: 'plan-link-home'
-- assertVisible:
-    id: 'home-screen'
+    id: 'hero-card'
+- assertVisible: '₹12,400'
 
-# Score and back
-- tapOn:
-    id: 'home-link-score'
-- assertVisible:
-    id: 'score-screen'
-- tapOn:
-    id: 'score-link-home'
-- assertVisible:
-    id: 'home-screen'
+# Home: overall utilization 45.0% and the estimate range
+- scrollUntilVisible:
+    element:
+      id: 'home-stat-utilization'
+- assertVisible: '45.0%'
+- assertVisible: '708–736'
 
-# Mark as paid sheet records a payment and Home shows the lower outstanding
-- tapOn:
-    id: 'home-link-mark-paid'
-- assertVisible:
-    id: 'mark-paid-screen'
-- tapOn:
-    id: 'mark-paid-record-axis-minimum'
-- assertVisible:
-    id: 'home-screen'
-- assertVisible:
-    id: 'home-axis-outstanding'
-    text: 'Axis Neo outstanding: 14980'
+# Home: the disclaimer closes the screen
+- scrollUntilVisible:
+    element:
+      id: 'disclaimer'
+- assertVisible: 'Estimates only. Not your official CIBIL score. Not financial advice.'
