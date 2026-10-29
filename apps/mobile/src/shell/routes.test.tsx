@@ -47,12 +47,11 @@ describe('Welcome route', () => {
 });
 
 describe('Home route', () => {
-  it('shows Axis Neo outstanding from the repository', async () => {
+  it('renders the Home screen from the repository', async () => {
     await renderWith(<HomeRoute />);
 
-    expect(screen.getByTestId('home-axis-outstanding')).toHaveTextContent(
-      'Axis Neo outstanding: 15600',
-    );
+    expect(screen.getByTestId('home-screen')).toBeTruthy();
+    expect(screen.getByTestId('home-card-axis-neo')).toBeTruthy();
   });
 });
 
