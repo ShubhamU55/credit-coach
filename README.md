@@ -13,17 +13,78 @@ Credit Coach turns your cards into a concrete monthly plan: which card to pay, h
 
 > Built solo for the Hack@FiftyFive "Build With AI" Hackathon 2026, with AI as the development partner.
 
+**Start with [`docs/submission.md`](docs/submission.md)**: the problem, who it is for, what was built and what was
+cut, how AI was used, and an honest status table. The demo video shot list is
+[`docs/demo-script.md`](docs/demo-script.md).
+
+## Judge's quick-start
+
+What is real, as of `origin/main` `23ba4be` (2026-10-29; the table in `docs/submission.md` section 3 is the live
+version):
+
+- **Real and tested on `main`:** the rules engine (payment planner, reporting dates, score range predictor,
+  what-ifs, application guard, the "Why this plan?" template) and the mobile kit and app shell.
+- **Built, awaiting device evidence, not on `main` yet:** the Welcome, Home, Plan, Mark as paid and Score screens
+  (branches `feat/pd-8-welcome-home`, `feat/pd-9-plan`, `feat/pd-10-score`). Until they merge, the app on `main` shows
+  stub screens behind "Try sample profile".
+- **Written, not deployed:** the Supabase backend and the `explain` Edge Function (branch `feat/pd-5-backend`). The
+  app is built to work without it.
+- **Cut:** bureau linking, reminders, the admin panel (it is still the stock Next scaffold), and sign-in.
+- **No release APK is attached for judges yet.** The owner attaches it to a GitHub release (see the links table in
+  `docs/submission.md`). Until then use track C to build it.
+
+Pick a track:
+
+**A. No install, 5 minutes.** Read [`docs/submission.md`](docs/submission.md), watch the demo video (link in that
+file once recorded) or read [`docs/demo-script.md`](docs/demo-script.md), then skim
+[`docs/ai-system.md`](docs/ai-system.md) and [`docs/journal/`](docs/journal/).
+
+**B. Check the logic, about 10 minutes, Node only.**
+
+```bash
+git clone https://github.com/ShubhamU55/credit-coach && cd credit-coach
+pnpm install --frozen-lockfile
+pnpm --filter @credit-coach/engine test
+```
+
+Expect 255 passing tests and about 99.7% line coverage (the gate is 90%). The golden fixture is Aarav, from
+`docs/design.md` section 8: `packages/engine/src/planner.golden.test.ts` asserts the exact plan, the 15.3% and 7.3%
+outcomes, and the "admin demo moment" (threshold 20% makes the SBI step 14,400 and the left over 19,000).
+`pnpm verify` runs lint, typecheck and every unit test in every workspace; the `.claude/hooks` and mobile suites can hit
+5-second timeouts when the machine is busy, so rerun a failing file alone before treating it as a failure.
+
+**C. Run the app, needs the Android SDK, JDK 17 and an emulator or a phone with USB debugging.**
+
+```bash
+pnpm install --frozen-lockfile
+pnpm --filter @credit-coach/mobile android:release   # standalone release build, installs on the running device
+```
+
+On `main` you will see the Welcome stub, then a Home stub after "Try sample profile". The kit gallery (every
+component) opens with `adb shell am start -a android.intent.action.VIEW -d creditcoach://kit`. To see the real screens,
+check out the branches listed above (or wait for them to merge). The app needs no network and no account.
+**Windows:** the native build fails on the 260-character path limit. Build from a short checkout path (for example
+`C:\p\cc`) and add `externalNativeBuild { cmake { buildStagingDirectory "C:/b/cc" } }` to the generated
+`android/app/build.gradle`, exactly as recorded in
+[`docs/test-reports/maestro-2026-10-28-pd4-shell.md`](docs/test-reports/maestro-2026-10-28-pd4-shell.md).
+
+If you can sideload an APK on a stock Android phone: enable "Install unknown apps" for your file manager or browser,
+open the APK, install, then tap **Try sample profile**. This has not been tried on a stock phone with a release APK
+from this repo yet; `docs/install.md` does not exist (that ticket, PD-6, was not started).
+
 ## Repo map
 
-| Path                      | What                                                     |
-| ------------------------- | -------------------------------------------------------- |
-| `docs/PRD.md`             | Product requirements (frozen v1). The source of truth    |
-| `docs/tech-stack.md`      | Stack decision and risks                                 |
-| `docs/superpowers/plans/` | Implementation plans                                     |
-| `packages/engine`         | Pure TypeScript rules engine (planner, predictor, guard) |
-| `apps/mobile`             | Android app (Expo / React Native)                        |
-| `apps/admin`              | Admin control center (Next.js)                           |
-| `supabase/`               | Database migrations and Edge Functions                   |
+| Path                      | What                                                                                          |
+| ------------------------- | --------------------------------------------------------------------------------------------- |
+| `docs/submission.md`      | The submission write-up: problem, what was built and cut, how AI was used                     |
+| `docs/demo-script.md`     | Shot list and voice-over for the demo video                                                   |
+| `docs/PRD.md`             | Product requirements (frozen v1). The source of truth                                         |
+| `docs/tech-stack.md`      | Stack decision and risks                                                                      |
+| `docs/superpowers/plans/` | Implementation plans                                                                          |
+| `packages/engine`         | Pure TypeScript rules engine (planner, predictor, guard)                                      |
+| `apps/mobile`             | Android app (Expo / React Native)                                                             |
+| `apps/admin`              | Admin control center (Next.js). **Stock scaffold only: the admin panel was cut**              |
+| `supabase/`               | Database migrations and Edge Functions. **Only `config.toml` on `main`**; backend on a branch |
 
 ## Prerequisites (Windows 11 tested)
 
@@ -39,15 +100,24 @@ pnpm install          # hoisted node_modules (set in pnpm-workspace.yaml)
 pnpm verify           # lint + typecheck + unit tests, every workspace
 ```
 
-| Part   | Run                                                                                           | Test                                                                |
-| ------ | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| Engine | —                                                                                             | `pnpm --filter @credit-coach/engine test`                           |
-| Admin  | `pnpm --filter @credit-coach/admin dev`                                                       | `pnpm --filter @credit-coach/admin test:e2e` (Playwright)           |
-| Mobile | `pnpm --filter @credit-coach/mobile android:release` (standalone APK on the running emulator) | stop Metro, then `pnpm --filter @credit-coach/mobile e2e` (Maestro) |
+| Part          | Run                                                                                           | Test                                                                |
+| ------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Engine        | —                                                                                             | `pnpm --filter @credit-coach/engine test`                           |
+| Admin         | `pnpm --filter @credit-coach/admin dev` (the stock Next scaffold; the admin panel was cut)    | `pnpm --filter @credit-coach/admin test:e2e` (Playwright)           |
+| Mobile        | `pnpm --filter @credit-coach/mobile android:release` (standalone APK on the running emulator) | stop Metro, then `pnpm --filter @credit-coach/mobile e2e` (Maestro) |
+| Mobile (unit) | —                                                                                             | `pnpm --filter @credit-coach/mobile test` (Jest)                    |
 
 ### Environment files
 
 Only `.env.example` files are committed. **Copy each to `.env.local` and fill it in by hand.** AI agents in this repo are blocked from writing `.env*` files by a hook (`.claude/hooks/protect-env.mjs`).
+
+### Backend (optional, not deployed)
+
+The app needs no backend: the sample profile is in memory and "Why this plan?" falls back to the engine's template.
+The Supabase schema, row-level security and the `explain` Edge Function are written on the branch
+`feat/pd-5-backend`, not merged and not deployed; its `supabase/OWNER-STEPS.md` lists the commands the owner runs
+(link, push, set the `ANTHROPIC_API_KEY` function secret, deploy). The Anthropic key lives only in Supabase function
+secrets, never in this repo.
 
 ### Building the APK
 
@@ -69,7 +139,8 @@ This project was built with AI as the development partner. All of the evidence i
   - skills (`credit-domain`, `maestro-android-e2e`, `process-journal`, plus curated ECC skills)
   - safety and format hooks
   - commands: `/feature`, `/build`, `/qa`, `/pr-review`, `/bugfix`, `/bug`, `/retro`, `/tidy`, `/worktrees`, `/verify` and `/journal`
-- [`docs/agent-runs/`](docs/agent-runs/) holds the run ledgers: every review round, fix round and ruling.
+- [`docs/agent-runs/`](docs/agent-runs/) holds the run ledgers: every review round, fix round and ruling. The product phase (28 to 29 Oct) has one ledger per ticket (`2026-10-28-pd-<n>.md`) plus the coordinator's `2026-10-28-coordinator.md` with its rulings (the coordinator's file lands with its own branch).
+- [`docs/submission.md`](docs/submission.md) section 4 says how the product phase actually ran (by hand under a coordinator, not through the `/build` Workflow), with the review and fix numbers and where each comes from.
 - [`docs/adr/`](docs/adr/) records decisions, including [why we curated ECC instead of forking it](docs/adr/0002-curated-ai-dev-setup.md) and [how the agents are coordinated and gated](docs/adr/0003-agentic-delivery-system.md).
 - [`docs/superpowers/plans/`](docs/superpowers/plans/) holds the implementation plans the AI executed.
 - [`docs/journal/`](docs/journal/) is the process journal: what the AI did, the tests, the reviews, and where it was wrong.
