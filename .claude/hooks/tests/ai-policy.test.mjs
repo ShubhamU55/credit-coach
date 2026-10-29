@@ -45,6 +45,33 @@ describe('docs/ai-policy.md', () => {
   it('names a next review date', () => {
     expect(read(policyPath)).toMatch(/Next review:\s*\d{1,2} [A-Z][a-z]+ 20\d{2}/);
   });
+
+  it('describes squash merges, matching required linear history', () => {
+    const text = read(policyPath);
+
+    expect(text).not.toMatch(/merge commit, not a squash/i);
+    expect(text).toMatch(/squash/i);
+  });
+
+  it('discloses the direct-to-main history before branch protection', () => {
+    const text = read(policyPath);
+
+    expect(text).toMatch(/before branch protection/i);
+    expect(text).toContain('28 Oct 2026');
+  });
+
+  it('dates branch protection going on as 27 Oct 2026', () => {
+    const line = read(policyPath)
+      .split('\n')
+      .find((candidate) => /branch protection went on/i.test(candidate));
+
+    expect(line).toBeDefined();
+    expect(line).toContain('27 Oct 2026');
+  });
+
+  it('sets a PR size guideline', () => {
+    expect(read(policyPath)).toMatch(/400 changed lines/);
+  });
 });
 
 describe('CLAUDE.md', () => {

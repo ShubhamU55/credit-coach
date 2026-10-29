@@ -62,6 +62,34 @@ describe('rule files describe the setup that exists', () => {
   });
 });
 
+describe('docs/ai-system.md and the security checklist stay current', () => {
+  it('does not describe branch protection as still pending in ai-system.md', () => {
+    const aiSystem = read('docs/ai-system.md');
+
+    expect(aiSystem).not.toMatch(/Nothing is pushed yet/);
+    expect(aiSystem).toContain('Honest limits (as of 29 Oct 2026)');
+  });
+
+  it('documents session hygiene and cost in ai-system.md', () => {
+    const aiSystem = read('docs/ai-system.md');
+    const start = aiSystem.indexOf('## Session hygiene and cost');
+
+    expect(start).toBeGreaterThan(-1);
+
+    const rest = aiSystem.slice(start + 1);
+    const next = rest.search(/^## /m);
+    const section = next === -1 ? rest : rest.slice(0, next);
+
+    for (const term of ['/clear', '/compact', '/cost']) {
+      expect(section).toContain(term);
+    }
+  });
+
+  it('records the missing sandbox as a known gap', () => {
+    expect(read('docs/security/checklist.md')).toMatch(/sandbox/i);
+  });
+});
+
 describe('.gitignore', () => {
   it('ignores local agent config that must never be committed', () => {
     const ignored = read('.gitignore')

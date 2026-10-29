@@ -4,7 +4,7 @@
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { checkMaestroEvidence } from '../lib/maestro-evidence.mjs';
+import { checkMaestroEvidence, MOBILE_APP_PATHSPEC } from '../lib/maestro-evidence.mjs';
 
 // The maestro-android-e2e skill has flows write evidence to
 // docs/test-reports/maestro-<date>.xml (outside apps/mobile, so the report
@@ -18,10 +18,10 @@ function git(args) {
   return execFileSync('git', args, { encoding: 'utf8' }).trim();
 }
 
-/** The sha of the most recent commit that touched `pathspec`, or '' if none. */
+/** The sha of the most recent commit that touched `pathspec` (one or several), or '' if none. */
 function lastCommitTouching(pathspec) {
   try {
-    return git(['log', '-1', '--format=%H', '--', pathspec]);
+    return git(['log', '-1', '--format=%H', '--', ...[pathspec].flat()]);
   } catch {
     return '';
   }
@@ -91,7 +91,7 @@ function loadReports(lastMobileCommit) {
 }
 
 function main() {
-  const lastMobileCommit = lastCommitTouching('apps/mobile');
+  const lastMobileCommit = lastCommitTouching(MOBILE_APP_PATHSPEC);
   const reports = loadReports(lastMobileCommit);
   const result = checkMaestroEvidence({ reports });
 
