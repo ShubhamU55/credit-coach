@@ -107,6 +107,19 @@ detail ≤ 560, evidence output ≤ 300); testers selected by changed path (at m
 verify-before-fix. **Not built yet:** per-run token accounting (`stats.tokens` is `null`). `/retro`
 reads an `## Agent stats` ledger table that no ledger emits yet, so it has no data to work on.
 
+## Session hygiene and cost
+
+- Work one ticket per session. Run `/clear` between tickets, and `/compact` when the context gets
+  long.
+- For anything larger than a single task, plan first with `/feature` and get the owner's approval
+  before building.
+- Write the `docs/status.md` handoff at the end of the session. In a parallel wave, write it in the
+  run ledger instead (see `CLAUDE.md`).
+- Run `/cost` at the end of the session and record the total in that run's ledger under `Cost:`.
+  No ledger in `docs/agent-runs/` has a `Cost:` line yet.
+- Per-run token accounting inside the workflows is still not built (`stats.tokens` is `null`), so
+  `/cost` is the only cost record.
+
 ## Where the evidence lives
 
 - **Run ledgers:** `docs/agent-runs/`. There is one per wave of Plan 1c, with its review rounds,
@@ -119,14 +132,25 @@ reads an `## Agent stats` ledger table that no ledger emits yet, so it has no da
   runtime), agent lint, config audit and hooks. They run in `pnpm verify` and CI.
 - **Decisions:** `docs/adr/`. **Handoff:** `docs/status.md`.
 
-## Honest limits (as of 27 Oct 2026)
+## Honest limits (as of 29 Oct 2026)
 
-- An earlier version of `feature-build` and `qa` ran live once, in the W2-2 dry run. Every later
-  change is unit-tested only: `6316f15`, `ae9c8fc`, `3485e8c`, `d37f0a8` and `fd7f0a6`.
-  `feature-analyze`, `pr-review`, `bugfix` and `retro` have only run on the test harness's fake
-  runtime. The first real `/feature` → `/build` → `/qa` → `/pr-review` run is their real test.
-- Nothing is pushed yet. Branch protection, required checks, the Sonar gate and the Projects board
-  are Wave 5 and need owner actions. G3 (API tests) arrives with Plan 3.
+- Two workflows have run live, and the ledgers show only these two runs. An earlier version of
+  `feature-build` and `qa` ran once, in the W2-2 dry run, with injected faults. `pr-review` ran
+  once, on a throwaway PR (#3) with one scratch file. That proves the plumbing, not review quality.
+  Every later change to `feature-build` and `qa` is unit-tested only: `6316f15`, `ae9c8fc`,
+  `3485e8c`, `d37f0a8` and `fd7f0a6`. `feature-analyze`, `bugfix` and `retro` have only run on the
+  test harness's fake runtime. The first real `/feature` → `/build` → `/qa` → `/pr-review` run on a
+  product task is their real test.
+- The product tickets PD-1 to PD-4 and PD-7 were built by hand, test-first, with no workflow and
+  no subagents (the ledgers call it the manual fallback). They are not evidence for the workflows.
+- `main` is protected (ledger `2026-10-23-branch-protection.md`, checked with the GitHub API on 29
+  Oct 2026). The required checks are `verify`, `admin-e2e`, `secrets`, `deps`, `codeql`, `CodeQL`,
+  `sonar`, `maestro-evidence`, `changes` and `hold-check`. Admins are included, force pushes are
+  blocked and history must be linear. No pull-request review is required, and branches don't have
+  to be up to date before merging.
+- `pr-review` is not a required check, and G8 is self-attested. The PR author, the review author and
+  the status creator are all the same GitHub account, so the status is advisory. An independent G8
+  needs a separate identity for `pr-reviewer`. G3 (API tests) arrives with Plan 3.
 - `build-error-resolver` exists, but no workflow dispatches it. Retries go back to `implementer`.
 - The shell hooks (`block-no-verify`, `pre-bash-commit-quality`) match both `Bash` and `PowerShell`.
   A PowerShell here-string commit message is blocked as unreadable. `protect-env` and
