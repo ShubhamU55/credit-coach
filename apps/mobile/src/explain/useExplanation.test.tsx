@@ -72,3 +72,76 @@ describe('useExplanation', () => {
     expect(result.current.aiWritten).toBe(false);
   });
 });
+
+describe('useExplanation request lifecycle', () => {
+  const deferred = () => {
+    let resolve!: (r: Response) => void;
+    const promise = new Promise<Response>((r) => {
+      resolve = r;
+    });
+    return { promise, resolve };
+  };
+  const ok = (body: unknown) => ({ ok: true, json: async () => body }) as Response;
+
+  it('fetches once when re-rendered with new but equal inputs', async () => {
+    const fetchImpl = respond({ text: 'Pay Axis first.', source: 'ai' });
+    const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
+
+    const { result, rerender } = await renderHook(
+      (_tick: number) =>
+        useExplanation(clone(PLAN), clone(CARDS), clone(CONTEXT), {
+          config: { ...CONFIG },
+          fetchImpl: ((...a: Parameters<typeof fetch>) => fetchImpl(...a)) as typeof fetch,
+        }),
+      { initialProps: 0 },
+    );
+    await waitFor(() => expect(result.current.aiWritten).toBe(true));
+    await rerender(1);
+    await rerender(2);
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores a stale answer when the plan changes mid-flight', async () => {
+    const first = deferred();
+    const second = deferred();
+    const queue = [first, second];
+    const fetchImpl = jest.fn(() => queue.shift()!.promise) as unknown as typeof fetch;
+    const plan2 = planPayments({
+      cards: [AXIS],
+      cash: 1000,
+      today: '2026-10-21',
+      rules: DEFAULT_COACH_RULES,
+    });
+
+    const { result, rerender } = await renderHook(
+      ({ plan }: { plan: typeof PLAN }) =>
+        useExplanation(plan, CARDS, CONTEXT, { config: CONFIG, fetchImpl }),
+      { initialProps: { plan: PLAN } },
+    );
+    await rerender({ plan: plan2 });
+    second.resolve(ok({ text: 'NEW', source: 'ai' }));
+    await waitFor(() => expect(result.current.text).toBe('NEW'));
+    first.resolve(ok({ text: 'OLD', source: 'ai' }));
+    await Promise.resolve();
+
+    expect(result.current.text).toBe('NEW');
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it('aborts the in-flight call on unmount', async () => {
+    let signal: AbortSignal | undefined;
+    const fetchImpl = jest.fn((_u: unknown, init?: RequestInit) => {
+      signal = init?.signal ?? undefined;
+      return new Promise<Response>(() => undefined);
+    }) as unknown as typeof fetch;
+
+    const { unmount } = await renderHook(() =>
+      useExplanation(PLAN, CARDS, CONTEXT, { config: CONFIG, fetchImpl }),
+    );
+    await waitFor(() => expect(fetchImpl).toHaveBeenCalled());
+    await unmount();
+
+    expect(signal?.aborted).toBe(true);
+  });
+});

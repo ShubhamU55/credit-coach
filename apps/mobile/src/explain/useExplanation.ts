@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   buildExplainPayload,
   buildTemplateExplanation,
@@ -65,16 +65,27 @@ export function useExplanation(
 
   const [resolved, setResolved] = useState<Resolved | null>(null);
 
+  // The effect is keyed on `key` alone: callers may pass fresh-but-equal objects every render,
+  // and that must not refetch. The latest values live in a ref the effect reads when it fires.
+  const latest = useRef({ payload, template, config, fetchImpl, timeoutMs });
   useEffect(() => {
-    if (!config) return undefined;
+    latest.current = { payload, template, config, fetchImpl, timeoutMs };
+  });
+  const configured = config !== null;
+
+  useEffect(() => {
+    const call = latest.current;
+    if (!configured || !call.config) return undefined;
+    const controller = new AbortController();
     let cancelled = false;
-    void fetchExplanation({ payload, template, config, fetchImpl, timeoutMs }).then((result) => {
+    void fetchExplanation({ ...call, signal: controller.signal }).then((result) => {
       if (!cancelled) setResolved({ key, ...result });
     });
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [config, payload, template, key, fetchImpl, timeoutMs]);
+  }, [key, configured]);
 
   // A stale answer for a previous plan is ignored: the key must match the current payload.
   const current = resolved?.key === key ? resolved : null;
