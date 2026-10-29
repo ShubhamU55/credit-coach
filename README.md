@@ -19,7 +19,7 @@ cut, how AI was used, and an honest status table. The demo video shot list is
 
 ## Judge's quick-start
 
-What is real, as of `origin/main` `23ba4be` (2026-10-29; the table in `docs/submission.md` section 3 is the live
+What is real, as of `origin/main` `abbb1e4`, 29 Oct 2026, at the time of writing (update as PRs merge; the table in `docs/submission.md` section 3 is the live
 version):
 
 - **Real and tested on `main`:** the rules engine (payment planner, reporting dates, score range predictor,
@@ -49,7 +49,7 @@ pnpm install --frozen-lockfile
 pnpm --filter @credit-coach/engine test
 ```
 
-Expect 255 passing tests and about 99.7% line coverage (the gate is 90%). The golden fixture is Aarav, from
+Expect about 255 passing tests and about 99.7% line coverage (the gate is 90%), counted at `abbb1e4` on 29 Oct 2026 and stale once more PRs merge. The golden fixture is Aarav, from
 `docs/design.md` section 8: `packages/engine/src/planner.golden.test.ts` asserts the exact plan, the 15.3% and 7.3%
 outcomes, and the "admin demo moment" (threshold 20% makes the SBI step 14,400 and the left over 19,000).
 `pnpm verify` runs lint, typecheck and every unit test in every workspace. When the machine is busy the `.claude/hooks` and
