@@ -34,6 +34,12 @@ describe('readExplainConfig', () => {
     expect(readExplainConfig({ url: '', anonKey: 'k' })).toBeNull();
   });
 
+  it('treats a non-https URL as unconfigured', () => {
+    expect(readExplainConfig({ url: 'http://x.test', anonKey: 'k' })).toBeNull();
+    expect(readExplainConfig({ url: 'ftp://x.test', anonKey: 'k' })).toBeNull();
+    expect(readExplainConfig({ url: 'x.test', anonKey: 'k' })).toBeNull();
+  });
+
   it('trims a trailing slash and builds the function endpoint', () => {
     const config = readExplainConfig({ url: 'https://x.test/', anonKey: 'k' });
 
@@ -49,10 +55,10 @@ describe('fetchExplanation', () => {
     expect(result).toEqual({ text: 'Because it helps.', source: 'ai' });
   });
 
-  it('keeps the function template as template, not AI', async () => {
-    const result = await run(respond({ text: 'Server template.', source: 'template' }));
+  it('ignores the body text when the server says template and uses the local template', async () => {
+    const result = await run(respond({ text: 'Unchecked server text 99.', source: 'template' }));
 
-    expect(result).toEqual({ text: 'Server template.', source: 'template' });
+    expect(result).toEqual({ text: TEMPLATE, source: 'template' });
   });
 
   it('sends the payload as JSON with the public anon key', async () => {
@@ -119,5 +125,103 @@ describe('fetchExplanation', () => {
     }) as unknown as typeof fetch;
 
     expect(await run(rejects)).toEqual({ text: TEMPLATE, source: 'template' });
+  });
+});
+
+describe('number grounding (non-negotiable 2)', () => {
+  const PAY: ExplainPayload = {
+    ...PAYLOAD,
+    items: [
+      {
+        step: 1,
+        kind: 'minimum',
+        card: 'Axis Neo',
+        amount: 620,
+        payBy: '2026-10-22',
+        reasonCode: 'minimum_due_soon',
+        utilizationBefore: 19.5,
+        utilizationAfter: 18.7,
+      },
+    ],
+  };
+  const check = (text: string) =>
+    fetchExplanation({
+      payload: PAY,
+      template: TEMPLATE,
+      config: CONFIG,
+      fetchImpl: respond({ text, source: 'ai' }),
+      timeoutMs: 50,
+    });
+
+  it('falls back to the template when the AI text carries numbers the engine did not compute', async () => {
+    expect(await check('Pay ₹5,000 on Axis Neo by 25 Oct.')).toEqual({
+      text: TEMPLATE,
+      source: 'template',
+    });
+  });
+
+  it('accepts AI text whose numbers all come from the payload, ignoring commas and suffixes', async () => {
+    const text = 'Pay ₹620 on Axis Neo by 22nd Oct so utilization drops from 19.5% to 18.7%.';
+
+    expect(await check(text)).toEqual({ text, source: 'ai' });
+  });
+
+  it('accepts numbers that appear in the template text', async () => {
+    const result = await fetchExplanation({
+      payload: PAY,
+      template: 'Overall goes to 15.3%.',
+      config: CONFIG,
+      fetchImpl: respond({ text: 'It lands at 15.3% overall.', source: 'ai' }),
+      timeoutMs: 50,
+    });
+
+    expect(result.source).toBe('ai');
+  });
+});
+
+describe('abort and diagnostics', () => {
+  let warn: jest.SpyInstance;
+  beforeEach(() => {
+    warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+  });
+  afterEach(() => warn.mockRestore());
+
+  it('returns the template and aborts the request when the caller aborts', async () => {
+    const controller = new AbortController();
+    let seen: AbortSignal | undefined;
+    const hangs = jest.fn((_url: unknown, init?: RequestInit) => {
+      seen = init?.signal ?? undefined;
+      return new Promise<Response>(() => undefined);
+    }) as unknown as typeof fetch;
+
+    const pending = fetchExplanation({
+      payload: PAYLOAD,
+      template: TEMPLATE,
+      config: CONFIG,
+      fetchImpl: hangs,
+      timeoutMs: 5000,
+      signal: controller.signal,
+    });
+    controller.abort();
+
+    expect(await pending).toEqual({ text: TEMPLATE, source: 'template' });
+    expect(seen?.aborted).toBe(true);
+  });
+
+  it('warns once in dev with a reason code and never the payload or key', async () => {
+    await run(respond({}, false));
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    const args = warn.mock.calls[0].join(' ');
+    expect(args).toContain('explain fallback');
+    expect(args).toContain('http_');
+    expect(args).not.toContain('anon');
+    expect(args).not.toContain('2026-10-21');
+  });
+
+  it('stays quiet when simply unconfigured', async () => {
+    await run(respond({}), null);
+
+    expect(warn).not.toHaveBeenCalled();
   });
 });
