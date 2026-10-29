@@ -6,17 +6,14 @@ the APK does not install, so it has to stand on its own. Target length: about 4 
 ## Read this first: what the video can show
 
 The numbers and strings below come from the golden fixture (`docs/design.md` section 8), the engine tests on `main`,
-and the screens on the three unmerged branches `feat/pd-8-welcome-home` (Welcome, Home), `feat/pd-9-plan` (Plan, Mark
-as paid) and `feat/pd-10-score` (Score, what-ifs). As of 2026-10-29 none of those screens is on `main`. PD-8 is PR #65 (open) with a Maestro report on a physical phone
-(Welcome to Home only); PD-9 has a report for Plan and Mark as paid on its branch; PD-10 has no device report. All pass
-their Jest tests. So:
+and the screens now merged to `main`: Welcome and Home (#65), Plan and Mark as paid (#68), Score and what-ifs (#69).
+As of 2026-10-30 the whole path also ran as one Maestro flow on a physical phone (PD-15 report, in the open PD-15 PR).
+Still unproven: the exact wording and numbers of every screen against this script, which is why the checks below
+remain. So:
 
-- **Record segments 2 to 7 only from a build that contains PD-8, PD-9 and PD-10.** Do not record them from `main`
-  as it stands; `main` has stub screens for Home, Plan, Score and Mark as paid.
+- **Record segments 2 to 7 from the release APK** (see `docs/install.md`), a build that contains PD-8, PD-9 and PD-10.
 - **Re-check every on-screen string and number against the real build while recording.** Where a line below says
   "per design 7.4" it is the design's wording and the screen was not seen on a device.
-- If the screens are still unmerged at recording time, use the **stub-state cut** at the end of this file. Do not
-  describe a stub as the finished app.
 - The admin demo moment (threshold 30% to 20% in the admin panel) is **not shipped** (PD-14 is cut). Segment 4b shows
   the same effect as an engine test and says so.
 
@@ -130,7 +127,7 @@ the PD-11 hook.
 ### 8. How AI built it (3:45 to 4:15)
 
 **Screen:** `docs/ai-system.md` (the diagram), then `docs/agent-runs/2026-10-28-coordinator.md`, a PR's checks list,
-then the engine test run (255 tests).
+then the engine test run (255 tests when counted at `abbb1e4`; say the number the run shows).
 **Say:** "I built this with Claude Code as the engineering team. First I built the process: 26 agents, workflows
 with a drift guard, and a review loop where a verifier tries to refute every finding. Then 16 tickets ran in parallel,
 one agent per ticket, with a coordinator dispatching reviewers. Reviews found real bugs: a hundred-times money error
@@ -142,14 +139,14 @@ cost if wrong."
 
 **Screen:** the status table in `docs/submission.md` section 3.
 **Say:** "What is not here: sign-in and bureau linking, reminders, and the admin panel were cut. The backend is
-written and tested but not deployed. The write-up says exactly what is and is not proven."
+written, merged and not deployed, and its real-stack checks were never run. The write-up says exactly what is and is not proven."
 
-## Stub-state cut (if PD-8, PD-9 and PD-10 are not merged at recording time)
+## Fallback cut (if the APK cannot be installed at recording time)
 
-Keep the video honest and still 3 minutes: segment 1 (over the Welcome stub), the kit gallery (`/kit` route: every
+Keep the video honest and still 3 minutes: segment 1 (over the Welcome screen), the kit gallery (`/kit` route: every
 component, ranges that never wrap), the engine golden tests running in the terminal (the Aarav plan table, the
 predictor's 708 to 736 range, the close-card warning test), segment 4b, segment 8, segment 9. Say in the voice-over that
-the screens exist as built-but-unmerged branches and that this is the engine and the kit.
+this is the engine and the kit, and that the app screens were not recorded.
 
 ## Checklist for the person recording
 
