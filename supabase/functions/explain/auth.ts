@@ -38,6 +38,13 @@ function claimsOf(token: string): { role?: unknown; sub?: unknown } | null {
   }
 }
 
+/** Drops trailing slashes with a plain scan: the regex form backtracks quadratically on long slash runs. */
+function withoutTrailingSlashes(url: string): string {
+  let end = url.length;
+  while (end > 0 && url.charCodeAt(end - 1) === 47) end -= 1;
+  return url.slice(0, end);
+}
+
 export async function authenticate(request: Request, config: AuthConfig): Promise<AuthResult> {
   const token = bearerToken(request);
   const claims = token ? claimsOf(token) : null;
@@ -51,7 +58,7 @@ export async function authenticate(request: Request, config: AuthConfig): Promis
   const timer = setTimeout(() => controller.abort(), config.timeoutMs ?? AUTH_TIMEOUT_MS);
   try {
     const response = await config.fetchImpl(
-      `${config.supabaseUrl.replace(/\/+$/, '')}/auth/v1/user`,
+      `${withoutTrailingSlashes(config.supabaseUrl)}/auth/v1/user`,
       {
         headers: { apikey: config.anonKey, authorization: `Bearer ${token}` },
         signal: controller.signal,

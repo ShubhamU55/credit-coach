@@ -321,7 +321,7 @@ describe('request shape', () => {
   it('rejects an own __proto__ key, 1e999 and a utilization of 1001', async () => {
     const fetchMock = fetchReturning(okReply);
     const body = JSON.stringify(aarav);
-    const proto = body.replace('{', '{"__proto__":{"admin":true},');
+    const proto = '{"__proto__":{"admin":true},' + body.slice(1);
     const infinite = body.replace(/"cashUsed":\d+/, '"cashUsed":1e999');
     const overUtilised = body.replace(/"utilizationBefore":[\d.]+/, '"utilizationBefore":1001');
     expect(infinite).not.toBe(body);
