@@ -12,6 +12,7 @@ const REQUIRED_OWNED_PATHS = [
   '/CLAUDE.md',
   '/.claude/',
   '/apps/*/AGENTS.md',
+  '/apps/*/CLAUDE.md',
   '/apps/mobile/.claude/',
   '/.github/',
   '/docs/ai-policy.md',

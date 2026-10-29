@@ -13,6 +13,9 @@ import { execFileSync, spawnSync } from 'node:child_process';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const hooksDir = path.resolve(here, '..');
+
+// Child-process start-up exceeds Vitest's 5 s default on a loaded machine.
+const SPAWN_TIMEOUT_MS = 60_000;
 const preBashCommitQualityPath = pathToFileURL(
   path.join(hooksDir, 'pre-bash-commit-quality.cjs'),
 ).href;
@@ -542,45 +545,49 @@ describe('commit-hook: the canonical quoted heredoc with a good message', () => 
 // directory makes `getStagedFiles()` deterministically return nothing, so
 // these can assert the real exit code without depending on (or disturbing)
 // this worktree's actual staged state.
-describe('commit-hook: evaluate() really exits 0 for the required cases (isolated empty git repo)', () => {
-  const preBashCommitQualityScriptPath = path.join(hooksDir, 'pre-bash-commit-quality.cjs');
+describe(
+  'commit-hook: evaluate() really exits 0 for the required cases (isolated empty git repo)',
+  { timeout: SPAWN_TIMEOUT_MS },
+  () => {
+    const preBashCommitQualityScriptPath = path.join(hooksDir, 'pre-bash-commit-quality.cjs');
 
-  function runInEmptyGitRepo(command) {
-    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'commit-hook-test-'));
-    try {
-      execFileSync('git', ['init', '--quiet'], { cwd: tempRoot });
-      return spawnSync(process.execPath, [preBashCommitQualityScriptPath], {
-        cwd: tempRoot,
-        input: JSON.stringify({ tool_input: { command } }),
-        encoding: 'utf8',
-      });
-    } finally {
-      fs.rmSync(tempRoot, { recursive: true, force: true });
+    function runInEmptyGitRepo(command) {
+      const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'commit-hook-test-'));
+      try {
+        execFileSync('git', ['init', '--quiet'], { cwd: tempRoot });
+        return spawnSync(process.execPath, [preBashCommitQualityScriptPath], {
+          cwd: tempRoot,
+          input: JSON.stringify({ tool_input: { command } }),
+          encoding: 'utf8',
+        });
+      } finally {
+        fs.rmSync(tempRoot, { recursive: true, force: true });
+      }
     }
-  }
 
-  it("exits 0 for GIT_AUTHOR_NAME=x git commit -m 'feat: ok'", () => {
-    const result = runInEmptyGitRepo("GIT_AUTHOR_NAME=x git commit -m 'feat: ok'");
-    expect(result.status).toBe(0);
-  });
+    it("exits 0 for GIT_AUTHOR_NAME=x git commit -m 'feat: ok'", () => {
+      const result = runInEmptyGitRepo("GIT_AUTHOR_NAME=x git commit -m 'feat: ok'");
+      expect(result.status).toBe(0);
+    });
 
-  it('exits 0 for the canonical quoted heredoc with LF line endings', () => {
-    const command = `git commit -m "$(cat <<'EOF'\nfeat: add the thing\nEOF\n)"`;
-    const result = runInEmptyGitRepo(command);
-    expect(result.status).toBe(0);
-  });
+    it('exits 0 for the canonical quoted heredoc with LF line endings', () => {
+      const command = `git commit -m "$(cat <<'EOF'\nfeat: add the thing\nEOF\n)"`;
+      const result = runInEmptyGitRepo(command);
+      expect(result.status).toBe(0);
+    });
 
-  it('exits 0 for the canonical quoted heredoc with CRLF line endings', () => {
-    const command = `git commit -m "$(cat <<'EOF'\r\nfeat: add the thing\r\nEOF\r\n)"`;
-    const result = runInEmptyGitRepo(command);
-    expect(result.status).toBe(0);
-  });
+    it('exits 0 for the canonical quoted heredoc with CRLF line endings', () => {
+      const command = `git commit -m "$(cat <<'EOF'\r\nfeat: add the thing\r\nEOF\r\n)"`;
+      const result = runInEmptyGitRepo(command);
+      expect(result.status).toBe(0);
+    });
 
-  it('exits 0 for a non-git command that merely quotes "git commit"', () => {
-    const result = runInEmptyGitRepo('grep -m 1 "git commit" CLAUDE.md');
-    expect(result.status).toBe(0);
-  });
-});
+    it('exits 0 for a non-git command that merely quotes "git commit"', () => {
+      const result = runInEmptyGitRepo('grep -m 1 "git commit" CLAUDE.md');
+      expect(result.status).toBe(0);
+    });
+  },
+);
 
 describe('commit-hook: 15-commit regression (pinned snapshot of real main messages)', () => {
   // A SNAPSHOT, not a live `git log`. A live query here would break CI: the

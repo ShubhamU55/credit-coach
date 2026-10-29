@@ -96,7 +96,8 @@ const PROTECTED_FILES = new Set([
   '.eslintignore',
   '.prettierignore',
   '.stylelintignore',
-  '.markdownlintignore'
+  '.markdownlintignore',
+  'eslint.shared.cjs'
 ]);
 
 /**
