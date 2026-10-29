@@ -1,5 +1,5 @@
 import { AccessibilityInfo } from 'react-native';
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { router } from 'expo-router';
 
 import { createDemoRepository } from '../../demo/repository';
@@ -77,15 +77,28 @@ describe('leaving the sheet', () => {
   });
 });
 
+/** The click handler React holds right now: calling it twice shares one render, like two fast taps. */
+function confirmClick(): () => void {
+  const onClick = screen.getByTestId('mark-paid-confirm').props.onClick as
+    ((event: object) => void) | undefined;
+  if (!onClick) throw new Error('no click handler on the Confirm button');
+  return () => onClick({});
+}
+
 describe('safety', () => {
   it('records once when Confirm is double-tapped', async () => {
-    const repository = await renderSheet();
-    const confirm = screen.getByTestId('mark-paid-confirm');
+    const repository = await renderSheet({ cardId: 'axis-neo' });
+    await fireEvent.press(screen.getByTestId('mark-paid-choices-minimum'));
+    const onPress = confirmClick();
 
-    await fireEvent.press(confirm);
-    await fireEvent.press(confirm);
+    // Both taps land before React re-renders, while the form is still mounted.
+    await act(async () => {
+      onPress();
+      onPress();
+    });
 
     expect(repository.listPayments()).toHaveLength(1);
+    expect(repository.listPayments()[0].amount).toBe(620);
   });
 
   it('shows the repository error without announcing or showing Done', async () => {

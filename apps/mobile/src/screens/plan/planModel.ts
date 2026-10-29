@@ -285,13 +285,12 @@ export function buildPlanView(input: PlanViewInput): PlanView {
   const steps = buildSteps(plan, cardsById, runs, today);
   const lanes = buildLanes(steps, engineCards, rules, today);
   // Payments beyond what the plan asked of a card come out of what is left over.
-  const extra = plan.items
-    .map((i) => i.cardId)
-    .filter((id, n, all) => all.indexOf(id) === n)
-    .reduce((t, id) => {
-      const planned = plan.items.filter((i) => i.cardId === id).reduce((a, i) => a + i.amount, 0);
-      return t + Math.max(0, (runs.get(id)?.total ?? 0) - planned);
-    }, 0);
+  // Every card with a recorded payment counts, including cards the plan does not touch.
+  let extra = 0;
+  for (const [cardId, run] of runs) {
+    const planned = plan.items.filter((i) => i.cardId === cardId).reduce((a, i) => a + i.amount, 0);
+    extra += Math.max(0, run.total - planned);
+  }
   const leftover = Math.max(0, plan.leftover - extra);
   return {
     plan,

@@ -16,6 +16,9 @@ appId: com.creditcoach.app
     visible:
       id: 'home-screen'
     timeout: 20000
+- scrollUntilVisible:
+    element:
+      id: 'home-all-steps'
 - tapOn:
     id: 'home-all-steps'
 - extendedWaitUntil:

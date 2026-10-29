@@ -118,3 +118,16 @@ describe('buildPlanView timeline and shortfalls', () => {
     expect(v.summary).toMatch(/\S/);
   });
 });
+
+describe('buildPlanView leftover and payments on cards with no plan items', () => {
+  it('lowers leftover by a payment on a card the plan does not touch', () => {
+    const seed = parseSeed(aaravSeed);
+    const repo = createDemoRepository({ ...seed, rules: { ...seed.rules, thresholdPct: 40 } });
+    const baseline = view(repo);
+    expect(baseline.steps.some((s) => s.cardId === 'sbi-simplyclick')).toBe(false);
+
+    repo.recordPayment('sbi-simplyclick', 5000, DEMO_TODAY);
+
+    expect(view(repo).leftover).toBe(baseline.leftover - 5000);
+  });
+});
