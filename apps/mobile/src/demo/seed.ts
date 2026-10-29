@@ -23,6 +23,17 @@ function str(o: Obj, key: string, path: string): string {
   return v;
 }
 
+// Same shapes the database CHECK constraints enforce (supabase core_tables migration).
+const PAN_MASKED = /^[A-Z]{2}X{5}\d{2}[A-Z]$/;
+const MOBILE_MASKED = /^\+91 \d{2}X{5}\d{3}$/;
+
+/** A string that must match a masked-identifier shape; the value is never echoed in the error. */
+function masked(o: Obj, key: string, path: string, shape: RegExp, expected: string): string {
+  const v = str(o, key, path);
+  if (!shape.test(v)) fail(`${path}.${key}`, expected);
+  return v;
+}
+
 function bool(o: Obj, key: string, path: string): boolean {
   const v = o[key];
   if (typeof v !== 'boolean') fail(`${path}.${key}`, 'a boolean');
@@ -105,8 +116,14 @@ function parseProfile(raw: unknown): DemoProfile {
     firstName: str(o, 'firstName', 'profile'),
     isSample: bool(o, 'isSample', 'profile'),
     persona: str(o, 'persona', 'profile'),
-    panMasked: str(o, 'panMasked', 'profile'),
-    mobileMasked: str(o, 'mobileMasked', 'profile'),
+    panMasked: masked(o, 'panMasked', 'profile', PAN_MASKED, 'a masked PAN like ABXXXXX34F'),
+    mobileMasked: masked(
+      o,
+      'mobileMasked',
+      'profile',
+      MOBILE_MASKED,
+      'a masked mobile like +91 98XXXXX210',
+    ),
     cashForCards: whole(o, 'cashForCards', 'profile'),
     history: parseHistory(o.history),
   };
