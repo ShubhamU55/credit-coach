@@ -6,6 +6,9 @@ import { spawnSync } from 'node:child_process';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const hooksDir = path.resolve(here, '..');
 
+// Child-process start-up exceeds Vitest's 5 s default on a loaded machine.
+const SPAWN_TIMEOUT_MS = 60_000;
+
 // The commit hooks are registered for both shell tools. These pin what they do with a command
 // shaped the way the PowerShell tool sends it, since PowerShell is this machine's primary shell.
 function runHook(hook, command) {
@@ -14,36 +17,42 @@ function runHook(hook, command) {
     .status;
 }
 
-describe('commit hooks on commands sent by the PowerShell tool', () => {
-  it('blocks --no-verify', () => {
-    expect(runHook('block-no-verify.cjs', 'git commit --no-verify -m "feat: x"')).toBe(2);
-  });
+describe(
+  'commit hooks on commands sent by the PowerShell tool',
+  { timeout: SPAWN_TIMEOUT_MS },
+  () => {
+    it('blocks --no-verify', () => {
+      expect(runHook('block-no-verify.cjs', 'git commit --no-verify -m "feat: x"')).toBe(2);
+    });
 
-  it('blocks an AI attribution trailer', () => {
-    const command = 'git commit -m "feat: x" -m "Co-Authored-By: A"';
+    it('blocks an AI attribution trailer', () => {
+      const command = 'git commit -m "feat: x" -m "Co-Authored-By: A"';
 
-    expect(runHook('pre-bash-commit-quality.cjs', command)).toBe(2);
-  });
+      expect(runHook('pre-bash-commit-quality.cjs', command)).toBe(2);
+    });
 
-  it('lets a conforming single-line commit through', () => {
-    const command = 'git commit -m "feat: ok message"';
+    it('lets a conforming single-line commit through', () => {
+      const command = 'git commit -m "feat: ok message"';
 
-    expect(runHook('block-no-verify.cjs', command)).toBe(0);
-    expect(runHook('pre-bash-commit-quality.cjs', command)).toBe(0);
-  });
+      expect(runHook('block-no-verify.cjs', command)).toBe(0);
+      expect(runHook('pre-bash-commit-quality.cjs', command)).toBe(0);
+    });
 
-  it('fails closed on a PowerShell here-string message, which the hook cannot read', () => {
-    const command = "git commit -m @'\nfeat: here string\n'@";
+    it('fails closed on a PowerShell here-string message, which the hook cannot read', () => {
+      const command = "git commit -m @'\nfeat: here string\n'@";
 
-    expect(runHook('pre-bash-commit-quality.cjs', command)).toBe(2);
-  });
+      expect(runHook('pre-bash-commit-quality.cjs', command)).toBe(2);
+    });
 
-  it('fails closed on a powershell -Command wrapper around a commit', () => {
-    expect(runHook('pre-bash-commit-quality.cjs', 'powershell -Command "git commit -m x"')).toBe(2);
-  });
+    it('fails closed on a powershell -Command wrapper around a commit', () => {
+      expect(runHook('pre-bash-commit-quality.cjs', 'powershell -Command "git commit -m x"')).toBe(
+        2,
+      );
+    });
 
-  it('ignores a command that is not a commit', () => {
-    expect(runHook('block-no-verify.cjs', 'Get-ChildItem')).toBe(0);
-    expect(runHook('pre-bash-commit-quality.cjs', 'Get-ChildItem')).toBe(0);
-  });
-});
+    it('ignores a command that is not a commit', () => {
+      expect(runHook('block-no-verify.cjs', 'Get-ChildItem')).toBe(0);
+      expect(runHook('pre-bash-commit-quality.cjs', 'Get-ChildItem')).toBe(0);
+    });
+  },
+);

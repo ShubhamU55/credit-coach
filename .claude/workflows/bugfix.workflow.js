@@ -968,9 +968,14 @@ function buildPrBody(analysis, task, commit) {
     `- Regression test, landed RED before the fix: \`${toList(task.testFiles)[0]}\``,
     ...toList(task.files).map((file) => `- Fix: \`${file}\``),
     '',
-    '## Verification',
-    `- \`${task.testCommand}\` passes, and \`pnpm verify\` exits 0`,
+    '## Test evidence',
+    `- \`${task.testCommand}\` passes`,
+    '- `pnpm verify`: exits 0 (gate-checker)',
     ...(typeof commit === 'string' && SHA_PATTERN.test(commit) ? [`- Fix commit: ${commit}`] : []),
+    '',
+    '## AI-assisted',
+    '- Agents or commands used: /bugfix (bug-analyst, test-automator, implementer, gate-checker)',
+    '- Process journal entry or run ledger: the bugfix ledger in docs/agent-runs/, written after /pr-review',
   ].join('\n');
 }
 
