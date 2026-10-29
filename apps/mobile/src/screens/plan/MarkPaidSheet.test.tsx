@@ -47,9 +47,27 @@ describe('MarkPaidSheet', () => {
       checked: true,
     });
     expect(screen.getByTestId('mark-paid-note')).toHaveTextContent(
-      'Paid on today, 21 Oct · This only records it here. Pay in your bank or UPI app.',
+      'Paid today, 21 Oct · This only records it here. Pay in your bank or UPI app.',
     );
     expect(repository.listPayments()).toEqual([]);
+  });
+
+  it('is modal for screen readers, with Close before the header in focus order', async () => {
+    await renderSheet();
+
+    expect(screen.getByTestId('mark-paid-sheet').props.accessibilityViewIsModal).toBe(true);
+    expect(
+      screen.getByTestId('mark-paid-grabber', { includeHiddenElements: true }),
+    ).toBeOnTheScreen();
+    const tree = JSON.stringify(screen.toJSON());
+    expect(tree.indexOf('"mark-paid-close"')).toBeGreaterThan(-1);
+    expect(tree.indexOf('"mark-paid-close"')).toBeLessThan(tree.indexOf('"mark-paid-header"'));
+  });
+
+  it('keeps the Done state modal too', async () => {
+    await renderSheet();
+    await fireEvent.press(screen.getByTestId('mark-paid-confirm'));
+    expect(screen.getByTestId('mark-paid-done').props.accessibilityViewIsModal).toBe(true);
   });
 
   it('records the full statement only on Confirm, then shows and announces the result', async () => {

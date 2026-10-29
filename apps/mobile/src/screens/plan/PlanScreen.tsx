@@ -22,7 +22,7 @@ import {
   space,
   type NavTab,
 } from '../../ui';
-import { buildPlanView, type PlanView, type StepView } from './planModel';
+import { applyCashEdit, buildPlanView, parseCash, type PlanView, type StepView } from './planModel';
 
 /** The plan state the sheet needs to show the same steps as this screen. */
 interface SharedPlanParams {
@@ -61,7 +61,10 @@ function explainText(view: PlanView): string {
  */
 function PaidStep({ step, index }: { step: StepView; index: number }) {
   return (
-    <View testID={step.id} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+    <View
+      testID={step.id}
+      style={{ flexDirection: 'row', alignItems: 'flex-start', gap: space.grid }}
+    >
       <Text
         variant="numM"
         color="muted"
@@ -107,7 +110,7 @@ function Steps({ steps, params }: { steps: StepView[]; params: SharedPlanParams 
             kind={s.kind}
             cardName={s.cardName}
             amount={s.amountLabel}
-            payBy={{ label: s.payByLabel, soon: s.soon }}
+            payBy={{ label: s.payByLabel, soon: s.isSoon }}
             reason={s.reason}
             beforePercent={s.before}
             afterPercent={s.after}
@@ -125,13 +128,23 @@ function Steps({ steps, params }: { steps: StepView[]; params: SharedPlanParams 
   );
 }
 
-function CashRow({ cash, onChange }: { cash: number; onChange: (digits: string) => void }) {
+function CashRow({
+  cash,
+  error,
+  onChange,
+}: {
+  cash: number;
+  error: string | null;
+  onChange: (digits: string) => void;
+}) {
   const [editing, setEditing] = useState(false);
   const shown = formatINR(cash);
   return (
     <View style={{ gap: 4 }}>
       <Text variant="overline">CASH FOR CARDS</Text>
-      <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+      <View
+        style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: space.grid }}
+      >
         {editing ? (
           <View style={{ flex: 1, minWidth: 160 }}>
             <AmountInput
@@ -139,6 +152,8 @@ function CashRow({ cash, onChange }: { cash: number; onChange: (digits: string) 
               label="Cash for cards"
               value={String(cash)}
               onChangeText={onChange}
+              status={error ? 'error' : 'default'}
+              message={error ?? undefined}
               testID="plan-cash-input"
             />
           </View>
@@ -225,7 +240,8 @@ export function PlanScreen() {
   const [aimFor10, setAimFor10] = useState(rules.aimFor10);
   const [cashText, setCashText] = useState(String(profile.cashForCards));
   // cashText is the cash at plan time; what is left to pay with is that minus what is recorded.
-  const cash = cashText === '' ? 0 : Number(cashText);
+  const cash = parseCash(cashText);
+  const [cashError, setCashError] = useState<string | null>(null);
   const paidTotal = payments.reduce((total, p) => total + p.amount, 0);
   const cashLeft = Math.max(0, cash - paidTotal);
   const shared: SharedPlanParams = { aim10: aimFor10 ? '1' : '0', cash: String(cash) };
@@ -259,7 +275,16 @@ export function PlanScreen() {
         </View>
         <CashRow
           cash={cashLeft}
-          onChange={(digits) => setCashText(String(Number(digits || 0) + paidTotal))}
+          error={cashError}
+          onChange={(digits) => {
+            const edit = applyCashEdit(digits, paidTotal);
+            if ('error' in edit) {
+              setCashError(edit.error);
+              return;
+            }
+            setCashError(null);
+            setCashText(edit.cashText);
+          }}
         />
         <Outcome view={view} />
         <PaymentTimelineStrip

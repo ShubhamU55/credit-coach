@@ -1,7 +1,7 @@
 import { formatINR, formatShortDate } from '@credit-coach/engine';
 
 import type { DemoCard, DemoRepository, IsoDate } from '../../demo/types';
-import { buildPlanView, shortDayMonth, type PlanView, type StepView } from './planModel';
+import { MAX_CASH, buildPlanView, shortDayMonth, type PlanView, type StepView } from './planModel';
 
 export type OptionKey = 'full' | 'minimum' | 'planned' | 'other';
 
@@ -28,8 +28,21 @@ export function parsePlanParams(
   stored: { aimFor10: boolean; cash: number },
 ): { aimFor10: boolean; cash: number } {
   const aimFor10 = params.aim10 === '1' || (params.aim10 !== '0' && stored.aimFor10);
-  const cash = /^(0|[1-9]\d{0,8})$/.test(params.cash ?? '') ? Number(params.cash) : stored.cash;
+  const cash = isValidCash(params.cash) ? Number(params.cash) : stored.cash;
   return { aimFor10, cash };
+}
+
+const isValidCash = (text: string | undefined): text is string =>
+  text !== undefined && /^(0|[1-9]\d*)$/.test(text) && Number(text) <= MAX_CASH;
+
+/** The plan params that were given but are not usable (so the stored values apply). */
+export function rejectedPlanParams(params: MarkPaidParams): Array<'aim10' | 'cash'> {
+  const rejected: Array<'aim10' | 'cash'> = [];
+  if (params.aim10 !== undefined && params.aim10 !== '0' && params.aim10 !== '1') {
+    rejected.push('aim10');
+  }
+  if (params.cash !== undefined && !isValidCash(params.cash)) rejected.push('cash');
+  return rejected;
 }
 
 export type Resolved =
@@ -171,10 +184,21 @@ export function resolveMarkPaid(args: {
   };
 }
 
+/** What the sheet will record: the chosen option's amount, or the typed Other amount in rupees. */
+export function chosenAmount(args: {
+  selected: OptionKey;
+  options: readonly SheetOption[];
+  other: string;
+}): number {
+  const { selected, options, other } = args;
+  if (selected === 'other') return Number(other || 0);
+  return options.find((o) => o.key === selected)?.amountValue ?? 0;
+}
+
 export interface OtherValidation {
   status: 'default' | 'error' | 'warning';
   message?: string;
-  canConfirm: boolean;
+  isConfirmable: boolean;
   confirmLabel: string;
 }
 
@@ -187,7 +211,7 @@ export function validateOther(
     return {
       status: 'error',
       message: 'Enter the amount you paid.',
-      canConfirm: false,
+      isConfirmable: false,
       confirmLabel: 'Confirm payment',
     };
   }
@@ -195,7 +219,7 @@ export function validateOther(
     return {
       status: 'error',
       message: `That's more than the ${formatINR(ctx.outstanding)} outstanding.`,
-      canConfirm: false,
+      isConfirmable: false,
       confirmLabel: 'Confirm payment',
     };
   }
@@ -204,11 +228,11 @@ export function validateOther(
     return {
       status: 'warning',
       message: `⚠ ${formatINR(ctx.minimum - amount)} short of the ${formatINR(ctx.minimum)} minimum. This counts as a missed payment${by}.`,
-      canConfirm: true,
+      isConfirmable: true,
       confirmLabel: 'Record anyway',
     };
   }
-  return { status: 'default', canConfirm: true, confirmLabel: 'Confirm payment' };
+  return { status: 'default', isConfirmable: true, confirmLabel: 'Confirm payment' };
 }
 
 export interface PaymentSummary {

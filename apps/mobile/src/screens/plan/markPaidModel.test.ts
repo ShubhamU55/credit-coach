@@ -1,7 +1,32 @@
+import aaravSeed from '../../demo/aarav.json';
 import { DEMO_TODAY } from '../../demo/config';
 import { createDemoRepository } from '../../demo/repository';
+import { parseSeed } from '../../demo/seed';
+import type { DemoCard } from '../../demo/types';
 import { buildPlanView } from './planModel';
-import { resolveMarkPaid, validateOther } from './markPaidModel';
+import {
+  parsePlanParams,
+  rejectedPlanParams,
+  resolveMarkPaid,
+  resultLine,
+  validateOther,
+} from './markPaidModel';
+
+/** Aarav's repository with one card's fields patched. */
+function repoWith(cardId: string, patch: Partial<DemoCard>) {
+  const seed = parseSeed(aaravSeed);
+  return createDemoRepository({
+    ...seed,
+    cards: seed.cards.map((c) => (c.id === cardId ? { ...c, ...patch } : c)),
+  });
+}
+
+function axisOptions(repo = createDemoRepository()) {
+  const { cards, view } = setup(repo);
+  const r = resolveMarkPaid({ cards, view, params: { cardId: 'axis-neo' } });
+  if (r.kind !== 'ok') throw new Error('expected ok');
+  return r;
+}
 
 function setup(repo = createDemoRepository()) {
   const cards = repo.listCards();
@@ -85,7 +110,11 @@ describe('validateOther', () => {
   });
   it('warns below the minimum with Record anyway', () => {
     const v = validateOther('500', base);
-    expect(v).toMatchObject({ status: 'warning', canConfirm: true, confirmLabel: 'Record anyway' });
+    expect(v).toMatchObject({
+      status: 'warning',
+      isConfirmable: true,
+      confirmLabel: 'Record anyway',
+    });
     expect(v.message).toBe(
       '⚠ ₹120 short of the ₹620 minimum. This counts as a missed payment — pay the rest by 22 Oct.',
     );
@@ -93,8 +122,91 @@ describe('validateOther', () => {
   it('is fine at or above the minimum', () => {
     expect(validateOther('620', base)).toMatchObject({
       status: 'default',
-      canConfirm: true,
+      isConfirmable: true,
       confirmLabel: 'Confirm payment',
     });
+  });
+});
+describe('resultLine', () => {
+  it('names a single step', () => {
+    expect(resultLine('Axis Neo', [1], false)).toBe(
+      'Step 01 is done. The plan is updated for Axis Neo.',
+    );
+  });
+  it('joins three or more steps with commas and "and"', () => {
+    expect(resultLine('Axis Neo', [1, 3, 5], true)).toBe(
+      "Steps 01, 03 and 05 are done. Axis Neo's statement is cleared — no interest this cycle.",
+    );
+  });
+  it('says only that the plan is updated when no step was settled', () => {
+    expect(resultLine('Axis Neo', [], false)).toBe('The plan is updated for Axis Neo.');
+  });
+  it('keeps the cleared sentence when no step was settled but the statement is cleared', () => {
+    expect(resultLine('Axis Neo', [], true)).toBe(
+      "Axis Neo's statement is cleared — no interest this cycle.",
+    );
+  });
+});
+
+describe('buildOptions boundaries (through resolveMarkPaid)', () => {
+  it('omits Minimum only when the minimum equals the statement', () => {
+    const r = axisOptions(repoWith('axis-neo', { minimumDue: 12400 }));
+    expect(r.options.map((o) => o.key)).toEqual(['full', 'other']);
+  });
+
+  it('shrinks both options after a partial payment on the statement', () => {
+    const repo = createDemoRepository();
+    repo.recordPayment('axis-neo', 500, DEMO_TODAY);
+    const r = axisOptions(repo);
+    expect(r.options.map((o) => [o.key, o.amountValue, o.sub])).toEqual([
+      ['full', 11900, 'Steps 01 + 03 · zero interest'],
+      ['minimum', 120, 'Step 01 · interest applies on the rest'],
+      ['other', 0, 'Partial payment'],
+    ]);
+  });
+
+  it('offers only Other when the statement is paid in full and no step is open', () => {
+    const repo = createDemoRepository();
+    repo.recordPayment('axis-neo', 12400, DEMO_TODAY);
+    const r = axisOptions(repo);
+    expect(r.options.map((o) => o.key)).toEqual(['other']);
+    expect(r.defaultOption).toBe('other');
+  });
+
+  it('counts a step when the amount equals the running step total exactly', () => {
+    // Statement 12,400 = step 01 (620) + step 03 (11,780); minimum 620 = step 01.
+    const r = axisOptions();
+    expect(r.options[0].sub).toBe('Steps 01 + 03 · zero interest');
+    expect(r.options[1].sub).toBe('Step 01 · interest applies on the rest');
+  });
+});
+
+describe('parsePlanParams', () => {
+  const stored = { aimFor10: false, cash: 120000 };
+  it.each([
+    ['0', 0],
+    ['1', 1],
+    ['999999999', 999999999],
+  ])('accepts cash %s', (cash, expected) => {
+    expect(parsePlanParams({ cash }, stored).cash).toBe(expected);
+  });
+  it.each(['1000000000', '012', '-5', '1.5', '', 'abc'])('rejects cash %j', (cash) => {
+    expect(parsePlanParams({ cash }, stored).cash).toBe(120000);
+  });
+  it('lets aim10 "0" override a stored aimFor10 of true', () => {
+    expect(parsePlanParams({ aim10: '0' }, { aimFor10: true, cash: 1 }).aimFor10).toBe(false);
+  });
+  it('uses the stored aimFor10 for an absent or unknown aim10, and "1" always wins', () => {
+    expect(parsePlanParams({}, { aimFor10: true, cash: 1 }).aimFor10).toBe(true);
+    expect(parsePlanParams({ aim10: 'x' }, { aimFor10: true, cash: 1 }).aimFor10).toBe(true);
+    expect(parsePlanParams({ aim10: '1' }, stored).aimFor10).toBe(true);
+  });
+});
+
+describe('rejectedPlanParams', () => {
+  it('lists only the params that are present and unusable', () => {
+    expect(rejectedPlanParams({})).toEqual([]);
+    expect(rejectedPlanParams({ aim10: '0', cash: '5' })).toEqual([]);
+    expect(rejectedPlanParams({ aim10: 'x', cash: '012' })).toEqual(['aim10', 'cash']);
   });
 });

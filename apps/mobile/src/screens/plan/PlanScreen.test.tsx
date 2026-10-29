@@ -21,6 +21,8 @@ jest.mock('expo-router', () => ({
 }));
 
 const mockRouter = router as jest.Mocked<typeof router>;
+// A mounted sheet is modal for screen readers, so the Plan screen behind it counts as hidden.
+const HIDDEN = { includeHiddenElements: true };
 
 async function renderPlan(repository = createDemoRepository()) {
   await render(
@@ -97,6 +99,25 @@ describe('PlanScreen (golden, design.md section 8)', () => {
     expect(screen.getByTestId('plan-shortfall-hdfc-millennia')).toHaveTextContent(/short/);
   });
 
+  it('refuses a cash total above nine digits with a message and keeps the old plan', async () => {
+    const repository = createDemoRepository();
+    repository.recordPayment('axis-neo', 620, DEMO_TODAY);
+    await renderPlan(repository);
+    await fireEvent.press(screen.getByTestId('plan-cash-edit'));
+
+    // The field itself stops at nine digits; the recorded 620 pushes this total over the limit.
+    await fireEvent.changeText(screen.getByTestId('plan-cash-input'), '999999999');
+
+    expect(screen.getByTestId('plan-cash-input-message')).toHaveTextContent(
+      'Enter ₹99,99,99,999 or less.',
+    );
+    expect(screen.getByTestId('plan-cash-input').props.value).toBe('119380');
+
+    await fireEvent.changeText(screen.getByTestId('plan-cash-input'), '999999000');
+    expect(screen.getByTestId('plan-cash-input-message')).toHaveTextContent('');
+    expect(screen.getByTestId('plan-cash-input').props.value).toBe('999999000');
+  });
+
   it('navigates with the floating nav', async () => {
     await renderPlan();
 
@@ -121,10 +142,10 @@ describe('Plan updates after Mark as paid', () => {
     expect(repository.listPayments()).toEqual([
       expect.objectContaining({ cardId: 'axis-neo', amount: 12400, date: DEMO_TODAY }),
     ]);
-    expect(screen.getByTestId('plan-step-3')).toHaveTextContent(/✓ PAID · 21 OCT/);
-    expect(screen.getByTestId('plan-step-1')).toHaveTextContent(/✓ PAID/);
-    expect(screen.getByTestId('plan-step-5-mark-paid')).toBeOnTheScreen();
-    expect(screen.getByTestId('plan-leftover')).toHaveTextContent('₹31,000');
+    expect(screen.getByTestId('plan-step-3', HIDDEN)).toHaveTextContent(/✓ PAID · 21 OCT/);
+    expect(screen.getByTestId('plan-step-1', HIDDEN)).toHaveTextContent(/✓ PAID/);
+    expect(screen.getByTestId('plan-step-5-mark-paid', HIDDEN)).toBeOnTheScreen();
+    expect(screen.getByTestId('plan-leftover', HIDDEN)).toHaveTextContent('₹31,000');
   });
 });
 

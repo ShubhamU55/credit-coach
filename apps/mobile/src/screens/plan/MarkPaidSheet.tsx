@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
-import { AccessibilityInfo, View } from 'react-native';
+import { AccessibilityInfo, View, type ViewProps } from 'react-native';
 
 import { formatINR } from '@credit-coach/engine';
 
@@ -25,8 +25,10 @@ import {
   space,
 } from '../../ui';
 import {
+  chosenAmount,
   parsePlanParams,
   recordAndSummarise,
+  rejectedPlanParams,
   resolveMarkPaid,
   validateOther,
   type MarkPaidParams,
@@ -36,6 +38,38 @@ import {
 import { buildPlanView, shortDayMonth } from './planModel';
 
 const TILE = 52;
+const GRABBER = { width: 40, height: 4 };
+const SHEET_TOP_PAD = space.grid;
+const SHEET_BOTTOM_PAD = space.section;
+
+/**
+ * The sheet's root (design.md 6.19): modal for screen readers, a `line` top border, a grabber and
+ * padding 12/20/28. The route is a full screen, so there is no scrim here.
+ */
+function SheetFrame({ children, ...rest }: ViewProps) {
+  return (
+    <View
+      accessibilityViewIsModal
+      {...rest}
+      style={{
+        gap: space.section,
+        paddingTop: SHEET_TOP_PAD,
+        paddingHorizontal: space.gutter,
+        paddingBottom: SHEET_BOTTOM_PAD,
+        borderTopWidth: 1,
+        borderTopColor: color.line,
+      }}
+    >
+      <View
+        testID="mark-paid-grabber"
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+        style={{ alignSelf: 'center', ...GRABBER, backgroundColor: color.line }}
+      />
+      {children}
+    </View>
+  );
+}
 
 /** Back to wherever the sheet was opened from; a cold deep link has no history, so go to the plan. */
 function leave() {
@@ -55,7 +89,7 @@ function useFocusOnMount() {
 function Invalid({ title, message }: { title: string; message: string }) {
   const focusRef = useFocusOnMount();
   return (
-    <View testID="mark-paid-invalid" style={{ gap: space.section, padding: space.gutter }}>
+    <SheetFrame testID="mark-paid-invalid">
       <View ref={focusRef} accessible accessibilityRole="header">
         <Text variant="h1">{title}</Text>
       </View>
@@ -63,14 +97,14 @@ function Invalid({ title, message }: { title: string; message: string }) {
         {message}
       </Text>
       <SecondaryButton label="Close" onPress={leave} testID="mark-paid-close" />
-    </View>
+    </SheetFrame>
   );
 }
 
 function Done({ recorded }: { recorded: PaymentSummary }) {
   const focusRef = useFocusOnMount();
   return (
-    <View testID="mark-paid-done" style={{ gap: space.section, padding: space.gutter }}>
+    <SheetFrame testID="mark-paid-done">
       <View
         accessibilityElementsHidden
         importantForAccessibility="no-hide-descendants"
@@ -97,7 +131,7 @@ function Done({ recorded }: { recorded: PaymentSummary }) {
         {recorded.line}
       </Text>
       <PopButton label="Back to plan" size="screen" onPress={leave} testID="mark-paid-back" />
-    </View>
+    </SheetFrame>
   );
 }
 
@@ -121,6 +155,15 @@ export function MarkPaidSheet(props: MarkPaidParams) {
     () => resolveMarkPaid({ cards, view, params: { cardId, amount } }),
     [cards, view, cardId, amount],
   );
+
+  const rejected = rejectedPlanParams(props).join(', ');
+  useEffect(() => {
+    if (__DEV__ && rejected) {
+      console.warn(
+        `[mark-paid] ignored invalid deep-link param(s): ${rejected}; using the stored values.`,
+      );
+    }
+  }, [rejected]);
 
   if (recorded) return <Done recorded={recorded} />;
   if (resolved.kind === 'invalid') {
@@ -163,33 +206,41 @@ function SheetForm({
 
   const selected = choice ?? resolved.defaultOption;
   const other = otherText ?? resolved.prefill ?? '';
-  const option = resolved.options.find((o) => o.key === selected);
   const validation = validateOther(other, resolved);
   const isOther = selected === 'other';
-  const payAmount = isOther ? Number(other || 0) : (option?.amountValue ?? 0);
-  const canConfirm = isOther ? validation.canConfirm : payAmount > 0;
+  const payAmount = chosenAmount({ selected, options: resolved.options, other });
+  const isConfirmable = isOther ? validation.isConfirmable : payAmount > 0;
 
   function confirm() {
-    if (submitted.current || !canConfirm) return;
+    if (submitted.current || !isConfirmable) return;
+    // Set before recording so a second tap in the same render cannot record twice.
+    submitted.current = true;
     try {
       onConfirm(resolved.card, payAmount);
-      submitted.current = true;
     } catch (caught) {
+      submitted.current = false;
       if (!(caught instanceof RepositoryError)) throw caught;
       setError(caught.message);
     }
   }
 
   return (
-    <View testID="mark-paid-sheet" style={{ gap: space.section, padding: space.gutter }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.grid }}>
-        <View ref={headerRef} style={{ flex: 1 }} accessible accessibilityRole="header">
+    <SheetFrame testID="mark-paid-sheet">
+      {/* row-reverse: Close is first in the tree (first in focus order) but sits on the right. */}
+      <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: space.grid }}>
+        <SecondaryButton label="Close" onPress={leave} testID="mark-paid-close" />
+        <View
+          ref={headerRef}
+          testID="mark-paid-header"
+          style={{ flex: 1 }}
+          accessible
+          accessibilityRole="header"
+        >
           <Text variant="overline">MARK AS PAID</Text>
           <Text variant="title" testID="mark-paid-subtitle">
             {resolved.subtitle}
           </Text>
         </View>
-        <SecondaryButton label="Close" onPress={leave} testID="mark-paid-close" />
       </View>
       <Text variant="numL" testID="mark-paid-amount">
         {formatINR(payAmount)}
@@ -214,7 +265,7 @@ function SheetForm({
         />
       ) : null}
       <Text variant="bodyS" testID="mark-paid-note">
-        {`Paid on today, ${shortDayMonth(DEMO_TODAY)} · ${RECORD_NOTE}`}
+        {`Paid today, ${shortDayMonth(DEMO_TODAY)} · ${RECORD_NOTE}`}
       </Text>
       {error ? (
         <Text variant="bodyS" color="error" accessibilityRole="alert" testID="mark-paid-error">
@@ -224,10 +275,10 @@ function SheetForm({
       <PopButton
         label={isOther ? validation.confirmLabel : 'Confirm payment'}
         size="screen"
-        disabled={!canConfirm}
+        disabled={!isConfirmable}
         onPress={confirm}
         testID="mark-paid-confirm"
       />
-    </View>
+    </SheetFrame>
   );
 }

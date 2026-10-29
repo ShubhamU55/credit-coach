@@ -149,6 +149,47 @@ describe('same plan as the Plan screen', () => {
   });
 });
 
+describe('rejected deep-link plan params (dev warning)', () => {
+  const warn = jest.spyOn(console, 'warn');
+  beforeEach(() => warn.mockImplementation(() => undefined));
+  afterAll(() => warn.mockRestore());
+
+  it.each([
+    [{ cash: '-5' }, 'cash'],
+    [{ cash: '1234567890' }, 'cash'],
+    [{ cash: '012' }, 'cash'],
+    [{ aim10: 'yes' }, 'aim10'],
+  ])('warns once, naming the param, for %j', async (params, name) => {
+    await renderSheet({ cardId: 'axis-neo', ...params });
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toContain(name);
+  });
+
+  it('stays silent for valid or absent params', async () => {
+    await renderSheet({ cardId: 'axis-neo', aim10: '0', cash: '5000' });
+    await renderSheet({ cardId: 'axis-neo' });
+
+    expect(warn).not.toHaveBeenCalled();
+  });
+});
+
+describe('double submit', () => {
+  it('can confirm again after a repository rejection', async () => {
+    const repository = await renderSheet({ cardId: 'axis-neo' });
+    const record = jest.spyOn(repository, 'recordPayment');
+    record.mockImplementationOnce(() => {
+      throw new RepositoryError('amount_exceeds_outstanding', 'Payment is more than outstanding');
+    });
+
+    await fireEvent.press(screen.getByTestId('mark-paid-confirm'));
+    await fireEvent.press(screen.getByTestId('mark-paid-confirm'));
+
+    expect(screen.getByTestId('mark-paid-done')).toBeOnTheScreen();
+    expect(record).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('accessibility focus', () => {
   it('moves focus to the header on open and to Recorded on Done', async () => {
     const focus = jest.spyOn(AccessibilityInfo, 'sendAccessibilityEvent').mockImplementation();

@@ -31,7 +31,7 @@ export interface StepView {
   amountLabel: string;
   payBy: IsoDate;
   payByLabel: string;
-  soon: boolean;
+  isSoon: boolean;
   reason: string;
   before: number;
   after: number;
@@ -79,7 +79,7 @@ export interface PlanViewInput {
 }
 
 const WINDOW_DAYS = 30;
-/** A pay-by within this many days is "soon" (warning chip). */
+/** A pay-by within this many days is "soon" (warning chip, `isSoon`). */
 const SOON_DAYS = 1;
 
 const KIND_LABEL: Record<PlanItem['kind'], string> = {
@@ -153,15 +153,37 @@ function payByLabel(payBy: IsoDate, today: IsoDate): string {
   return `BY ${text.toUpperCase()}`;
 }
 
-/** Earliest pay-by first, ties by step number. */
 /** ISO dates sort chronologically as plain strings; an explicit comparator keeps that order. */
 function compareIso(a: IsoDate, b: IsoDate): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
+/** Earliest pay-by first, ties by step number. */
 export function compareSteps(a: StepView, b: StepView): number {
-  if (a.payBy !== b.payBy) return a.payBy < b.payBy ? -1 : 1;
-  return a.step - b.step;
+  return compareIso(a.payBy, b.payBy) || a.step - b.step;
+}
+
+/** The largest cash figure the plan accepts: nine digits, the same limit as the deep-link param. */
+export const MAX_CASH = 999_999_999;
+
+/** The cash text on the Plan screen as rupees; empty means zero. */
+export function parseCash(text: string): number {
+  return text === '' ? 0 : Number(text);
+}
+
+/**
+ * The Plan screen shows cash left to pay with; the plan itself uses cash at plan time, which is
+ * what was typed plus what is already recorded. Refuses a total above MAX_CASH.
+ */
+export function applyCashEdit(
+  digits: string,
+  paidTotal: number,
+): { cashText: string } | { error: string } {
+  const cash = Number(digits || 0) + paidTotal;
+  if (!Number.isFinite(cash) || cash > MAX_CASH) {
+    return { error: `Enter ${formatINR(MAX_CASH)} or less.` };
+  }
+  return { cashText: String(cash) };
 }
 
 /** How much of a step a card's payments have covered: settled, or what is still to pay. */
@@ -205,7 +227,7 @@ function buildSteps(
       amountLabel: formatINR(amount),
       payBy: item.payBy,
       payByLabel: payByLabel(item.payBy, today),
-      soon: item.payBy <= addDays(today, SOON_DAYS),
+      isSoon: item.payBy <= addDays(today, SOON_DAYS),
       reason: item.reason.text,
       before: item.utilizationBefore ?? 0,
       after: item.utilizationAfter ?? 0,
