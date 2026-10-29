@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parse } from 'yaml';
 import { checkPrBody } from './pr-body.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -122,11 +123,50 @@ describe('checkPrBody', () => {
   });
 });
 
-describe('pr-body workflow', () => {
-  const text = fs.readFileSync(path.join(repoRoot, '.github/workflows/pr-body.yml'), 'utf8');
+describe('the real pull request template', () => {
+  const template = fs.readFileSync(path.join(repoRoot, '.github/pull_request_template.md'), 'utf8');
 
-  it('does not interpolate the body into run', () => {
-    expect(text).not.toMatch(/run:[^\n]*\$\{\{\s*github\.event\.pull_request\.body/);
-    expect(text).toContain('PR_BODY: ${{ github.event.pull_request.body }}');
+  it('fails the check while its three placeholders are unfilled', () => {
+    expect(checkPrBody(template)).toEqual({
+      ok: false,
+      missing: [
+        'Test evidence: a pnpm verify result line',
+        'AI-assisted: agents or commands used',
+        'AI-assisted: process journal entry or run ledger',
+      ],
+    });
+  });
+
+  it('passes once the result line, agents used and ledger path are filled in', () => {
+    const filled = template
+      .replace(/<result line[^>]*>/, '29 test files, 1586 tests passed')
+      .replace(/<for example[^>]*>/, '/build, /pr-review')
+      .replace(/<path under[^>]*>/, 'docs/agent-runs/2026-10-28-pd-4.md');
+
+    expect(checkPrBody(filled)).toEqual({ ok: true, missing: [] });
+  });
+});
+
+describe('pr-body workflow', () => {
+  const wf = parse(fs.readFileSync(path.join(repoRoot, '.github/workflows/pr-body.yml'), 'utf8'));
+  const steps = Object.values(wf.jobs).flatMap((job) => job.steps);
+
+  it('runs on pull requests only, with read-only contents permission', () => {
+    expect(Object.keys(wf.on)).toEqual(['pull_request']);
+    expect(wf.permissions).toEqual({ contents: 'read' });
+  });
+
+  it('does not interpolate the event payload into any run script', () => {
+    const runs = steps.map((step) => step.run).filter((run) => typeof run === 'string');
+
+    expect(runs.length).toBeGreaterThan(0);
+    expect(runs.filter((run) => run.includes('github.event'))).toEqual([]);
+  });
+
+  it('passes the body to the check through the PR_BODY environment variable', () => {
+    const check = steps.find((step) => step.run === 'node .claude/hooks/bin/pr-body-check.mjs');
+
+    expect(check).toBeDefined();
+    expect(check.env.PR_BODY).toBe('${{ github.event.pull_request.body }}');
   });
 });
