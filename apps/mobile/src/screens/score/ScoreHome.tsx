@@ -76,7 +76,15 @@ function GuardBanner({ guard }: { guard: GuardView }) {
       }}
     >
       <Text variant="title" color="warning">
-        ⚠ Think before you apply
+        <Text
+          variant="title"
+          color="warning"
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+        >
+          ⚠{' '}
+        </Text>
+        Think before you apply
       </Text>
       <Text variant="bodyS" color="warning">
         {guard.headline}

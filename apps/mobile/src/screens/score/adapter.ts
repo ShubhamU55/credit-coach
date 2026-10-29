@@ -1,5 +1,9 @@
 import {
   DEFAULT_COACH_RULES,
+  DEFAULT_GUARD_CONFIG,
+  DEFAULT_WHATIF_CONFIG,
+  type GuardConfig,
+  type WhatIfConfig,
   overallUtilization,
   utilization,
   type Card,
@@ -85,4 +89,22 @@ export function toPlannerCards(cards: readonly DemoCard[]): Card[] {
 
 export function toPlannerRules(rules: DemoRules): CoachRules {
   return { ...DEFAULT_COACH_RULES, ...rules };
+}
+
+/** `DemoRules` plus the admin-set guard threshold N, once the seed carries it (PRD 5.6). */
+export type RulesWithGuard = DemoRules & { minHardInquiries6m?: number };
+
+/**
+ * The guard config for the demo rules. `DemoRules` has no N yet, so the engine default applies
+ * until it does; a valid whole number >= 1 on the rules wins (admin range 1-6).
+ */
+export function toGuardConfig(rules: RulesWithGuard): GuardConfig {
+  const n = rules.minHardInquiries6m;
+  return n !== undefined && Number.isInteger(n) && n >= 1
+    ? { ...DEFAULT_GUARD_CONFIG, minHardInquiries6m: n }
+    : DEFAULT_GUARD_CONFIG;
+}
+
+export function toWhatIfConfig(rules: RulesWithGuard): WhatIfConfig {
+  return { ...DEFAULT_WHATIF_CONFIG, guard: toGuardConfig(rules) };
 }

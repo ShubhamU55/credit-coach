@@ -16,7 +16,7 @@ describe('score-whatif.yaml', () => {
     const external = new Set([
       'welcome-try-sample',
       'home-screen',
-      'home-link-score',
+      'home-stat-score',
       'score-range',
     ]);
     const missing = ids.filter((id) => {

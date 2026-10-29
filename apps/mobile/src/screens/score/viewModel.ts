@@ -182,17 +182,60 @@ export function followPlanPayments({ cards, rules, today, cash }: PlanContext): 
   );
 }
 
-const isWholeRupees = (n: number | undefined): n is number =>
-  n !== undefined && Number.isSafeInteger(n) && n > 0;
+/** Largest amount a what-if accepts: one crore. Far above any card limit or FD in the demo. */
+export const MAX_AMOUNT = 10_000_000;
 
-function payCard({ cardId, amount }: ScenarioInput): WhatIfScenario | null {
-  return cardId !== undefined && isWholeRupees(amount)
-    ? { kind: 'pay-card', cardId, amount }
-    : null;
+/**
+ * The one amount check, shared by the form (message, button) and `buildScenario`, so the button
+ * can never be enabled for an amount the scenario builder would refuse. Undefined means "fine,
+ * or not typed yet".
+ */
+export function amountProblem(
+  key: 'pay-card' | 'fd-card',
+  amount: number | undefined,
+  card?: Pick<DemoCard, 'name' | 'outstanding'>,
+): string | undefined {
+  if (key === 'pay-card' && card && card.outstanding <= 0) {
+    return `Nothing is outstanding on ${card.name}.`;
+  }
+  if (amount === undefined) return undefined;
+  if (!Number.isSafeInteger(amount) || amount <= 0) {
+    return 'Enter a whole number of rupees above ₹0.';
+  }
+  if (amount > MAX_AMOUNT) return `Enter ${formatINR(MAX_AMOUNT)} or less.`;
+  return key === 'pay-card' ? overOutstanding(amount, card) : undefined;
+}
+
+function overOutstanding(
+  amount: number,
+  card?: Pick<DemoCard, 'name' | 'outstanding'>,
+): string | undefined {
+  if (!card || amount <= card.outstanding) return undefined;
+  return `That’s more than the ${formatINR(card.outstanding)} outstanding on ${card.name}. Enter ${formatINR(card.outstanding)} or less.`;
+}
+
+function isValidAmount(
+  key: 'pay-card' | 'fd-card',
+  amount: number | undefined,
+  card?: DemoCard,
+): amount is number {
+  return amount !== undefined && amountProblem(key, amount, card) === undefined;
+}
+
+function payCard({ cardId, amount }: ScenarioInput, cards: readonly DemoCard[]) {
+  const card = cards.find((c) => c.id === cardId);
+  if (card === undefined || !isValidAmount('pay-card', amount, card)) return null;
+  return { kind: 'pay-card', cardId: card.id, amount } as const;
 }
 
 function fdCard({ amount }: ScenarioInput): WhatIfScenario | null {
-  return isWholeRupees(amount) ? { kind: 'fd-card', fdAmount: amount } : null;
+  return isValidAmount('fd-card', amount) ? { kind: 'fd-card', fdAmount: amount } : null;
+}
+
+function closeCard({ cardId }: ScenarioInput, cards: readonly DemoCard[]): WhatIfScenario | null {
+  return cards.some((c) => c.id === cardId) && cardId !== undefined
+    ? { kind: 'close-card', cardId }
+    : null;
 }
 
 /** The engine scenario for a tile and the user's choices, or null while the choices are incomplete. */
@@ -205,11 +248,11 @@ export function buildScenario(
     case 'follow-plan':
       return { kind: 'follow-plan', payments: followPlanPayments(plan) };
     case 'pay-card':
-      return payCard(input);
+      return payCard(input, plan.cards);
     case 'miss-payment':
       return { kind: 'miss-payment' };
     case 'close-card':
-      return input.cardId === undefined ? null : { kind: 'close-card', cardId: input.cardId };
+      return closeCard(input, plan.cards);
     case 'apply':
       return { kind: 'apply', product: 'card' };
     case 'fd-card':

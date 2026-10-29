@@ -1,8 +1,9 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import { router } from 'expo-router';
-import { BackHandler } from 'react-native';
+import { AccessibilityInfo, BackHandler } from 'react-native';
 
 import aaravSeed from '../../demo/aarav.json';
+import ScoreRoute from '../../app/score';
 import { createDemoRepository } from '../../demo/repository';
 import { parseSeed } from '../../demo/seed';
 import { DemoRepositoryProvider } from '../../state/DemoRepositoryContext';
@@ -298,5 +299,144 @@ describe('No exact score anywhere (non-negotiable 3)', () => {
 
   it('the check itself would catch a bare score', () => {
     expect('Estimated 724 today'.match(/(?<![\d.,])[3-9]\d{2}(?![\d,.%])/g)).toEqual(['724']);
+  });
+});
+
+describe('Fix round 1', () => {
+  it('omits a fully paid card from pay-card and says nothing is outstanding on it', async () => {
+    const repository = createDemoRepository();
+    repository.recordPayment('axis-neo', 15600, '2026-10-21');
+    await renderScore(repository);
+
+    await fireEvent.press(screen.getByTestId('score-tile-pay-card'));
+
+    expect(screen.queryByTestId('score-card-choice-axis-neo')).toBeNull();
+    expect(screen.getByTestId('score-card-choice-hdfc-millennia')).toBeTruthy();
+  });
+
+  it('with nothing outstanding anywhere, pay-card says so and cannot run', async () => {
+    const repository = createDemoRepository();
+    for (const card of repository.listCards()) {
+      repository.recordPayment(card.id, card.outstanding, '2026-10-21');
+    }
+    await renderScore(repository);
+
+    await fireEvent.press(screen.getByTestId('score-tile-pay-card'));
+
+    expect(screen.getByTestId('score-nothing-to-pick')).toBeTruthy();
+    expect(screen.getByTestId('score-whatif-go').props.accessibilityState.disabled).toBe(true);
+  });
+
+  it.each(['99999999999', '10000001'])('keeps the button off for %s', async (typed) => {
+    await renderScore();
+    await fireEvent.press(screen.getByTestId('score-tile-fd-card'));
+
+    await fireEvent.changeText(screen.getByTestId('score-amount'), typed);
+
+    expect(screen.getByTestId('score-whatif-go').props.accessibilityState.disabled).toBe(true);
+  });
+
+  it('cuts decimals to whole rupees so the amount stays valid', async () => {
+    await renderScore();
+    await fireEvent.press(screen.getByTestId('score-tile-fd-card'));
+
+    await fireEvent.changeText(screen.getByTestId('score-amount'), '1200.50');
+
+    expect(screen.getByTestId('score-whatif-go').props.accessibilityState.disabled).toBe(false);
+  });
+
+  it('what-if after a recorded payment uses the lower balance and the same cash as Home', async () => {
+    const repository = createDemoRepository();
+    repository.recordPayment('hdfc-millennia', 40000, '2026-10-21');
+    await renderScore(repository);
+
+    expect(screen.getByTestId('score-range-plan').props.children).toMatch(
+      /^With plan · \d{3}–\d{3}$/,
+    );
+    await fireEvent.press(screen.getByTestId('score-tile-close-card'));
+    await fireEvent.press(screen.getByTestId('score-whatif-go'));
+    expect(screen.getByTestId('score-util-overall').props.children).toContain(
+      'Overall utilization 31.7% → ',
+    );
+  });
+
+  it('shows no guard banner for 2 inquiries when N is 4, and the banner when N is 2', async () => {
+    const seed = seedWith((s) => {
+      s.profile.history.hardInquiries6m = 2;
+      s.profile.history.hardInquiries12m = 2;
+    });
+    const quiet = createDemoRepository(seed);
+    const getQuiet = quiet.getRules.bind(quiet);
+    await renderScore({ ...quiet, getRules: () => ({ ...getQuiet(), minHardInquiries6m: 4 }) });
+    expect(screen.queryByTestId('score-guard')).toBeNull();
+  });
+
+  it('shows the banner for 2 inquiries when N is 2', async () => {
+    const seed = seedWith((s) => {
+      s.profile.history.hardInquiries6m = 2;
+      s.profile.history.hardInquiries12m = 2;
+    });
+    const loud = createDemoRepository(seed);
+    const getLoud = loud.getRules.bind(loud);
+    await renderScore({ ...loud, getRules: () => ({ ...getLoud(), minHardInquiries6m: 2 }) });
+    expect(screen.getByTestId('score-guard')).toBeTruthy();
+  });
+
+  it('announces the result when a what-if opens', async () => {
+    const send = jest.spyOn(AccessibilityInfo, 'announceForAccessibility').mockImplementation();
+    await renderScore();
+
+    await fireEvent.press(screen.getByTestId('score-tile-miss-payment'));
+
+    expect(send).toHaveBeenCalledWith(expect.stringContaining('If you miss a payment'));
+    send.mockRestore();
+  });
+
+  it('shows the estimate tag beside the NOW range', async () => {
+    await renderScore();
+    await fireEvent.press(screen.getByTestId('score-tile-miss-payment'));
+
+    expect(within(screen.getByTestId('score-result')).getAllByText('estimate').length).toBe(2);
+  });
+
+  it('renders a card with no limit without crashing', async () => {
+    const seed = seedWith((s) => {
+      s.cards[2].limit = 0;
+    });
+    await renderScore(createDemoRepository(seed));
+
+    expect(screen.getByTestId('score-range')).toBeTruthy();
+  });
+
+  it('closing the only card still shows the warnings', async () => {
+    const seed = seedWith((s) => {
+      s.cards = [s.cards[0]];
+    });
+    await renderScore(createDemoRepository(seed));
+    await fireEvent.press(screen.getByTestId('score-tile-close-card'));
+    await fireEvent.press(screen.getByTestId('score-whatif-go'));
+
+    expect(screen.getByText(CLOSE_CARD_AGE_WARNING)).toBeTruthy();
+  });
+
+  it('opens each what-if form fresh after going back', async () => {
+    await renderScore();
+    await fireEvent.press(screen.getByTestId('score-tile-fd-card'));
+    await fireEvent.changeText(screen.getByTestId('score-amount'), '5000');
+    await fireEvent.press(screen.getByTestId('score-whatif-back'));
+
+    await fireEvent.press(screen.getByTestId('score-tile-fd-card'));
+
+    expect(screen.getByTestId('score-amount').props.value).toBe('');
+  });
+
+  it('works as the /score route on its own', async () => {
+    await render(
+      <DemoRepositoryProvider repository={createDemoRepository()}>
+        <ScoreRoute />
+      </DemoRepositoryProvider>,
+    );
+
+    expect(screen.getByTestId('score-screen')).toBeTruthy();
   });
 });

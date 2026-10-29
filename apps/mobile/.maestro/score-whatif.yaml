@@ -10,7 +10,7 @@ appId: com.creditcoach.app
 - assertVisible:
     id: 'home-screen'
 - tapOn:
-    id: 'home-link-score'
+    id: 'home-stat-score'
 - assertVisible:
     id: 'score-screen'
 - assertVisible:

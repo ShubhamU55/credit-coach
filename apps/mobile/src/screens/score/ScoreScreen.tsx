@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BackHandler, View } from 'react-native';
 import { router } from 'expo-router';
 import {
@@ -6,14 +6,16 @@ import {
   predictScore,
   runWhatIf,
   type ScoreEstimate,
+  type WhatIfConfig,
   type WhatIfResult,
   type WhatIfScenario,
 } from '@credit-coach/engine';
 
 import { DEMO_TODAY } from '../../demo/config';
+import type { DemoCard } from '../../demo/types';
 import { useCards, useProfile, useRules } from '../../state/DemoRepositoryContext';
-import { Screen, Text } from '../../ui';
-import { toWhatIfContext } from './adapter';
+import { Screen, Text, announce } from '../../ui';
+import { toGuardConfig, toWhatIfConfig, toWhatIfContext, type RulesWithGuard } from './adapter';
 import { ScoreHome } from './ScoreHome';
 import { WhatIfConfigure } from './WhatIfConfigure';
 import { WhatIfOutcomeView } from './WhatIfOutcomeView';
@@ -51,14 +53,41 @@ function safeEstimate(run: () => ScoreEstimate): ScoreEstimate | null {
 
 /** Android back leaves a what-if before it leaves the screen. */
 function useBackToScore(active: boolean, onBack: () => void) {
+  const handle = useCallback(() => {
+    onBack();
+    return true;
+  }, [onBack]);
   useEffect(() => {
     if (!active) return undefined;
-    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      onBack();
-      return true;
-    });
+    const subscription = BackHandler.addEventListener('hardwareBackPress', handle);
     return () => subscription.remove();
-  }, [active, onBack]);
+  }, [active, handle]);
+}
+
+/** The what-if result, or null when the engine rejects the inputs (a RangeError must not crash). */
+function safeWhatIf(
+  context: ReturnType<typeof toWhatIfContext>,
+  scenario: WhatIfScenario,
+  config: WhatIfConfig,
+): WhatIfResult | null {
+  try {
+    return runWhatIf(context, scenario, config);
+  } catch {
+    return null;
+  }
+}
+
+/** Tells a screen reader what the what-if answered, since the view swaps in place. */
+function useAnnounceResult(step: Step, result: WhatIfResult | null, cards: readonly DemoCard[]) {
+  useEffect(() => {
+    if (step.name !== 'result' || !result?.ok) return;
+    const view = describeOutcome(result);
+    announce(
+      `If ${scenarioTitle(step.scenario, cards)}: estimated score ${view.afterRange}, ${view.direction} your score.`,
+    );
+    // Only when a new result opens, not on every data change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, result]);
 }
 
 interface HomeExtras {
@@ -68,20 +97,36 @@ interface HomeExtras {
 }
 
 /** The with-plan range and the application guard for the main view. */
-function homeExtras(context: ReturnType<typeof toWhatIfContext>, plan: PlanContext): HomeExtras {
-  const planRun = runWhatIf(context, buildScenario('follow-plan', {}, plan) as WhatIfScenario);
+function homeExtras(
+  context: ReturnType<typeof toWhatIfContext>,
+  plan: PlanContext,
+  rules: RulesWithGuard,
+): HomeExtras {
+  const scenario = buildScenario('follow-plan', {}, plan);
+  const planRun = scenario ? safeWhatIf(context, scenario, toWhatIfConfig(rules)) : null;
+  const guard = safeGuard(context, rules);
   return {
-    withPlan: planRun.ok ? planRun.after : null,
-    planHelps: planRun.ok && describeOutcome(planRun).direction === 'improves',
-    guard: describeGuard(checkApplicationGuard(context.input)),
+    withPlan: planRun?.ok ? planRun.after : null,
+    planHelps: planRun?.ok === true && describeOutcome(planRun).direction === 'improves',
+    guard,
   };
+}
+
+const NO_GUARD: GuardView = { warn: false, headline: '', impactLine: '' };
+
+function safeGuard(context: ReturnType<typeof toWhatIfContext>, rules: RulesWithGuard): GuardView {
+  try {
+    return describeGuard(checkApplicationGuard(context.input, toGuardConfig(rules)));
+  } catch {
+    return NO_GUARD;
+  }
 }
 
 /** The Score screen (PRD 5.5, 5.6; docs/design.md 7.5) and its what-if result views. */
 export function ScoreScreen() {
   const profile = useProfile();
   const cards = useCards();
-  const rules = useRules();
+  const rules: RulesWithGuard = useRules();
   const [step, setStep] = useState<Step>({ name: 'home' });
   const context = useMemo(() => toWhatIfContext(profile, cards, DEMO_TODAY), [profile, cards]);
   const plan = useMemo(
@@ -91,15 +136,18 @@ export function ScoreScreen() {
   const estimate = useMemo(() => safeEstimate(() => predictScore(context.input)), [context]);
   // Computed once per data change, not on every render (the what-if engine runs several predictions).
   const home = useMemo(
-    () => (estimate ? homeExtras(context, plan) : null),
-    [estimate, context, plan],
+    () => (estimate ? homeExtras(context, plan, rules) : null),
+    [estimate, context, plan, rules],
   );
   const result = useMemo(
-    () => (step.name === 'result' ? runWhatIf(context, step.scenario) : null),
-    [step, context],
+    () =>
+      step.name === 'result' ? safeWhatIf(context, step.scenario, toWhatIfConfig(rules)) : null,
+    [step, context, rules],
   );
 
-  useBackToScore(step.name !== 'home', () => setStep({ name: 'home' }));
+  const toHome = useCallback(() => setStep({ name: 'home' }), []);
+  useBackToScore(step.name !== 'home', toHome);
+  useAnnounceResult(step, result, cards);
 
   const run = (key: TileKey, input: ScenarioInput) => {
     const scenario = buildScenario(key, input, plan);
@@ -145,11 +193,11 @@ function renderStep(args: RenderArgs) {
       />
     );
   }
-  if (step.name === 'result' && result) {
+  if (step.name === 'result') {
     return (
       <WhatIfOutcomeView
         title={scenarioTitle(step.scenario, cards)}
-        view={result.ok ? describeOutcome(result) : null}
+        view={result?.ok ? describeOutcome(result) : null}
         onBack={toHome}
       />
     );

@@ -4,7 +4,9 @@ import { DEMO_TODAY } from '../../demo/config';
 import { createDemoRepository } from '../../demo/repository';
 import {
   toPlannerCards,
+  toGuardConfig,
   toPlannerRules,
+  toWhatIfConfig,
   toPredictorInput,
   toWhatIfCards,
   toWhatIfContext,
@@ -108,5 +110,23 @@ describe('what-if and planner adapters', () => {
     const { rules } = aarav();
 
     expect(toPlannerRules(rules)).toMatchObject({ thresholdPct: 30, aimFor10: false });
+  });
+});
+
+describe('toGuardConfig', () => {
+  it('uses the engine default N when the rules carry none', () => {
+    expect(toGuardConfig(aarav().rules).minHardInquiries6m).toBe(2);
+  });
+
+  it('uses the admin N when it is a whole number from 1', () => {
+    expect(toGuardConfig({ ...aarav().rules, minHardInquiries6m: 4 }).minHardInquiries6m).toBe(4);
+    expect(toGuardConfig({ ...aarav().rules, minHardInquiries6m: 0 }).minHardInquiries6m).toBe(2);
+    expect(toGuardConfig({ ...aarav().rules, minHardInquiries6m: 2.5 }).minHardInquiries6m).toBe(2);
+  });
+
+  it('puts the guard into the what-if config', () => {
+    expect(
+      toWhatIfConfig({ ...aarav().rules, minHardInquiries6m: 3 }).guard.minHardInquiries6m,
+    ).toBe(3);
   });
 });

@@ -43,7 +43,15 @@ function GuardPanel({ guard }: { guard: NonNullable<OutcomeView['guard']> }) {
     >
       {guard.warn ? (
         <Text variant="title" color="warning">
-          ⚠ Think before you apply
+          <Text
+            variant="title"
+            color="warning"
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+          >
+            ⚠{' '}
+          </Text>
+          Think before you apply
         </Text>
       ) : (
         <Text variant="overline">BEFORE YOU APPLY</Text>
@@ -96,7 +104,12 @@ export function WhatIfOutcomeView({ title, view, onBack }: WhatIfOutcomeViewProp
       <Text variant="h1">{`If ${title}`}</Text>
       <View style={{ gap: 4 }}>
         <Text variant="overline">NOW</Text>
-        <ScoreRangeText range={view.beforeRange} size="M" testID="score-before" />
+        <View
+          style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 10 }}
+        >
+          <ScoreRangeText range={view.beforeRange} size="M" testID="score-before" />
+          <Text variant="estimateTag">estimate</Text>
+        </View>
       </View>
       <WhatIfResult range={view.afterRange} direction={view.direction} variant={view.variant} />
       <Details view={view} />

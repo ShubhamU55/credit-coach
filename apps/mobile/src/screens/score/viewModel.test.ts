@@ -11,6 +11,7 @@ import { createDemoRepository } from '../../demo/repository';
 import { toPredictorInput, toWhatIfContext } from './adapter';
 import {
   WHAT_IF_TILES,
+  amountProblem,
   buildScenario,
   checkedAgo,
   daysSince,
@@ -269,5 +270,53 @@ describe('scenarioTitle', () => {
     expect(scenarioTitle({ kind: 'follow-plan', payments: [] }, cards)).toBe(
       'you follow this month’s plan',
     );
+  });
+});
+
+describe('amountProblem and buildScenario agree', () => {
+  const { cards, rules } = aarav();
+  const plan = { cards, rules, today: DEMO_TODAY, cash: 120000 };
+  const hdfc = cards[0];
+
+  it('accepts a whole amount up to the outstanding for pay-card', () => {
+    expect(amountProblem('pay-card', 81000, hdfc)).toBeUndefined();
+  });
+
+  it.each([
+    ['decimals', 10.5],
+    ['zero', 0],
+    ['negative', -5],
+    ['above a crore', 10000001],
+    ['9e15', 9e15],
+    ['beyond safe integers', 99999999999999999],
+    ['NaN', Number.NaN],
+  ])('rejects %s for both the message and the scenario', (_name, amount) => {
+    expect(amountProblem('fd-card', amount)).toEqual(expect.any(String));
+    expect(buildScenario('fd-card', { amount }, plan)).toBeNull();
+    expect(amountProblem('pay-card', amount, hdfc)).toEqual(expect.any(String));
+    expect(buildScenario('pay-card', { cardId: hdfc.id, amount }, plan)).toBeNull();
+  });
+
+  it('rejects more than the outstanding for pay-card, with the limit in the message', () => {
+    expect(amountProblem('pay-card', 81001, hdfc)).toContain('₹81,000');
+    expect(buildScenario('pay-card', { cardId: hdfc.id, amount: 81001 }, plan)).toBeNull();
+  });
+
+  it('says nothing is outstanding on a card at zero', () => {
+    const paid = { ...hdfc, outstanding: 0 };
+
+    expect(amountProblem('pay-card', 100, paid)).toBe('Nothing is outstanding on HDFC Millennia.');
+    expect(
+      buildScenario('pay-card', { cardId: hdfc.id, amount: 100 }, { ...plan, cards: [paid] }),
+    ).toBeNull();
+  });
+
+  it('has no message while the field is empty', () => {
+    expect(amountProblem('fd-card', undefined)).toBeUndefined();
+  });
+
+  it('refuses pay-card for an unknown card', () => {
+    expect(buildScenario('pay-card', { cardId: 'nope', amount: 100 }, plan)).toBeNull();
+    expect(buildScenario('close-card', { cardId: 'nope' }, plan)).toBeNull();
   });
 });
