@@ -1,0 +1,91 @@
+.page {
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #8884;
+}
+
+.nav a {
+  text-decoration: underline;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 420px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+}
+
+.field input,
+.field select {
+  padding: 8px;
+  font-size: 16px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.fieldset {
+  border: 1px solid #8884;
+  padding: 12px;
+}
+
+.error {
+  color: #b00020;
+  font-size: 14px;
+}
+
+.ok {
+  color: #1b6e2d;
+}
+
+.hint {
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 14px;
+}
+
+.table th,
+.table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 6px 8px;
+  border-bottom: 1px solid #8884;
+}
+
+.page button,
+.nav button {
+  padding: 8px 16px;
+  font-size: 16px;
+  cursor: pointer;
+}
