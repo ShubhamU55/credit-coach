@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
-import { useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
-import { AccessibilityInfo, View, type ViewProps } from 'react-native';
+import { useContext, useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
+import { AccessibilityInfo, ScrollView, View, type ViewProps } from 'react-native';
+import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 
 import { formatINR } from '@credit-coach/engine';
 
@@ -45,29 +46,42 @@ const SHEET_BOTTOM_PAD = space.section;
 /**
  * The sheet's root (design.md 6.19): modal for screen readers, a `line` top border, a grabber and
  * padding 12/20/28. The route is a full screen, so there is no scrim here.
+ *
+ * Edge-to-edge: the sheet runs under the system navigation bar, so with 3-button navigation the
+ * bottom action would sit under the Back button. The bottom padding therefore grows by the bottom
+ * safe-area inset (0 in gesture mode, so that layout is unchanged), and the frame scrolls so the
+ * actions stay reachable on the 0.6 detent. The context is read directly (null without a provider
+ * means 0) because `useSafeAreaInsets` throws outside one.
  */
 function SheetFrame({ children, ...rest }: ViewProps) {
+  const bottomInset = useContext(SafeAreaInsetsContext)?.bottom ?? 0;
   return (
-    <View
-      accessibilityViewIsModal
-      {...rest}
-      style={{
-        gap: space.section,
-        paddingTop: SHEET_TOP_PAD,
-        paddingHorizontal: space.gutter,
-        paddingBottom: SHEET_BOTTOM_PAD,
-        borderTopWidth: 1,
-        borderTopColor: color.line,
-      }}
+    <ScrollView
+      testID="mark-paid-scroll"
+      keyboardShouldPersistTaps="handled"
+      contentContainerStyle={{ flexGrow: 1 }}
     >
       <View
-        testID="mark-paid-grabber"
-        accessibilityElementsHidden
-        importantForAccessibility="no-hide-descendants"
-        style={{ alignSelf: 'center', ...GRABBER, backgroundColor: color.line }}
-      />
-      {children}
-    </View>
+        accessibilityViewIsModal
+        {...rest}
+        style={{
+          gap: space.section,
+          paddingTop: SHEET_TOP_PAD,
+          paddingHorizontal: space.gutter,
+          paddingBottom: SHEET_BOTTOM_PAD + bottomInset,
+          borderTopWidth: 1,
+          borderTopColor: color.line,
+        }}
+      >
+        <View
+          testID="mark-paid-grabber"
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          style={{ alignSelf: 'center', ...GRABBER, backgroundColor: color.line }}
+        />
+        {children}
+      </View>
+    </ScrollView>
   );
 }
 
