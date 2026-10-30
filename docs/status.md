@@ -6,16 +6,23 @@
 
 The 30 Oct audit scored 82%. Git & Review stays capped at 2 until 25 Jan 2027, so the target is about 95%. Ledger: `docs/agent-runs/2026-10-30-ai-audit-gaps-2.md`.
 
-- **Open PRs:** #74 (TypeScript rules), #75 (React Native rules), #73 (command scoping, pre-commit gitleaks hook, `.devcontainer/` sandbox, policy and cost docs). CI is green on all three.
-- **Part 4** is on branch `chore/ai-audit-owner-settings`, stacked on #73. It waits for the owner to apply the protected-file patch (settings, `config-protection.cjs`, `pr-body.yml`). No PR is open yet.
-- **Owner steps, in order:**
-  1. Install gitleaks 8.19+ before any `pnpm install`.
-  2. Mirror the PR rule and the `pr-body`/`pr-review` checks into ruleset 26139084.
-  3. Apply and commit the part 4 patch.
-  4. Merge one PR at a time: update the branch, wait for CI, run `/pr-review N`, then merge, in the order 74, 75, 73, part 4.
-  5. Rebuild the dev container once.
-  6. Start `scripts/otel`.
-  7. Re-audit as `ShubhamU55`.
+- **Merged:**
+  - #73 (command scoping, pre-commit gitleaks hook, `.devcontainer/` sandbox, policy and cost docs);
+  - #74 (TypeScript rules);
+  - #75 (React Native rules).
+
+  #76 was opened by mistake after #73 merged, and closed; its one `ai-policy.md` line moved into part 4.
+
+- **Done by the owner:**
+  - gitleaks 8.30.1 is installed (winget);
+  - ruleset 26139084 now carries the PR rule and all 12 checks, readable by non-admins.
+- **Part 4** is on branch `chore/ai-audit-owner-settings`, based on `main`. It waits for the owner to apply the protected-file patch (settings, `config-protection.cjs`, `pr-body.yml`). No PR is open yet.
+- **Owner steps left:**
+  1. Apply and commit the part 4 patch, then open it and run `/pr-review` on it.
+  2. Run `pnpm install` (it turns on the pre-commit hook).
+  3. Rebuild the dev container once.
+  4. Start `scripts/otel`.
+  5. Re-audit `main` as `ShubhamU55`.
 
 ## 2026-10-30 (submission day: product merged, #70 included; PD-13, PD-12 and PD-14 not shipped)
 

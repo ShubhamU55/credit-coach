@@ -3,7 +3,7 @@ purpose: Run ledger for the second AI-workflow audit fix round (30 Oct 2026), sp
 run: 2026-10-30, main session as controller (Opus), by hand per the CLAUDE.md fallback (config and docs work, no PRD section); advisor review of the fix plan; /pr-review per PR
 ---
 
-# AI-workflow audit fixes, round 2 (PRs #73, #74, #75 and part 4)
+# AI-workflow audit fixes, round 2 (PRs #73, #74, #75 and part 4; #76 closed)
 
 ## Why
 
@@ -53,9 +53,9 @@ The PRs record both in the repo, so a non-admin reader can see them.
 ## Owner steps
 
 1. Apply part 4 (`git apply`), read the diff, and commit it on its branch.
-2. Mirror the PR rule and the `pr-body`/`pr-review` checks into ruleset 26139084.
-3. Install gitleaks 8.19+ and run `pnpm install` so the pre-commit hook is active.
+2. Done 30 Oct 2026: the owner mirrored the PR rule and the 12 checks into ruleset 26139084. A read with the non-admin account confirms it.
+3. Install gitleaks 8.19+ (done 30 Oct 2026, 8.30.1 via winget), then run `pnpm install` so the pre-commit hook is active.
 4. Start Docker Desktop, rebuild the dev container once, and check the firewall line in the start log.
 5. Start the collector: `docker compose -f scripts/otel/compose.yaml up -d`.
-6. Run `/pr-review` on each PR, then merge in order 1, 2, 3, 4.
+6. #73, #74 and #75 merged on 30 Oct 2026 (07:26, 07:30, 07:34 UTC). Part 4 still needs `/pr-review` and a merge.
 7. Re-run the audit with `gh auth switch --user ShubhamU55` active.
