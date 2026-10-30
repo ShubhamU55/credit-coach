@@ -27,6 +27,11 @@ describe('the server answers before the app gives up', () => {
     expect(MODEL_TIMEOUT_MS).toBeLessThanOrEqual(clientTimeout - 750);
   });
 
+  it('pins the server budgets the app timeout is sized for', () => {
+    expect(MODEL_TIMEOUT_MS).toBe(2500);
+    expect(AUTH_TIMEOUT_MS).toBe(1500);
+  });
+
   it('keeps the user lookup plus the model call inside the app timeout with a margin', () => {
     expect(AUTH_TIMEOUT_MS + MODEL_TIMEOUT_MS).toBeLessThanOrEqual(clientTimeout - 250);
   });

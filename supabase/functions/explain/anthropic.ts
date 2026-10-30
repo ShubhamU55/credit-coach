@@ -5,10 +5,10 @@ export const MODEL = 'claude-haiku-4-5';
 export const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 export const ANTHROPIC_VERSION = '2023-06-01';
 /**
- * Hard limit for the whole model call, headers and body included. The app gives up after 3 s, so this
+ * Hard limit for the whole model call, headers and body included. The app gives up after 5 s, so this
  * plus the user lookup must leave room for the server template to arrive first (tested).
  */
-export const MODEL_TIMEOUT_MS = 2000;
+export const MODEL_TIMEOUT_MS = 2500;
 /** A few sentences; also bounds cost per request. */
 const MAX_OUTPUT_TOKENS = 400;
 
@@ -70,7 +70,7 @@ async function callModel(request: ModelRequest, signal: AbortSignal): Promise<Mo
 }
 
 /**
- * Asks the model, giving up after `timeoutMs` (default 3 s). The abort signal cancels a real
+ * Asks the model, giving up after `timeoutMs` (default 2.5 s). The abort signal cancels a real
  * request; the race makes the limit hold even if a fetch implementation ignores the signal.
  */
 export async function askModel(request: ModelRequest): Promise<ModelResult> {
