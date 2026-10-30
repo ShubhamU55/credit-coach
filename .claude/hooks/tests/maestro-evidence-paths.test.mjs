@@ -44,6 +44,20 @@ describe('maestro-evidence: what counts as a mobile change', { timeout: SPAWN_TI
     expect(last).toBe(codeCommit);
   });
 
+  it('ignores an agent-config commit under apps/mobile/.claude', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'maestro-paths-'));
+    initRepo(dir);
+    const codeCommit = commitFile(dir, 'apps/mobile/src/screen.tsx', 'feat: code');
+    commitFile(dir, 'apps/mobile/.claude/settings.json', 'chore: settings');
+
+    const last = execFileSync('git', ['log', '-1', '--format=%H', '--', ...MOBILE_APP_PATHSPEC], {
+      cwd: dir,
+      encoding: 'utf8',
+    }).trim();
+
+    expect(last).toBe(codeCommit);
+  });
+
   it('still counts a non-Markdown file under apps/mobile', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'maestro-paths-'));
     initRepo(dir);
