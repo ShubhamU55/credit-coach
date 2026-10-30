@@ -1,0 +1,27 @@
+{
+  // Sandbox for running Claude Code agents on this repo (docs/ai-policy.md "Dangerous modes").
+  // The container sees only this checkout, and init-firewall.sh drops all outbound traffic
+  // except the hosts the agents need. Native Windows has no Claude Code sandbox, so agent
+  // sessions run here (or in WSL2), not on the host.
+  "name": "credit-coach agent sandbox",
+  "build": { "dockerfile": "Dockerfile" },
+  "runArgs": ["--cap-add=NET_ADMIN", "--cap-add=NET_RAW"],
+  "remoteUser": "node",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
+  "workspaceFolder": "/workspace",
+  "mounts": [
+    "source=credit-coach-claude-config,target=/home/node/.claude,type=volume",
+    "source=credit-coach-pnpm-store,target=/home/node/.local/share/pnpm,type=volume"
+  ],
+  "containerEnv": {
+    "CLAUDE_CONFIG_DIR": "/home/node/.claude"
+  },
+  "postCreateCommand": "pnpm install --frozen-lockfile",
+  "postStartCommand": "sudo /usr/local/bin/init-firewall.sh",
+  "waitFor": "postStartCommand",
+  "customizations": {
+    "vscode": {
+      "extensions": ["anthropic.claude-code", "dbaeumer.vscode-eslint", "esbenp.prettier-vscode"]
+    }
+  }
+}

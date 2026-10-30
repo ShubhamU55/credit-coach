@@ -60,12 +60,20 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '../../..');
 const claudeDir = path.join(repoRoot, '.claude');
 
+// A directory holding its own `.git` is a separate checkout (Claude Code puts session worktrees in
+// `.claude/worktrees/<name>/`). It is gitignored and audited in its own tree, not as this repo's
+// config, so a stale one must not fail this repo's audit.
+function isNestedCheckout(dir) {
+  return fs.existsSync(path.join(dir, '.git'));
+}
+
 function listFilesRecursive(dir) {
   const results = [];
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (entry.name === 'node_modules') continue;
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
+      if (isNestedCheckout(fullPath)) continue;
       results.push(...listFilesRecursive(fullPath));
       continue;
     }
