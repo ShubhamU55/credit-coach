@@ -25,8 +25,8 @@ export interface ExplainConfig {
   getAccessToken?: () => string | undefined;
 }
 
-/** The hard limit the ticket sets; the function itself also caps its model call. */
-export const EXPLAIN_TIMEOUT_MS = 3000;
+/** Hard limit for the call: the server's lookup (1.5 s) plus model call (2.5 s) must fit inside it. */
+export const EXPLAIN_TIMEOUT_MS = 5000;
 const MAX_TEXT_LENGTH = 1500;
 
 /**

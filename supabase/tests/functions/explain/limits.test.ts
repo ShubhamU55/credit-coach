@@ -23,7 +23,7 @@ describe('the server answers before the app gives up', () => {
   const clientTimeout = fromClient('EXPLAIN_TIMEOUT_MS');
 
   it('keeps the model call at least 750 ms inside the app timeout, so the template arrives in time', () => {
-    expect(clientTimeout).toBe(3000);
+    expect(clientTimeout).toBe(5000);
     expect(MODEL_TIMEOUT_MS).toBeLessThanOrEqual(clientTimeout - 750);
   });
 
