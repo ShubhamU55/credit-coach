@@ -17,7 +17,7 @@ RUN set -eu; \
     *) echo "unsupported architecture" >&2; exit 1 ;; \
   esac; \
   tarball="gitleaks_${GITLEAKS_VERSION}_linux_${arch}.tar.gz"; \
-  curl -fsSLo "/tmp/$tarball" "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/$tarball"; \
+  curl --proto '=https' --tlsv1.2 -fsSLo "/tmp/$tarball" "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/$tarball"; \
   echo "$sha  /tmp/$tarball" | sha256sum -c -; \
   tar -xzf "/tmp/$tarball" -C /usr/local/bin gitleaks; \
   rm "/tmp/$tarball"
