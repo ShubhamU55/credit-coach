@@ -19,10 +19,10 @@
 Each command drives a workflow in `.claude/workflows/` and is started by the owner.
 
 - **`/feature`** (workflow `feature-analyze`) — **requirements-analyst**, **domain-checker** and (UI work) **design-checker** analyse a PRD section in parallel; the main session writes the plan and stops for owner approval.
-- **`/build`** (workflow `feature-build`) — **implementer** builds one plan task at a time, **gate-checker** reports the gates, **build-error-resolver** fixes failing builds, then reviewers and **finding-verifier** check the result and `qa` runs after the last task.
+- **`/build`** (workflow `feature-build`) — **implementer** builds one plan task at a time, **gate-checker** reports the gates, retries go back to **implementer**, then reviewers and **finding-verifier** check the result and `qa` runs after the last task.
 - **`/qa`** (workflow `qa`) — **functional-tester**, **edge-case-hunter**, **api-tester**, **ui-tester** and **integration-tester** exercise the change; **finding-verifier** confirms findings before they block; **test-automator** lands the accepted proposals.
 - **`/pr-review`** (workflow `pr-review`) — specialist reviewers and **pr-test-analyzer** fan out, **finding-verifier** confirms, **pr-reviewer** posts the G8 verdict.
 - **`/bugfix`** (workflow `bugfix`) — **bug-analyst** root-causes the bug, a RED regression test is written first, then the fix.
 - **`/bug`** — **bug-reporter** files a reproducible report.
-- **`/retro`** (workflow `retro`) — **pm-sync** and **journal-writer** record what happened and propose prompt edits.
+- **`/retro`** (workflow `retro`) — reads the run ledgers and a read-only **planner** proposes one prompt edit per agent for the owner to approve.
 - **`/tidy`** and **`/worktrees`** — read-only housekeeping: expired scratch items and stale docs; stale worktrees and predicted merge conflicts.

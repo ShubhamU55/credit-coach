@@ -23,8 +23,8 @@ exact rule text. This file holds only what a linter or test runner can't check.
 - Engine functions return a typed value and never throw for an expected domain outcome. The
   shape is whatever the function needs — e.g. `utilization()` returns `number | null`, using
   `null` for the excluded/flagged case in PRD §5.2 — not a one-size-fits-all wrapper type.
-- Boundaries (API routes, Edge Functions, form submission) validate with Zod before the engine
-  ever sees the data; untrusted input is never passed through unchecked.
+- Boundaries (API routes, Edge Functions, form submission) validate the input shape (hand-written checks; no Zod dependency, see
+  `.claude/rules/typescript.md`) before the engine ever sees the data; untrusted input is never passed through unchecked.
 
 ## Money and dates
 
