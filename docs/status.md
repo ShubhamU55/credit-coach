@@ -2,20 +2,20 @@
 
 > Read this first when starting a new session. Update it at the end of every session (newest entry on top).
 
-## 2026-10-30 (submission day: product merged except #70; PD-13, PD-12 and PD-14 not shipped)
+## 2026-10-30 (submission day: product merged, #70 included; PD-13, PD-12 and PD-14 not shipped)
 
-Newest entry. Where it differs from the entries below, this one wins. Submission is due **30 Oct 2026 23:00 IST**. Every ruling and its cost if wrong: `docs/agent-runs/2026-10-30-rulings.md`; the wave summary is the FINAL section of `docs/agent-runs/2026-10-28-coordinator.md`.
+Newest entry. Where it differs from the entries below, this one wins. Submission is due **30 Oct 2026 23:00 IST** (the time the owner gave; `CLAUDE.md` says only "30 Oct 2026 EOD"). Every ruling and its cost if wrong: `docs/agent-runs/2026-10-30-rulings.md`; the wave summary is the FINAL section of `docs/agent-runs/2026-10-28-coordinator.md`.
 
 - **On `main`:** PD-1 (planner), PD-2 (predictor, what-ifs, guard), PD-3 and PD-7 (kit), PD-4 (shell, demo repository), PD-11 (explanations), PD-8 (#65 Welcome, Home), PD-5 (#67 backend schema, RLS, explain function; merged by the owner outside the coordinator session), PD-9 (#68 Plan, Mark as paid), PD-10 (#69 Score, what-ifs, guard) and PD-16 (#64 submission docs).
-- **Waiting on the owner:** #70 (PD-15 hardening plus the PD-6 install guide) is OPEN. `pr-review` approved it (round 1). Merge it; the final APK report and the install guide land with it.
+- **Also merged:** #70 (PD-15 hardening plus the PD-6 install guide, `9510516`). `pr-review` approved it in round 1 on head `f3f5de5` (the `pr-review` commit status was success; the review is a COMMENT kind, so GitHub's `reviewDecision` stays empty). The final APK report and `docs/install.md` are on `main` with it.
 - **Not shipped:** PD-13 reminders parked (branch `feat/pd-13-reminders`, `cf916cd`), PD-12 linking and PD-14 admin not built. The write-up and demo script say so.
 - **Reviews:** `pr-review` ran as the Workflow for #68 (round 1 request-changes on sheet modal accessibility, round 2 approve), #69 (round 1 request-changes on the missing sample strip, round 2 approve, rerun on the merged head approve) and #70 (round 1 approve). The status is posted through the owner's own account, so the harness flagged "Self-Approval" on #68 and #69; the review is a COMMENT kind.
-- **Evidence:** every mobile PR has a physical-phone (moto g73 5G, arm64) Maestro report under `docs/test-reports`. Final all-ABI APK: 91,576,747 bytes, sha256 `337a6a61fabbf3e65a87f22d855b3dd8599d32fad3093583a09287142cd4b7e4` (`docs/test-reports/final-apk-2026-10-30.md`, on #70). PD-15 security review: no Critical finding. The first full Maestro run on the final build was 4/6, then 6/6; the kit-gallery cause is unproven. Only arm64 libraries were exercised on a device.
-- **Run ledgers folded in this wave** (all under `docs/agent-runs/`): `2026-10-28-coordinator.md` (log, 110 `Ruling:` lines, FINAL and usage table), `2026-10-28-pd-1.md` to `pd-5.md`, `pd-7.md` to `pd-11.md` and `pd-16.md` (one per ticket; there is no ledger for PD-6, PD-12 to PD-15), and `2026-10-29-ai-audit-fixes.md` (PR #63 and the mistitled squash commit). The older Plan 1c ledgers are folded into the entries below. `docs/agent-runs/2026-10-30-rulings.md` indexes the rulings of all of them.
+- **Evidence:** every mobile PR has a physical-phone (moto g73 5G, arm64) Maestro report under `docs/test-reports`. Final all-ABI APK: 91,576,747 bytes, sha256 `337a6a61fabbf3e65a87f22d855b3dd8599d32fad3093583a09287142cd4b7e4` (`docs/test-reports/final-apk-2026-10-30.md`, on `main`). PD-15 security review: no Critical finding. The first full Maestro run on the final build was 4/6, then 6/6; the kit-gallery cause is unproven. Only arm64 libraries were exercised on a device.
+- **Run ledgers folded in this wave** (all under `docs/agent-runs/`): `2026-10-28-coordinator.md` (log, 35 `Ruling:` lines of the 110 across all ledgers, FINAL and usage table), `2026-10-28-pd-1.md` to `pd-5.md`, `pd-7.md` to `pd-11.md` and `pd-16.md` (one per ticket; there is no ledger for PD-6, PD-12 to PD-15), and `2026-10-29-ai-audit-fixes.md` (PR #63 and the mistitled squash commit). The older Plan 1c ledgers are folded into the entries below. `docs/agent-runs/2026-10-30-rulings.md` indexes the rulings of all of them.
 
 ### Blockers and owner steps
 
-1. Merge #70 (check `gh pr view 70`).
+1. Nothing is left to merge except the ledger pull requests.
 2. `supabase db reset && supabase test db` has never been executed (Docker Desktop needed).
 3. Set the Anthropic spend cap; check the proxy hop count.
 4. Upload the APK with the submission.
@@ -29,7 +29,7 @@ Newest entry. Where it differs from the entries below, this one wins. Submission
 
 ### Next step
 
-Owner: merge #70, run the Supabase check if time allows, install the final APK from the guide on a clean device, submit by 23:00 IST. Nothing else needs building; do not start PD-12 to PD-14.
+Owner: run the Supabase check if time allows, install the final APK from the guide on a clean device, submit by 23:00 IST. Nothing else needs building; do not start PD-12 to PD-14.
 
 ## 2026-10-29 (product build: PD-1 to PD-4, PD-7 and PD-11 merged; PD-8 to PD-10 built and awaiting evidence)
 
