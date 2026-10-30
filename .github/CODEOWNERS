@@ -1,11 +1,12 @@
-# Code owners. Solo project: the owner reviews every change to the files that steer the agents
-# and to the review path itself. Keep each path real; a test fails on a pattern that matches nothing.
-/CLAUDE.md @ShubhamU55
-/.claude/ @ShubhamU55
-/apps/*/AGENTS.md @ShubhamU55
-/apps/*/CLAUDE.md @ShubhamU55
-/apps/mobile/.claude/ @ShubhamU55
-/.github/ @ShubhamU55
-/docs/ai-policy.md @ShubhamU55
-/.devcontainer/ @ShubhamU55
-/.githooks/ @ShubhamU55
+# Code owners: the owner and the backup owner (docs/ai-policy.md) review every change to the files
+# that steer the agents and to the review path itself. Keep each path real; a test fails on a
+# pattern that matches nothing.
+/CLAUDE.md @ShubhamU55 @kunsharo
+/.claude/ @ShubhamU55 @kunsharo
+/apps/*/AGENTS.md @ShubhamU55 @kunsharo
+/apps/*/CLAUDE.md @ShubhamU55 @kunsharo
+/apps/mobile/.claude/ @ShubhamU55 @kunsharo
+/.github/ @ShubhamU55 @kunsharo
+/docs/ai-policy.md @ShubhamU55 @kunsharo
+/.devcontainer/ @ShubhamU55 @kunsharo
+/.githooks/ @ShubhamU55 @kunsharo
