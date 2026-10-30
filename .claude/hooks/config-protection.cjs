@@ -363,6 +363,39 @@ function blockResult(message) {
   return { exitCode: 2, stderr: message };
 }
 
+// The files that steer the agents: the instruction files and the agent, rule, skill, command and
+// workflow definitions. An agent may propose an edit to them (`/retro` applies owner-approved
+// prompt edits), but each one stops for the owner's approval instead of going through silently.
+const INSTRUCTION_FILES = [
+  resolveProjectPath('CLAUDE.md'),
+  resolveProjectPath('AGENTS.md'),
+];
+const INSTRUCTION_DIRS = ['agents', 'rules', 'skills', 'commands', 'workflows'].map(
+  (dir) => `${resolveProjectPath('.claude', dir)}/`,
+);
+const NESTED_INSTRUCTION_FILE = /\/apps\/[^/]+\/(claude|agents)\.md$/;
+
+function isInstructionPath(filePath) {
+  const normalized = normalizeFilePath(filePath);
+  if (INSTRUCTION_FILES.includes(normalized)) return true;
+  if (INSTRUCTION_DIRS.some((dir) => normalized.startsWith(dir))) return true;
+  const root = `${resolveProjectPath()}/`;
+  return normalized.startsWith(root) && NESTED_INSTRUCTION_FILE.test(`/${normalized.slice(root.length)}`);
+}
+
+function askResult(reason) {
+  return {
+    exitCode: 0,
+    stdout: JSON.stringify({
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse',
+        permissionDecision: 'ask',
+        permissionDecisionReason: reason,
+      },
+    }),
+  };
+}
+
 /**
  * Exportable run() for in-process execution via run-with-flags.js.
  * Avoids the ~50-100ms spawnSync overhead when available.
@@ -430,6 +463,14 @@ function run(inputOrRaw, options = {}) {
     );
   }
 
+  if (isInstructionPath(filePath)) {
+    return askResult(
+      `${path.basename(filePath)} steers every agent session (CLAUDE.md, AGENTS.md or a file under ` +
+      '.claude/{agents,rules,skills,commands,workflows}). The owner approves each edit to it ' +
+      '(docs/ai-policy.md).'
+    );
+  }
+
   const basename = path.basename(filePath);
   // Match case-insensitively. Every PROTECTED_FILES entry is lowercase, and on
   // case-insensitive filesystems (macOS APFS/HFS+, Windows NTFS) a write to
@@ -490,6 +531,6 @@ if (require.main === module) {
       process.exit(2);
     }
 
-    process.stdout.write(raw);
+    process.stdout.write(result.stdout ?? raw);
   });
 }

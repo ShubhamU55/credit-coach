@@ -1,5 +1,8 @@
 {
   "enabledPlugins": {
     "expo@claude-plugins-official": true
+  },
+  "permissions": {
+    "ask": ["mcp__plugin_expo_expo"]
   }
 }
