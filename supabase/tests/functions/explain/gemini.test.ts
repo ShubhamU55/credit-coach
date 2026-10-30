@@ -46,6 +46,14 @@ describe('askGemini', () => {
     expect(body.generationConfig.maxOutputTokens).toBeLessThanOrEqual(400);
   });
 
+  it('sends no thinkingConfig and defaults to a lite model: gemini-3.x rejects thinkingBudget with a 400', async () => {
+    const { fetchImpl, result } = ask(() => new Response(reply(), { status: 200 }));
+    await result;
+    const body = JSON.parse(String((fetchImpl.mock.calls[0]?.[1] as RequestInit).body));
+    expect(body.generationConfig).not.toHaveProperty('thinkingConfig');
+    expect(GEMINI_MODEL).toBe('gemini-3.5-flash-lite');
+  });
+
   it('uses the model override when one is given', async () => {
     const { fetchImpl, result } = ask(() => new Response(reply(), { status: 200 }), {
       model: 'gemini-test-model',

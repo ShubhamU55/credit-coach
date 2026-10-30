@@ -5,8 +5,12 @@
 
 import { withDeadline, type ModelResult } from './anthropic.ts';
 
-/** Overridable with the function secret GEMINI_MODEL, so a retired model id needs no redeploy of code. */
-export const GEMINI_MODEL = 'gemini-2.5-flash';
+/**
+ * A lite model on purpose: it answered in about 0.7 s on a free-tier key, while gemini-3.8-flash took
+ * 14.6 s (the call is cut off at 2.5 s). gemini-2.5-flash is retired (404). Overridable with the
+ * function secret GEMINI_MODEL, so a retired model id needs no redeploy of code.
+ */
+export const GEMINI_MODEL = 'gemini-3.5-flash-lite';
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
 /** A few sentences; also bounds cost per request. */
 const MAX_OUTPUT_TOKENS = 400;
@@ -77,8 +81,9 @@ async function callGemini(request: GeminiRequest, signal: AbortSignal): Promise<
           generationConfig: {
             temperature: 0,
             maxOutputTokens: MAX_OUTPUT_TOKENS,
-            // Flash "thinks" by default and the thinking tokens would eat the output budget.
-            thinkingConfig: { thinkingBudget: 0 },
+            // No thinkingConfig: gemini-3.x lite models reject thinkingBudget with a 400 and do not
+            // think by default. A thinking model set through GEMINI_MODEL may hit MAX_TOKENS and
+            // fall back to the template (bad_reply).
           },
         }),
         signal,

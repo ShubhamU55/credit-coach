@@ -97,7 +97,7 @@ pnpm exec supabase functions deploy explain
 ```
 
 **Using Gemini instead:** set `GEMINI_API_KEY` as a function secret (and optionally `GEMINI_MODEL`,
-default `gemini-2.5-flash`), then deploy. When it is set the function uses Gemini and ignores the
+default `gemini-3.5-flash-lite`), then deploy. When it is set the function uses Gemini and ignores the
 Anthropic key; unset it (`pnpm exec supabase secrets unset GEMINI_API_KEY`) to go back. Never put a
 Gemini key in `ANTHROPIC_API_KEY`. The free tier may use prompts for product improvement, so keep it
 to demo data. A fallback reason of `http_404_not_found` means the model id is wrong.
