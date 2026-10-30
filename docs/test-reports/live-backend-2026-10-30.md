@@ -16,7 +16,7 @@ First attempt of the flow failed only because it asserted the label before scrol
 
 With the rule at 30 (the default), the Plan screen showed after-plan utilization 15.3%, highest card 81.0% to 30.0%, "Every card ends at or under 30%", and SBI SimplyClick ₹2,400. After the owner set the threshold to 20 in the admin (production build, signed in as the admin user) and the app was relaunched, it showed 11.3%, 81.0% to 20.0%, "Every card ends at or under 20%" and SBI SimplyClick ₹14,400 (`plan-threshold-20.png`). HDFC Millennia (₹74,200) and Axis Neo (₹12,400) did not change; they are full-statement payments either way.
 
-The rule was not set back to 30 at the time of this note; whoever reads this should check the admin shows 30 before a demo.
+The owner then set the rule back to 30, and a fresh launch confirmed it (15.3%, "under 30%", SBI SimplyClick ₹2,400, the same as the first reading). Check the admin shows 30 before any further demo that changes it.
 
 ## Not covered
 
