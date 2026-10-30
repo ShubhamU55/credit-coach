@@ -7,7 +7,7 @@ run: 2026-10-30, main session as controller (Opus), by hand per the CLAUDE.md fa
 
 ## Why
 
-The 30 Oct 2026 audit (`ai-audit/credit-coach-2026-10-30.md`, rubric 2.0) scored 4.10/5 (82%, "Managed"), up from 73% on 27 Oct. Git & Review (P9) is capped at 2 until 25 Jan 2027, because AI configuration was committed directly to `main` before branch protection. No fix lifts that cap, so this round targets the other parameters: projected 4.85/5 (97%).
+The 30 Oct 2026 audit (`ai-audit/credit-coach-2026-10-30.md`, rubric 2.0) scored 4.10/5 (82%, "Managed"), up from 73% on 27 Oct. Git & Review (P9) is capped at 2 until 25 Jan 2027, because AI configuration was committed directly to `main` before branch protection. No fix lifts that cap, so this round targets the other parameters. The audit projected 4.85/5 (97%) with every change done. The realistic figure is about 4.75/5 (95%), because the Expo marketplace pin (P3 3.4) stays Partial, so P3 likely stays at 4.
 
 ## What the audit got wrong
 
@@ -41,7 +41,14 @@ The PRs record both in the repo, so a non-admin reader can see them.
 
 - The controller's first `/bug` check step called `gh issue view`. The existing test `/bug runs no gh call itself` caught it in `pnpm verify`, and the step now checks the Workflow result and the committed evidence with git.
 - The controller's first PR 3 commit subject was 76 characters. The commit-quality hook blocked it.
-- An attempt to update ruleset 26139084 through the API was blocked by the session's auto-mode classifier as a shared-resource change. It is an owner step (below).
+- An attempt to update ruleset 26139084 through the API was blocked by the session's auto-mode classifier as a shared-resource change. It is an owner step (below). A first draft of `ai-policy.md` already claimed the ruleset carried the PR rule; the advisor review caught that, and the line now states only what the ruleset holds.
+- On #73, CI caught two problems the Windows run missed:
+  - the `git-hooks` run tests spawned a bare `bash` through the stubbed `PATH`, which fails on Linux;
+  - SonarCloud flagged the dev container's `npm install -g` running lifecycle scripts (docker:S6505).
+
+  Both were fixed on the branch.
+
+- The advisor review caught that the dev container ran `pnpm install` (which turns the fail-closed pre-commit hook on) without installing gitleaks. Every in-container commit would have been refused. The Dockerfile now installs gitleaks 8.30.1, pinned and checksum-verified.
 
 ## Owner steps
 
