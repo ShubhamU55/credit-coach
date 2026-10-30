@@ -20,7 +20,11 @@ function findBash() {
 }
 const bash = findBash();
 
-describe('git pre-commit secret scan', () => {
+// Spawn-based tests get 60 s per describe block: on a loaded machine a shell spawn alone can pass
+// the 5 s default (the same rule as ecc-hooks.test.mjs).
+const SPAWN_TIMEOUT_MS = 60_000;
+
+describe('git pre-commit secret scan', { timeout: SPAWN_TIMEOUT_MS }, () => {
   it('is installed by pnpm install through the root prepare script', () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
 
@@ -37,7 +41,7 @@ describe('git pre-commit secret scan', () => {
   });
 });
 
-describe.skipIf(!bash)('git pre-commit secret scan (run)', () => {
+describe.skipIf(!bash)('git pre-commit secret scan (run)', { timeout: SPAWN_TIMEOUT_MS }, () => {
   let stubDir;
 
   beforeEach(() => {
