@@ -172,7 +172,10 @@ async function passwordGrant(req, res, url) {
   const { email, password } = await readJson(req);
   const u = USERS[email];
   if (url.searchParams.get('grant_type') !== 'password' || !u || u.password !== password) {
-    return send(res, 400, { error: 'invalid_grant', error_description: 'Invalid login credentials' });
+    return send(res, 400, {
+      error: 'invalid_grant',
+      error_description: 'Invalid login credentials',
+    });
   }
   const access_token = tokenFor(email);
   const claims = claimsOf({ headers: { authorization: `Bearer ${access_token}` } });
@@ -197,7 +200,9 @@ async function patchRules(req, res, claims) {
       message: `new row for relation "coach_rules" violates check constraint "${bad}"`,
     });
   }
-  const changed = Object.keys(patch).some((k) => JSON.stringify(patch[k]) !== JSON.stringify(rules[k]));
+  const changed = Object.keys(patch).some(
+    (k) => JSON.stringify(patch[k]) !== JSON.stringify(rules[k]),
+  );
   if (changed) {
     auditId += 1;
     audit.push({
@@ -219,7 +224,9 @@ async function patchRules(req, res, claims) {
 const ROUTES = {
   'POST /auth/v1/token': (req, res, ctx) => passwordGrant(req, res, ctx.url),
   'GET /auth/v1/user': (req, res, ctx) =>
-    ctx.claims ? send(res, 200, userJson(ctx.claims)) : send(res, 401, { code: 401, msg: 'invalid JWT' }),
+    ctx.claims
+      ? send(res, 200, userJson(ctx.claims))
+      : send(res, 401, { code: 401, msg: 'invalid JWT' }),
   'GET /rest/v1/coach_rules': (req, res) => send(res, 200, [rules]),
   'PATCH /rest/v1/coach_rules': (req, res, ctx) => patchRules(req, res, ctx.claims),
   'GET /rest/v1/audit_log': (req, res, ctx) =>

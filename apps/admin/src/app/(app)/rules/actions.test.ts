@@ -58,7 +58,9 @@ describe('saveRules (server action)', () => {
     const r = await saveRules(idle, form({ threshold_pct: '20' }));
     expect(r.status).toBe('saved');
     expect(from).toHaveBeenCalledWith('coach_rules');
-    expect(update).toHaveBeenCalledWith(expect.objectContaining({ threshold_pct: 20, reminder_due_days: [3, 1] }));
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({ threshold_pct: 20, reminder_due_days: [3, 1] }),
+    );
   });
 
   it('does not report success when row-level security matched zero rows', async () => {
