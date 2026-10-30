@@ -7,219 +7,54 @@ paths:
 
 # React Native rules
 
-## React Native / Expo Patterns
-
-> Note: Do NOT install the `web/` ruleset in a React Native project — those patterns assume the DOM (e.g. URL-as-state) and do not apply here.
-
-## Navigation (Expo Router)
-
-Expo Router is Expo's built-in, file-based router (`app/` directory); React Navigation is the established alternative. The examples below use Expo Router; the principles apply either way.
-
-- Keep route files (`app/**`) thin — they wire params + hooks to a screen component that lives in `components/` or `features/`.
-- Type route params; validate untrusted params (e.g. from deep links) with Zod before use.
-- Use typed navigation helpers (`useLocalSearchParams`, `Link`, `router.push`).
-- Centralize linking config; never trust deep-link params without validation.
-
-```tsx
-// app/user/[id].tsx
-import { useLocalSearchParams, router } from 'expo-router';
-import { z } from 'zod';
-
-const Params = z.object({ id: z.string().uuid() });
-
-export default function UserScreen() {
-  // Use safeParse, not parse: a malformed deep link would otherwise throw
-  // during render and crash the screen. Redirect instead of throwing.
-  const parsed = Params.safeParse(useLocalSearchParams());
-  if (!parsed.success) {
-    router.replace('/not-found');
-    return null;
-  }
-  return <UserProfile userId={parsed.data.id} />;
-}
-```
-
-## State Management
-
-The rule is to keep these concerns separate and not duplicate server data into client stores. The tools listed are common choices, not requirements — pick what fits your project.
-
-| Concern                | Common choices                                               |
-| ---------------------- | ------------------------------------------------------------ |
-| Server state           | a server-cache library (TanStack Query, SWR)                 |
-| Client/UI state        | a lightweight store (Zustand, Jotai) or Context              |
-| Navigation/route state | Expo Router params (NOT a global store)                      |
-| Form state             | a form library (e.g. React Hook Form) with schema validation |
-| Secure persistence     | `expo-secure-store`                                          |
-| Non-secure persistence | `AsyncStorage` / MMKV                                        |
-
-- Derive values instead of storing redundant computed state.
-- Keep global client state minimal; prefer local `useState` until sharing is actually needed.
-
-## Data Fetching
-
-Use a server-cache library (TanStack Query, SWR) instead of ad-hoc fetch-in-`useEffect`. The examples use TanStack Query.
-
-- Route server reads through the cache (e.g. `useQuery`) and mutations through it (e.g. `useMutation`) with cache invalidation.
-- Validate API responses with Zod at the boundary; infer types from the schema.
-- Handle the three states explicitly in UI: loading, error, empty.
-- Use optimistic updates for fast interactions: snapshot, apply, roll back on failure with visible feedback.
-- Fetch independent data in parallel; avoid request waterfalls between parent and child.
-
-```tsx
-function useUser(id: string) {
-  return useQuery({
-    queryKey: ['user', id],
-    queryFn: async () => userSchema.parse(await api.getUser(id)),
-  });
-}
-```
-
-## Lists
-
-- Use `FlatList`/`SectionList` (or `FlashList` for large/heavy lists) — never `.map()` a large array inside a `ScrollView`.
-- Provide a stable `keyExtractor`; memoize `renderItem`.
-- Paginate or virtualize long data sets.
-
-## Custom Hooks
-
-- Extract reusable logic (data, permissions, device APIs) into `use*` hooks.
-- Keep side effects (Expo SDK calls, subscriptions) inside hooks, not in JSX.
-
-## Async & Effects
-
-- Clean up subscriptions, timers, and listeners in the effect's return function.
-- Cancel or ignore stale async results on unmount to avoid setState-after-unmount.
-
-## React Native / Expo Security
-
-> The mandatory pre-commit checklist and Security Response Protocol from common/security.md still apply.
-
-## The Bundle Is Public
-
-Treat everything shipped in the app as readable by an attacker. A mobile binary can be unpacked.
-
-- NEVER ship real secrets (private API keys, service-role keys, signing secrets) in the JS bundle or `app.config`.
-- Public/anon keys (e.g. Supabase anon key, Firebase config) are acceptable ONLY when protected by server-side rules (RLS, security rules). Enforce authorization on the backend, never in the client.
-- Keep privileged operations behind your own server / edge functions.
-
-## Secret & Token Storage
-
-- Store auth tokens and sensitive values in `expo-secure-store` (Keychain / Keystore) — never in `AsyncStorage` or plain MMKV.
-- Do not persist secrets in Redux/Zustand state that may be serialized to disk.
-
-## Configuration
-
-- Read environment via `expo-constants` / `app.config.ts` `extra`, and `EXPO_PUBLIC_*` only for genuinely public values.
-- Keep build secrets in EAS secrets, not in the repo.
-
-## Network & Data
-
-- HTTPS only; reject cleartext. Consider certificate pinning for high-risk apps.
-- Validate ALL external data (API responses, deep-link params, push payloads) with Zod before use.
-- Validate and sanitize deep links and universal links — never route or grant access based on unvalidated params.
-
-## Permissions & Privacy
-
-- Request the minimum device permissions, at the moment they are needed, with clear rationale.
-
-## Dependencies
-
-- Run `expo-doctor` and `pnpm audit` regularly; keep the Expo SDK and native deps current.
-
-## React Native / Expo Testing
-
-> Coverage target and TDD workflow are inherited from common/testing.md (engine ≥ 90% lines; apps via Maestro flows; RED-GREEN-REFACTOR).
-
-## Tooling
-
-| Layer            | Tool                                                            |
-| ---------------- | --------------------------------------------------------------- |
-| Unit / component | Jest + `@testing-library/react-native` (via `jest-expo` preset) |
-| Hooks            | `@testing-library/react-native` `renderHook`                    |
-| E2E              | Maestro (YAML flows in `apps/mobile/.maestro`)                  |
-| Type safety      | `tsc --noEmit` in CI                                            |
-
-## Component Tests
-
-- Query by accessible role/label/text, not by `testID` unless necessary — this also enforces accessibility.
-- Assert on user-visible behavior, not implementation details.
-- Follow Arrange-Act-Assert.
-
-```tsx
-import { render, screen, fireEvent } from '@testing-library/react-native';
-
-test('calls onSelect with the user id when pressed', () => {
-  const onSelect = jest.fn();
-  render(<UserCard user={{ id: '1', email: 'a@b.com' }} onSelect={onSelect} />);
-
-  fireEvent.press(screen.getByText('a@b.com'));
-
-  expect(onSelect).toHaveBeenCalledWith('1');
-});
-```
-
-## Mocking
-
-- Mock Expo SDK modules (camera, location, notifications, secure-store) at the test boundary.
-- Wrap components that use TanStack Query in a `QueryClientProvider` with a fresh client per test.
-- Mock navigation (`expo-router`) so screens render in isolation.
-
-## E2E
-
-- Cover critical flows only: auth, primary navigation, core transactions.
-- Run the Maestro flows against a release APK, not Metro (see the `maestro-android-e2e` skill).
-
-## What to test first
-
-Use the `implementer` agent proactively for new features: write a failing test that captures the behavior, then implement.
-
-## React Native / Expo Performance
-
-## Rendering
-
-- Memoize expensive components with `React.memo`; memoize callbacks/values passed to children with `useCallback`/`useMemo` only where they prevent real re-renders.
-- Keep component state local and narrow — lifting state too high re-renders large subtrees.
-- Avoid creating new objects/arrays/functions inline in props on hot paths; they break memoization.
-- Split large screens so a state change re-renders the smallest possible subtree.
-
-## Lists
-
-- Use `FlatList`/`SectionList`, or `FlashList` (Shopify) for large or heterogeneous lists.
-- Provide `keyExtractor`, a memoized `renderItem`, and stable item heights when possible (`getItemLayout`).
-- Tune `initialNumToRender`, `windowSize`, `maxToRenderPerBatch` for heavy rows.
-- Never render large data sets with `.map()` inside a `ScrollView`.
-
-## Images & Assets
-
-- Use `expo-image` for caching, priority, and placeholders; serve appropriately sized images.
-- Avoid loading full-resolution images into small thumbnails.
-
-## Animations
-
-- Prefer `react-native-reanimated` (runs on the UI thread) over the JS-driven `Animated` API.
-- For legacy `Animated`, set `useNativeDriver: true` where supported.
-- Keep heavy computation off the JS thread; offload to Reanimated worklets or native modules.
-
-## Runtime & Build
-
-- Build on the **New Architecture** (Fabric + TurboModules). It is the default in recent Expo SDKs (opt-out still available on SDK 53–54) and is mandatory — cannot be disabled — from SDK 55+. Verify every native dependency is New-Arch compatible before shipping.
-- Ensure **Hermes** is enabled (default in modern Expo) for faster startup and lower memory.
-- Defer non-critical work after first paint; lazy-load heavy screens/modules.
-- Use `InteractionManager.runAfterInteractions` for work that can wait until animations finish.
-
-## Measuring
-
-- Profile with the React DevTools profiler, the Hermes sampling profiler, and the in-app performance monitor. (Avoid Flipper — it is deprecated and not supported on the New Architecture.)
-- Watch for: long lists without virtualization, oversized images, frequent full-tree re-renders, and synchronous work on the JS thread.
-
-## Release gate (Android APK)
-
-The app is Android-only and ships as a sideloaded APK (PRD §9, `docs/tech-stack.md`), so there is no store release to prepare for.
-
-- Pin the Expo SDK version and upgrade it deliberately with `npx expo install --check`.
-- Never commit a keystore or signing credentials.
-- Before a build goes to the owner or a judge, all of these pass:
-  - [ ] `pnpm verify` is green (lint, typecheck, unit tests)
-  - [ ] the Maestro flows pass on a release APK, including the demo path
-  - [ ] `npx expo-doctor` is healthy
-  - [ ] no secrets in the bundle (see the security rules above)
+Project rules for `apps/mobile` (Expo SDK 58, Android-only, sideloaded APK). Read
+`apps/mobile/AGENTS.md` before any Expo API: the SDK differs from training data. `docs/design.md`
+owns tokens, components and copy; `docs/standards.md` owns layout and testIDs.
+
+## Structure
+
+- Routes in `src/app/` stay thin: they read params and render a screen from `src/screens/`
+  (`app/plan.tsx` → `PlanScreen`). No logic, state or engine calls in a route file.
+- Screens compose the kit in `src/ui/` (`theme/`, `primitives/`, `components/`). Kit components get
+  already-computed, already-formatted values; they never call the engine or format a raw number.
+- Screen logic lives in a plain, unit-tested model or adapter next to the screen (`planModel.ts`,
+  `score/viewModel.ts`), not inside JSX.
+
+## State and data
+
+- App data comes from the `DemoRepository` through `DemoRepositoryContext` hooks (`useCards`,
+  `usePayments`, `useProfile`, `useRules`). Don't add a global store or a fetching library for it.
+- Derive values from the engine on render; don't store a computed plan or score in state.
+- Route params are untrusted (a deep link can set them). Validate them in the screen, take the
+  first value of an array param (`mark-paid.tsx`), and never record a payment without a user tap.
+- The only network call is `explain/`: https only, a 3 s timeout, and the template on any failure.
+
+## Accessibility (design.md §10)
+
+- Touch targets are at least `space.touch` (48 dp); use `PopPressable`, not a bare `Pressable`.
+- A score range is one line: render it with `ScoreRangeText` (`numberOfLines={1}`, no
+  `adjustsFontSizeToFit`). It must survive 200% font scale.
+- Colour is never the only signal: pair it with text or a glyph (`StatusChip`, `ChipGlyph`).
+- Respect reduce motion with `useReduceMotion`; announce changes with `announce`.
+- Colours come from `src/ui/theme` only; a lint rule bans raw hex.
+
+## Copy
+
+- Every predicted score is a range labelled as an estimate (CLAUDE.md rule 3), with `Disclaimer`.
+- Advice that could close a card warns about credit age and limit loss (rule 4).
+- PAN appears only masked (`ABXXXXX34F`).
+
+## Tests
+
+- Jest (`jest-expo`) with `@testing-library/react-native`. Query by role, label or text; use a
+  `testID` (kebab-case, per `docs/standards.md`) only for what Maestro also needs.
+- Wrap screens in `DemoRepositoryProvider` with an injected repository, never the live default.
+- Every user-facing flow has a Maestro flow in `apps/mobile/.maestro/` run against a release APK,
+  not Metro (`maestro-android-e2e` skill). `demo-path.yaml` is the judge path and must pass.
+
+## Dependencies and release
+
+- Add packages with `npx expo install`, not `pnpm add`; the implementer agent never adds one.
+- Before a build goes to a judge: `pnpm verify` green, Maestro flows pass on the release APK
+  (`pnpm --filter @credit-coach/mobile android:release`), `npx expo-doctor` healthy, no secret in
+  the bundle (only `EXPO_PUBLIC_*` and the anon key), and no keystore committed.
