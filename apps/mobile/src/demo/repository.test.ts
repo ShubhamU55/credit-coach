@@ -245,3 +245,51 @@ describe('getVersion', () => {
     expect(repo.getVersion()).toBe(2);
   });
 });
+
+describe('applyRules', () => {
+  const edited = (repo: ReturnType<typeof createDemoRepository>) => ({
+    ...repo.getRules(),
+    thresholdPct: 20,
+  });
+
+  it('replaces the rules, bumps the version and tells subscribers', () => {
+    const repo = createDemoRepository();
+    const listener = jest.fn();
+    repo.subscribe(listener);
+
+    repo.applyRules(edited(repo));
+
+    expect(repo.getRules().thresholdPct).toBe(20);
+    expect(repo.getVersion()).toBe(1);
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('does nothing, and notifies nobody, when the rules are unchanged', () => {
+    const repo = createDemoRepository();
+    const listener = jest.fn();
+    repo.subscribe(listener);
+
+    repo.applyRules(repo.getRules());
+
+    expect(repo.getVersion()).toBe(0);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('keeps the applied rules across reset(), which only restores cards and payments', () => {
+    const repo = createDemoRepository();
+    repo.applyRules(edited(repo));
+
+    repo.reset();
+
+    expect(repo.getRules().thresholdPct).toBe(20);
+  });
+
+  it('copies the rules it is given', () => {
+    const repo = createDemoRepository();
+    const rules = edited(repo);
+    repo.applyRules(rules);
+    rules.thresholdPct = 99;
+
+    expect(repo.getRules().thresholdPct).toBe(20);
+  });
+});
