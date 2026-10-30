@@ -9,9 +9,15 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '../../..');
 const hookPath = path.join(repoRoot, '.githooks/pre-commit');
 
-/** Git Bash on Windows (the PATH `bash` there can be WSL); plain `bash` elsewhere. */
+/**
+ * An absolute bash path: the run tests replace PATH with the stub directory, and on POSIX the
+ * spawn itself resolves a bare `bash` through that PATH. Git Bash on Windows (the PATH `bash`
+ * there can be WSL).
+ */
 function findBash() {
-  if (process.platform !== 'win32') return 'bash';
+  if (process.platform !== 'win32') {
+    return ['/bin/bash', '/usr/bin/bash'].find((c) => fs.existsSync(c)) ?? null;
+  }
   const candidates = [
     process.env.ProgramFiles && path.join(process.env.ProgramFiles, 'Git', 'bin', 'bash.exe'),
     'C:\\Program Files\\Git\\bin\\bash.exe',

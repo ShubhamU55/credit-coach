@@ -10,8 +10,10 @@ RUN apt-get update \
 # pnpm from the version pinned in package.json's packageManager field.
 RUN corepack enable
 
-# Claude Code, pinned. Bump deliberately, in its own PR.
-RUN npm install -g @anthropic-ai/claude-code@2.1.312
+# Claude Code, pinned. Bump deliberately, in its own PR. No package's lifecycle scripts run during
+# the install; only Claude Code's own postinstall then runs, which links its native binary.
+RUN npm install -g --ignore-scripts @anthropic-ai/claude-code@2.1.312 \
+  && node "$(npm root -g)/@anthropic-ai/claude-code/install.cjs"
 
 # Managed settings win over user and project settings and an agent can't edit them: the
 # Bash sandbox is on (with its own domain allowlist) and bypass-permissions mode is off.
