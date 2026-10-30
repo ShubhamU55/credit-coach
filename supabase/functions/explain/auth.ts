@@ -2,7 +2,8 @@
 // ("Try sample profile") included. The project's gateway already checks the token's signature
 // (verify_jwt = true); this adds what the gateway cannot: the bare anon key is also a valid JWT, and
 // it ships inside every copy of the app, so it must not be enough. A caller must hold a session
-// token for a real user, which Supabase Auth confirms with one call. No dependencies, no logging.
+// token for a real user, which Supabase Auth confirms with one call. No dependencies.
+// A failed lookup logs one line with a reason code only (never the token, a header or a body).
 
 export type AuthResult =
   { ok: true; userId: string } | { ok: false; reason: 'unauthenticated' | 'unavailable' };
@@ -16,8 +17,11 @@ export interface AuthConfig {
   timeoutMs?: number;
 }
 
-/** Budget for the user lookup; with the model call it must fit inside the app's 3 s (see handler tests). */
-export const AUTH_TIMEOUT_MS = 600;
+/**
+ * Budget for the user lookup; with the model call it must fit inside the app's 5 s (see limits test).
+ * 600 ms was too tight from a hosted edge function: the lookup timed out intermittently (503).
+ */
+export const AUTH_TIMEOUT_MS = 1500;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -45,6 +49,12 @@ function withoutTrailingSlashes(url: string): string {
   return url.slice(0, end);
 }
 
+/** One line, reason code only: the log must never carry the token, a header or a response body. */
+function unavailable(reason: 'timeout' | 'network' | 'no_config' | `http_${number}`): AuthResult {
+  console.warn(`explain auth unavailable ${reason}`);
+  return { ok: false, reason: 'unavailable' };
+}
+
 export async function authenticate(request: Request, config: AuthConfig): Promise<AuthResult> {
   const token = bearerToken(request);
   const claims = token ? claimsOf(token) : null;
@@ -52,7 +62,7 @@ export async function authenticate(request: Request, config: AuthConfig): Promis
   if (!token || claims?.role !== 'authenticated' || typeof sub !== 'string' || !UUID.test(sub)) {
     return { ok: false, reason: 'unauthenticated' };
   }
-  if (!config.supabaseUrl || !config.anonKey) return { ok: false, reason: 'unavailable' };
+  if (!config.supabaseUrl || !config.anonKey) return unavailable('no_config');
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), config.timeoutMs ?? AUTH_TIMEOUT_MS);
@@ -67,12 +77,12 @@ export async function authenticate(request: Request, config: AuthConfig): Promis
     if (response.status === 401 || response.status === 403) {
       return { ok: false, reason: 'unauthenticated' };
     }
-    if (!response.ok) return { ok: false, reason: 'unavailable' };
+    if (!response.ok) return unavailable(`http_${response.status}`);
     const user: unknown = await response.json();
     const id = typeof user === 'object' && user !== null ? (user as { id?: unknown }).id : null;
     return id === sub ? { ok: true, userId: sub } : { ok: false, reason: 'unauthenticated' };
   } catch {
-    return { ok: false, reason: 'unavailable' };
+    return unavailable(controller.signal.aborted ? 'timeout' : 'network');
   } finally {
     clearTimeout(timer);
   }

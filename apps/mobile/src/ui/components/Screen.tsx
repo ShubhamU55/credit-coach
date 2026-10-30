@@ -1,5 +1,6 @@
-import type { ReactNode } from 'react';
+import { useContext, type ReactNode } from 'react';
 import { Platform, ScrollView, StatusBar, View } from 'react-native';
+import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { color, space } from '../theme';
 import { Disclaimer } from './Disclaimer';
 
@@ -23,6 +24,8 @@ function topInset(): number {
  * disclaimer is always the last child (design.md section 1, rule 2).
  */
 export function Screen({ children, scroll = false }: ScreenProps) {
+  // The floating nav is lifted by the bottom inset, so the clearance grows by the same amount.
+  const navClearance = space.navClearance + (useContext(SafeAreaInsetsContext)?.bottom ?? 0);
   const content = (
     <>
       {children}
@@ -36,7 +39,7 @@ export function Screen({ children, scroll = false }: ScreenProps) {
           testID="screen-scroll"
           contentContainerStyle={{
             paddingHorizontal: space.gutter,
-            paddingBottom: space.navClearance,
+            paddingBottom: navClearance,
             gap: space.section,
           }}
         >
@@ -54,7 +57,7 @@ export function Screen({ children, scroll = false }: ScreenProps) {
         paddingTop: topInset(),
         paddingHorizontal: space.gutter,
         // The floating nav is pinned over the bottom 88dp, so non-scroll screens clear it too.
-        paddingBottom: space.navClearance,
+        paddingBottom: navClearance,
         gap: space.section,
       }}
     >

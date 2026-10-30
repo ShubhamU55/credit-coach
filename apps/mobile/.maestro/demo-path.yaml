@@ -2,7 +2,8 @@ appId: com.creditcoach.app
 # PD-15: the whole judge demo path, unaided, from a fresh install: Try sample -> Home -> Plan ->
 # Mark as paid -> Score. No typing, no sign-up. Needs a release build with Metro stopped.
 # The Score range after a recorded payment may differ from the sample range, so only its shape is asserted.
-# NOT YET RUN ON A DEVICE: an evidence runner records the report.
+# Run on a device: passed 6/6 on the second full run (first run 4/6). Report:
+# docs/test-reports/maestro-2026-10-30-pd15-demo-path.md
 ---
 - launchApp:
     clearState: true

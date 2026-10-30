@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { authenticate, AUTH_TIMEOUT_MS } from '../../../functions/explain/auth.ts';
 
 const SUB = '00000000-0000-4000-8000-0000000000aa';
@@ -150,5 +150,94 @@ describe('authenticate', () => {
     const result = await run(request(token), vi.fn<typeof fetch>(userReply({ id: SUB })));
 
     expect(JSON.stringify(result)).not.toContain(token);
+  });
+
+  describe('budget and diagnostics', () => {
+    const hang = () =>
+      vi.fn<typeof fetch>(
+        (_url, init) =>
+          new Promise<Response>((_resolve, reject) => {
+            init!.signal!.addEventListener('abort', () =>
+              reject(new DOMException('aborted', 'AbortError')),
+            );
+          }),
+      );
+    const slow = (ms: number, id: string) =>
+      vi.fn<typeof fetch>(
+        () =>
+          new Promise<Response>((resolve) => {
+            setTimeout(() => resolve(new Response(JSON.stringify({ id }), { status: 200 })), ms);
+          }),
+      );
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    afterEach(() => {
+      vi.useRealTimers();
+      warn.mockClear();
+    });
+
+    it('allows 1500 ms for the lookup', () => {
+      expect(AUTH_TIMEOUT_MS).toBe(1500);
+    });
+
+    it('still succeeds when Auth answers slowly but inside the budget (1200 ms)', async () => {
+      vi.useFakeTimers();
+      const pending = run(request(jwt({ role: 'authenticated', sub: SUB })), slow(1200, SUB));
+      await vi.advanceTimersByTimeAsync(1200);
+      expect(await pending).toEqual({ ok: true, userId: SUB });
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('gives up as unavailable when Auth answers after the budget (1501 ms)', async () => {
+      vi.useFakeTimers();
+      const fetchMock = hang();
+      const pending = run(request(jwt({ role: 'authenticated', sub: SUB })), fetchMock);
+      await vi.advanceTimersByTimeAsync(AUTH_TIMEOUT_MS - 1);
+      expect(fetchMock.mock.calls[0]![1]!.signal!.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(2);
+      expect(await pending).toEqual({ ok: false, reason: 'unavailable' });
+    });
+
+    it('logs one reason-only line for a timeout, with no token', async () => {
+      vi.useFakeTimers();
+      const token = jwt({ role: 'authenticated', sub: SUB });
+      const pending = run(request(token), hang());
+      await vi.advanceTimersByTimeAsync(AUTH_TIMEOUT_MS);
+      await pending;
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn).toHaveBeenCalledWith('explain auth unavailable timeout');
+      expect(JSON.stringify(warn.mock.calls)).not.toContain(token);
+      expect(JSON.stringify(warn.mock.calls)).not.toContain(ANON);
+    });
+
+    it('logs http_<status> for a failing Auth service, with no body or token', async () => {
+      const token = jwt({ role: 'authenticated', sub: SUB });
+      await run(request(token), vi.fn<typeof fetch>(userReply({ secret: 'body-text' }, 502)));
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn).toHaveBeenCalledWith('explain auth unavailable http_502');
+      expect(JSON.stringify(warn.mock.calls)).not.toContain('body-text');
+      expect(JSON.stringify(warn.mock.calls)).not.toContain(token);
+    });
+
+    it('logs no_config when the function environment is incomplete', async () => {
+      await run(request(jwt({ role: 'authenticated', sub: SUB })), vi.fn<typeof fetch>(), {
+        anonKey: undefined,
+      });
+      expect(warn).toHaveBeenCalledWith('explain auth unavailable no_config');
+    });
+
+    it('logs network for any other transport failure', async () => {
+      await run(
+        request(jwt({ role: 'authenticated', sub: SUB })),
+        vi.fn<typeof fetch>(async () => {
+          throw new TypeError('connection reset');
+        }),
+      );
+      expect(warn).toHaveBeenCalledWith('explain auth unavailable network');
+    });
+
+    it('does not log for a rejected caller', async () => {
+      await run(request(), vi.fn<typeof fetch>());
+      expect(warn).not.toHaveBeenCalled();
+    });
   });
 });

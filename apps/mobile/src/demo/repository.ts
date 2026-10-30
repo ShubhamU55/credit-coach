@@ -42,6 +42,8 @@ function isIsoCalendarDate(value: string): boolean {
 export function createDemoRepository(seed: DemoSeed = SEED): DemoRepository {
   let profile: DemoProfile = clone(seed.profile);
   let rules: DemoRules = clone(seed.rules);
+  // Rules are configuration, not user state: reset() returns to the last applied rules.
+  let baseRules: DemoRules = clone(seed.rules);
   let cards: DemoCard[] = clone(seed.cards);
   let payments: DemoPayment[] = [];
   let version = 0;
@@ -95,9 +97,16 @@ export function createDemoRepository(seed: DemoSeed = SEED): DemoRepository {
 
     reset() {
       profile = clone(seed.profile);
-      rules = clone(seed.rules);
+      rules = clone(baseRules);
       cards = clone(seed.cards);
       payments = [];
+      notify();
+    },
+
+    applyRules(next: DemoRules) {
+      if (JSON.stringify(next) === JSON.stringify(rules)) return;
+      baseRules = clone(next);
+      rules = clone(next);
       notify();
     },
 

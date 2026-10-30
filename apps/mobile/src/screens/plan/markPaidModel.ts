@@ -258,11 +258,10 @@ export function resultLine(
   return `${steps}${tail}`;
 }
 
-/**
- * Records the payment (throws RepositoryError if the repository rejects it) and works out what
- * it settled. Pure apart from the one repository write.
- */
-export function recordAndSummarise(args: {
+/** Shown when the payment is saved but what it settled could not be worked out. */
+export const GENERIC_RECORDED_LINE = 'Payment recorded. Check your plan for the update.';
+
+interface RecordArgs {
   repository: DemoRepository;
   card: DemoCard;
   amount: number;
@@ -270,9 +269,27 @@ export function recordAndSummarise(args: {
   cash: number;
   aimFor10: boolean;
   before: PlanView;
-}): PaymentSummary {
-  const { repository, card, amount, today, cash, aimFor10, before } = args;
+}
+
+/**
+ * Records the payment (throws RepositoryError if the repository rejects it) and works out what
+ * it settled. Once the write has succeeded this never throws: a failure while summarising, or a
+ * card missing after the write, gives the generic line, so the caller cannot retry and record twice.
+ */
+export function recordAndSummarise(args: RecordArgs): PaymentSummary {
+  const { repository, card, amount, today } = args;
   repository.recordPayment(card.id, amount, today);
+  try {
+    return { amount, line: summariseWrite(args) };
+  } catch (error) {
+    if (__DEV__) console.warn('[mark-paid] recorded, but the summary failed:', error);
+    return { amount, line: GENERIC_RECORDED_LINE };
+  }
+}
+
+/** The result line for a payment already written. Throws if the repository cannot be read. */
+function summariseWrite(args: RecordArgs): string {
+  const { repository, card, today, cash, aimFor10, before } = args;
   const after = buildPlanView({
     cards: repository.listCards(),
     payments: repository.listPayments(),
@@ -286,9 +303,11 @@ export function recordAndSummarise(args: {
     .filter((s) => s.cardId === card.id && s.state === 'paid' && !alreadyPaid.has(s.step))
     .map((s) => s.step);
   const updated = repository.listCards().find((c) => c.id === card.id);
+  if (!updated) {
+    if (__DEV__) console.warn(`[mark-paid] card ${card.id} is missing after a successful write`);
+    return GENERIC_RECORDED_LINE;
+  }
   const owedBefore = Math.max(0, card.lastStatementBalance - card.paidSinceStatement);
-  const owedAfter = updated
-    ? Math.max(0, updated.lastStatementBalance - updated.paidSinceStatement)
-    : owedBefore;
-  return { amount, line: resultLine(card.name, newlyPaid, owedBefore > 0 && owedAfter === 0) };
+  const owedAfter = Math.max(0, updated.lastStatementBalance - updated.paidSinceStatement);
+  return resultLine(card.name, newlyPaid, owedBefore > 0 && owedAfter === 0);
 }

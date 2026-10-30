@@ -14,7 +14,15 @@ import {
 import { DEMO_TODAY } from '../../demo/config';
 import type { DemoCard } from '../../demo/types';
 import { useCards, useProfile, useRules } from '../../state/DemoRepositoryContext';
-import { SampleStrip, Screen, Text, TextAction, announce } from '../../ui';
+import {
+  FloatingNav,
+  SampleStrip,
+  Screen,
+  Text,
+  TextAction,
+  announce,
+  type NavTab,
+} from '../../ui';
 import { toGuardConfig, toWhatIfConfig, toWhatIfContext, type RulesWithGuard } from './adapter';
 import { ScoreHome } from './ScoreHome';
 import { WhatIfConfigure } from './WhatIfConfigure';
@@ -44,16 +52,28 @@ function isInputTile(tile: TileKey): tile is 'pay-card' | 'close-card' | 'fd-car
   return NEEDS_INPUT.has(tile);
 }
 
+/** Error classes that mean a programming mistake, never an engine refusal of the inputs. */
+function isProgrammingError(error: unknown): boolean {
+  return (
+    error instanceof TypeError ||
+    error instanceof ReferenceError ||
+    error instanceof SyntaxError ||
+    error instanceof EvalError ||
+    error instanceof URIError
+  );
+}
+
 /**
- * Runs an engine call and returns null when the engine rejects the inputs (a RangeError, for
- * example an anchor dated in the future). Any other error is a bug and is rethrown. The message is
- * logged in development only, so production stays quiet.
+ * Runs an engine call and returns null when the engine refuses the inputs: a RangeError (for
+ * example an anchor dated in the future) or a plain Error from a planner invariant (no valid
+ * limit, no due date). A TypeError or other programming error is a bug and is rethrown. The
+ * message is logged in development only, so production stays quiet.
  */
 function guarded<T>(label: string, run: () => T): T | null {
   try {
     return run();
   } catch (error) {
-    if (!(error instanceof RangeError)) throw error;
+    if (!(error instanceof Error) || isProgrammingError(error)) throw error;
     if (__DEV__) console.warn(`Score: ${label} refused its inputs: ${error.message}`);
     return null;
   }
@@ -141,6 +161,11 @@ function safeGuard(
   return result ? describeGuard(result) : null;
 }
 
+function openNav(tab: NavTab) {
+  if (tab === 'home') router.navigate('/home');
+  else if (tab === 'plan') router.navigate('/plan');
+}
+
 /** The Score screen (PRD 5.5, 5.6; docs/design.md 7.5) and its what-if result views. */
 export function ScoreScreen() {
   const profile = useProfile();
@@ -189,6 +214,7 @@ export function ScoreScreen() {
         {profile.isSample ? <SampleStrip onSwitch={() => router.replace('/')} /> : null}
         {renderStep({ step, estimate, home, result, cards, profile, onPickTile, run, setStep })}
       </Screen>
+      <FloatingNav active="score" onNavigate={openNav} />
     </View>
   );
 }

@@ -5,10 +5,10 @@ export const MODEL = 'claude-haiku-4-5';
 export const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 export const ANTHROPIC_VERSION = '2023-06-01';
 /**
- * Hard limit for the whole model call, headers and body included. The app gives up after 3 s, so this
+ * Hard limit for the whole model call, headers and body included. The app gives up after 5 s, so this
  * plus the user lookup must leave room for the server template to arrive first (tested).
  */
-export const MODEL_TIMEOUT_MS = 2000;
+export const MODEL_TIMEOUT_MS = 2500;
 /** A few sentences; also bounds cost per request. */
 const MAX_OUTPUT_TOKENS = 400;
 
@@ -40,6 +40,27 @@ function textOf(body: unknown): string | null {
   return parts.length > 0 ? parts.join('').trim() : null;
 }
 
+const ERROR_TYPE = /^[a-z_]{3,40}$/;
+
+/**
+ * `http_<status>`, plus Anthropic's enumerated error.type when the body has a well-formed one
+ * (e.g. `http_400_invalid_request_error`). Only that allowlisted token is read: error.message can
+ * echo the input, so it is never copied, and any odd or unreadable body leaves the plain code.
+ */
+async function failureReason(response: Response): Promise<string> {
+  const plain = `http_${response.status}`;
+  try {
+    const body: unknown = await response.json();
+    const error =
+      typeof body === 'object' && body !== null ? (body as { error?: unknown }).error : null;
+    const type =
+      typeof error === 'object' && error !== null ? (error as { type?: unknown }).type : null;
+    return typeof type === 'string' && ERROR_TYPE.test(type) ? `${plain}_${type}` : plain;
+  } catch {
+    return plain;
+  }
+}
+
 async function callModel(request: ModelRequest, signal: AbortSignal): Promise<ModelResult> {
   try {
     const response = await request.fetchImpl(ANTHROPIC_URL, {
@@ -58,7 +79,7 @@ async function callModel(request: ModelRequest, signal: AbortSignal): Promise<Mo
       }),
       signal,
     });
-    if (!response.ok) return { ok: false, reason: `http_${response.status}` };
+    if (!response.ok) return { ok: false, reason: await failureReason(response) };
     const text = textOf(await response.json());
     return text === null ? { ok: false, reason: 'bad_reply' } : { ok: true, text };
   } catch (error) {
@@ -70,7 +91,7 @@ async function callModel(request: ModelRequest, signal: AbortSignal): Promise<Mo
 }
 
 /**
- * Asks the model, giving up after `timeoutMs` (default 3 s). The abort signal cancels a real
+ * Asks the model, giving up after `timeoutMs` (default 2.5 s). The abort signal cancels a real
  * request; the race makes the limit hold even if a fetch implementation ignores the signal.
  */
 export async function askModel(request: ModelRequest): Promise<ModelResult> {

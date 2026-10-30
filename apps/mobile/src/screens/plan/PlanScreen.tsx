@@ -5,6 +5,7 @@ import { View } from 'react-native';
 import { formatINR } from '@credit-coach/engine';
 
 import { DEMO_TODAY } from '../../demo/config';
+import { useExplanation } from '../../explain';
 import { useCards, usePayments, useProfile, useRules } from '../../state/DemoRepositoryContext';
 import {
   AIExplanation,
@@ -252,6 +253,14 @@ export function PlanScreen() {
     [cards, payments, rules, cash, aimFor10],
   );
 
+  // The same plan the screen shows goes to the explain function; it only words these numbers.
+  const explainCards = useMemo(() => cards.map((c) => ({ id: c.id, name: c.name })), [cards]);
+  const explainContext = useMemo(
+    () => ({ today: DEMO_TODAY, rules: { thresholdPct: rules.thresholdPct, aimFor10 } }),
+    [rules.thresholdPct, aimFor10],
+  );
+  const explanation = useExplanation(view.plan, explainCards, explainContext);
+
   return (
     <View testID="plan-screen" style={{ flex: 1, backgroundColor: color.bg }}>
       <Screen scroll>
@@ -322,7 +331,10 @@ export function PlanScreen() {
             onValueChange={setAimFor10}
           />
         </View>
-        <AIExplanation text={explainText(view)} aiWritten={false} />
+        <AIExplanation
+          text={explanation.aiWritten ? explanation.text : explainText(view)}
+          aiWritten={explanation.aiWritten}
+        />
       </Screen>
       <FloatingNav active="plan" onNavigate={openNav} />
     </View>
