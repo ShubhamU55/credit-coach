@@ -31,7 +31,7 @@ What is real, as of the PD-15 hardening branch (HEAD `19cfb40` plus docs) on 30 
 - **Written, merged, not deployed:** the Supabase backend and the `explain` Edge Function (#67). Their real-stack
   checks (`supabase db reset`, `supabase test db`) have never been run. The app does not sign in to Supabase, so
   "Why this plan?" shows the template.
-- **Hardening and the final APK are in the open PD-15 pull request**, not on `main` until it merges.
+- **Hardening and the final APK are merged to `main`** (#70, `9510516`).
 - **Not built:** bureau linking, the admin panel (it is still the stock Next scaffold), and sign-in. Reminders are built on
   a parked branch (`feat/pd-13-reminders`) and not part of the judged path.
 - **The judge APK is built but not committed.** All four ABIs, 91,576,747 bytes; checksum and install steps are in
