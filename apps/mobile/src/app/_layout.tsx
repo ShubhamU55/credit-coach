@@ -1,11 +1,13 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 
+import { BackendBootstrap } from '../backend/BackendBootstrap';
 import { DemoRepositoryProvider } from '../state/DemoRepositoryContext';
 
 export default function RootLayout() {
   return (
     <DemoRepositoryProvider>
+      <BackendBootstrap />
       <StatusBar style="auto" />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
