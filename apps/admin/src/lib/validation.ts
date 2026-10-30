@@ -158,3 +158,31 @@ export function rawFromFormData(data: FormData): RawRules {
   }
   return raw;
 }
+
+const str = (v: unknown): string => (v === null || v === undefined ? '' : String(v));
+
+/** Form strings for a coach_rules row. A missing or malformed column becomes '' so it fails validation. */
+export function rawFromRow(row: Record<string, unknown>): RawRules {
+  const steps = Array.isArray(row.planner_step_order) ? row.planner_step_order : [];
+  const weights = (
+    typeof row.predictor_weights === 'object' && row.predictor_weights !== null
+      ? row.predictor_weights
+      : {}
+  ) as Record<string, unknown>;
+  const dueDays = Array.isArray(row.reminder_due_days) ? row.reminder_due_days.join(', ') : '';
+  const raw: RawRules = {
+    threshold_pct: str(row.threshold_pct),
+    excellent_pct: str(row.excellent_pct),
+    reporting_basis: str(row.reporting_basis),
+    pay_by_buffer_days: str(row.pay_by_buffer_days),
+    step_1: str(steps[0]),
+    step_2: str(steps[1]),
+    step_3: str(steps[2]),
+    step_4: str(steps[3]),
+    guard_min_hard_inquiries: str(row.guard_min_hard_inquiries),
+    reminder_prepay_days: str(row.reminder_prepay_days),
+    reminder_due_days: dueDays,
+  };
+  for (const key of WEIGHT_KEYS) raw[`w_${key}`] = str(weights[key]);
+  return raw;
+}

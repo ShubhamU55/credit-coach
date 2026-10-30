@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_RAW_RULES, validateRules, type RawRules } from './validation';
+import { DEFAULT_RAW_RULES, rawFromRow, validateRules, type RawRules } from './validation';
 
 const raw = (over: Partial<RawRules> = {}): RawRules => ({ ...DEFAULT_RAW_RULES, ...over });
 
@@ -104,3 +104,39 @@ describe('validateRules', () => {
     expect(Object.keys(errors).sort()).toEqual(['excellent_pct', 'threshold_pct']);
   });
 });
+
+describe('rawFromRow', () => {
+  it('round-trips a database row through the form strings and validation', () => {
+    const row = {
+      threshold_pct: 20,
+      excellent_pct: 8,
+      reporting_basis: 'weekly_current',
+      pay_by_buffer_days: 3,
+      planner_step_order: ['prepay', 'statement', 'minimum', 'overdue'],
+      predictor_weights: { ...validWeights(), creditMix: 9.5 },
+      guard_min_hard_inquiries: 4,
+      reminder_prepay_days: 5,
+      reminder_due_days: [7, 3, 1],
+    };
+    const result = validateRules(rawFromRow(row));
+    expect(result).toEqual({ ok: true, value: row });
+  });
+
+  it('falls back to empty strings for a malformed row so validation flags it', () => {
+    const raw = rawFromRow({});
+    expect(raw.threshold_pct).toBe('');
+    expect(validateRules(raw).ok).toBe(false);
+  });
+});
+
+function validWeights() {
+  return {
+    paymentHistory: 35,
+    overallUtilization: 11,
+    maxCardUtilization: 11,
+    hardInquiries: 12,
+    creditAge: 16,
+    openAccounts: 7,
+    creditMix: 8,
+  };
+}
