@@ -19,21 +19,24 @@ cut, how AI was used, and an honest status table. The demo video shot list is
 
 ## Judge's quick-start
 
-What is real, as of `origin/main` `abbb1e4`, 29 Oct 2026, at the time of writing (update as PRs merge; the table in `docs/submission.md` section 3 is the live
-version):
+What is real, as of the PD-15 hardening branch (HEAD `19cfb40` plus docs) on 30 Oct 2026, on top of `main` with PRs #65, #67, #68 and #69 merged
+(update as PRs merge; the table in `docs/submission.md` section 3 is the live version):
 
 - **Real and tested on `main`:** the rules engine (payment planner, reporting dates, score range predictor,
   what-ifs, application guard, the "Why this plan?" template) and the mobile kit and app shell.
-- **Built, not on `main` yet:** the Welcome, Home, Plan, Mark as paid and Score screens. Welcome and Home are PR #65
-  (open) with a device report; Plan and Mark as paid (`feat/pd-9-plan`) have a device report on their branch; Score
-  (`feat/pd-10-score`) has none yet. Until they merge, the app on `main` shows
-  stub screens behind "Try sample profile".
-- **Written, not deployed:** the Supabase backend and the `explain` Edge Function (branch `feat/pd-5-backend`). The
-  app is built to work without it.
+- **Real screens, merged:** Welcome and Home (#65), Plan and Mark as paid (#68), Score, what-ifs and guard (#69).
+  The full path (Try sample profile, Home, Plan, Mark as paid, Score) passed as one Maestro flow on a physical phone
+  (moto g73 5G); see `docs/test-reports/maestro-2026-10-30-pd15-demo-path.md`. The first full run of the suite on the
+  final build was 4 of 6 and passed 6 of 6 on rerun; the report says what is and is not proven.
+- **Written, merged, not deployed:** the Supabase backend and the `explain` Edge Function (#67). Their real-stack
+  checks (`supabase db reset`, `supabase test db`) have never been run. The app does not sign in to Supabase, so
+  "Why this plan?" shows the template.
+- **Hardening and the final APK are in the open PD-15 pull request**, not on `main` until it merges.
 - **Not built:** bureau linking, the admin panel (it is still the stock Next scaffold), and sign-in. Reminders are built on
   a parked branch (`feat/pd-13-reminders`) and not part of the judged path.
-- **No release APK is attached for judges yet.** The owner attaches it to a GitHub release (see the links table in
-  `docs/submission.md`). Until then use track C to build it.
+- **The judge APK is built but not committed.** All four ABIs, 91,576,747 bytes; checksum and install steps are in
+  [`docs/install.md`](docs/install.md). The owner attaches it to a GitHub release or the submission (see the links
+  table in `docs/submission.md`). Until then use track C to build it.
 
 Pick a track:
 
@@ -62,23 +65,23 @@ pnpm install --frozen-lockfile
 pnpm --filter @credit-coach/mobile android:release   # standalone release build, installs on the running device
 ```
 
-On `main` you will see the Welcome stub, then a Home stub after "Try sample profile". The kit gallery (every
-component) opens with `adb shell am start -a android.intent.action.VIEW -d creditcoach://kit`. To see the real screens,
-check out the branches listed above (or wait for them to merge). The app needs no network and no account.
+Tap **Try sample profile** to reach Home, then Plan, Mark as paid and Score. The kit gallery (every component) opens
+with `adb shell am start -a android.intent.action.VIEW -d creditcoach://kit`. The app needs no network and no account.
 **Windows:** the native build fails on the 260-character path limit. Build from a short checkout path (for example
 `C:\p\cc`) and add `externalNativeBuild { cmake { buildStagingDirectory "C:/b/cc" } }` to the generated
 `android/app/build.gradle`, exactly as recorded in
 [`docs/test-reports/maestro-2026-10-28-pd4-shell.md`](docs/test-reports/maestro-2026-10-28-pd4-shell.md).
 
-If you can sideload an APK on a stock Android phone: enable "Install unknown apps" for your file manager or browser,
-open the APK, install, then tap **Try sample profile**. This has not been tried on a stock phone with a release APK
-from this repo yet; `docs/install.md` does not exist (that ticket, PD-6, is in progress and not merged).
+To sideload an APK on a phone, follow [`docs/install.md`](docs/install.md): checksum, sideload and adb steps, what to
+tap, build commands and known limits, with each step marked as run or not run. The sideload steps on a stock phone UI
+were not run; `adb install` and the Maestro flows on a moto g73 5G were.
 
 ## Repo map
 
 | Path                      | What                                                                                          |
 | ------------------------- | --------------------------------------------------------------------------------------------- |
 | `docs/submission.md`      | The submission write-up: problem, what was built and cut, how AI was used                     |
+| `docs/install.md`         | Judge install guide: checksum, sideload, what to tap, build, known limits                     |
 | `docs/demo-script.md`     | Shot list and voice-over for the demo video                                                   |
 | `docs/PRD.md`             | Product requirements (frozen v1). The source of truth                                         |
 | `docs/tech-stack.md`      | Stack decision and risks                                                                      |
@@ -86,7 +89,7 @@ from this repo yet; `docs/install.md` does not exist (that ticket, PD-6, is in p
 | `packages/engine`         | Pure TypeScript rules engine (planner, predictor, guard)                                      |
 | `apps/mobile`             | Android app (Expo / React Native)                                                             |
 | `apps/admin`              | Admin control center (Next.js). **Stock scaffold only: the admin panel was cut**              |
-| `supabase/`               | Database migrations and Edge Functions. **Only `config.toml` on `main`**; backend on a branch |
+| `supabase/`               | Database migrations, RLS tests and Edge Functions. **Merged, not deployed**                    |
 
 ## Prerequisites (Windows 11 tested)
 
@@ -116,8 +119,7 @@ Only `.env.example` files are committed. **Copy each to `.env.local` and fill it
 ### Backend (optional, not deployed)
 
 The app needs no backend: the sample profile is in memory and "Why this plan?" falls back to the engine's template.
-The Supabase schema, row-level security and the `explain` Edge Function are written on the branch
-`feat/pd-5-backend`, not merged and not deployed; its `supabase/OWNER-STEPS.md` lists the commands the owner runs
+The Supabase schema, row-level security and the `explain` Edge Function were merged in #67 and are not deployed; `supabase/OWNER-STEPS.md` lists the commands the owner runs
 (link, push, set the `ANTHROPIC_API_KEY` function secret, deploy). The Anthropic key lives only in Supabase function
 secrets, never in this repo.
 

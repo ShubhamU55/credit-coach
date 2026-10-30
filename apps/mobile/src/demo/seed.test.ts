@@ -77,4 +77,22 @@ describe('parseSeed', () => {
 
     expect(() => parseSeed(bad)).toThrow(/cards\[0\]\.isSecured/);
   });
+
+  it('rejects a full PAN without echoing it', () => {
+    const bad = mutated((s) => {
+      s.profile.panMasked = 'ABCDE1234F';
+    });
+
+    expect(() => parseSeed(bad)).toThrow(/profile\.panMasked/);
+    expect(() => parseSeed(bad)).not.toThrow(/ABCDE1234F/);
+  });
+
+  it('rejects an unmasked mobile number without echoing it', () => {
+    const bad = mutated((s) => {
+      s.profile.mobileMasked = '+91 9876543210';
+    });
+
+    expect(() => parseSeed(bad)).toThrow(/profile\.mobileMasked/);
+    expect(() => parseSeed(bad)).not.toThrow(/9876543210/);
+  });
 });
