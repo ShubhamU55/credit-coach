@@ -91,21 +91,30 @@ async function callModel(request: ModelRequest, signal: AbortSignal): Promise<Mo
 }
 
 /**
- * Asks the model, giving up after `timeoutMs` (default 2.5 s). The abort signal cancels a real
+ * Runs `call` with a hard wall-clock limit (default 2.5 s). The abort signal cancels a real
  * request; the race makes the limit hold even if a fetch implementation ignores the signal.
+ * Shared by the Anthropic and Gemini clients.
  */
-export async function askModel(request: ModelRequest): Promise<ModelResult> {
+export async function withDeadline(
+  call: (signal: AbortSignal) => Promise<ModelResult>,
+  timeoutMs: number = MODEL_TIMEOUT_MS,
+): Promise<ModelResult> {
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<ModelResult>((resolve) => {
     timer = setTimeout(() => {
       controller.abort();
       resolve({ ok: false, reason: 'timeout' });
-    }, request.timeoutMs ?? MODEL_TIMEOUT_MS);
+    }, timeoutMs);
   });
   try {
-    return await Promise.race([callModel(request, controller.signal), timeout]);
+    return await Promise.race([call(controller.signal), timeout]);
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** Asks Claude, giving up after `timeoutMs` (default 2.5 s). */
+export function askModel(request: ModelRequest): Promise<ModelResult> {
+  return withDeadline((signal) => callModel(request, signal), request.timeoutMs);
 }
