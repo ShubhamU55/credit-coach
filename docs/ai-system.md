@@ -142,7 +142,7 @@ reads an `## Agent stats` ledger table that no ledger emits yet, so it has no da
   runtime), agent lint, config audit and hooks. They run in `pnpm verify` and CI.
 - **Decisions:** `docs/adr/`. **Handoff:** `docs/status.md`.
 
-## Honest limits (as of 29 Oct 2026)
+## Honest limits (as of 30 Oct 2026)
 
 - Two live workflow runs are on record, covering three workflows, and the ledgers show only these
   two runs. An earlier version of `feature-build` and `qa` ran once, in the W2-2 dry run, with
@@ -156,14 +156,15 @@ reads an `## Agent stats` ledger table that no ledger emits yet, so it has no da
   parallel-streams coordinator (the PD-2 ledger header calls it an implementer subagent), and the
   coordinator ran the reviewer passes on all of them. Only the PD-3 and PD-7 ledgers call this the
   manual fallback. None of these tickets is evidence for the workflows.
-- `main` is protected (ledger `2026-10-23-branch-protection.md`, checked with the GitHub API on 29
-  Oct 2026). The required checks are `verify`, `admin-e2e`, `secrets`, `deps`, `codeql`, `CodeQL`,
-  `sonar`, `maestro-evidence`, `changes` and `hold-check`. Admins are included, force pushes are
-  blocked and history must be linear. No pull-request review is required, and branches don't have
-  to be up to date before merging.
-- `pr-review` is not a required check, and G8 is self-attested. The PR author, the review author and
-  the status creator are all the same GitHub account, so the status is advisory. An independent G8
-  needs a separate identity for `pr-reviewer`. G3 (API tests) arrives with Plan 3.
+- `main` is protected (ledger `2026-10-23-branch-protection.md`; ruleset 26139084 and the branch
+  protection API re-read on 30 Oct 2026). A pull request is required, with 0 approvals. Branches
+  must be up to date before merging. 12 checks are required: `verify`, `admin-e2e`, `secrets`,
+  `deps`, `codeql`, `CodeQL`, `sonar`, `maestro-evidence`, `changes`, `hold-check`, `pr-body` and
+  `pr-review`. Admins are included, force pushes are blocked and history must be linear.
+- `pr-review` is a required check, but G8 is still self-attested. The PR author, the review author
+  and the status creator are all the same GitHub account, so the status proves the review ran, not
+  that an independent reviewer agreed. An independent G8 needs a separate identity for
+  `pr-reviewer`. G3 (API tests) arrives with Plan 3.
 - `build-error-resolver` exists, but no workflow dispatches it. Retries go back to `implementer`.
 - The shell hooks (`block-no-verify`, `pre-bash-commit-quality`) match both `Bash` and `PowerShell`.
   A PowerShell here-string commit message is blocked as unreadable. `protect-env` and

@@ -33,7 +33,7 @@ All agents live in `.claude/agents/` and are invoked through the Agent tool with
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | implementer          | Implements **one plan task** test-first (superpowers TDD), runs the task's tests and commits; writes only the task's `Files:` list                                                                                                                      |
 | gate-checker         | Runs commands and reports facts only: `MODE: start` (head, dirtyFiles), `MODE: check` (full `GATE_FACTS`), `MODE: diff` (merge-base changed files + diff). **No opinions, no lint/Sonar summary**                                                       |
-| build-error-resolver | Retry-pass fixer when `gate-checker` reports tsc or ESLint failures                                                                                                                                                                                     |
+| build-error-resolver | Retry-pass fixer when `gate-checker` reports tsc or ESLint failures (no workflow dispatches it yet; retries go to `implementer`)                                                                                                                                                                                     |
 | test-automator       | Owns the test automation infrastructure: turns criteria and tester proposals into durable tests in the right layer, wires them into `pnpm verify` and CI; quarantines a pre-identified flaky test from an explicit `flaky[]` input, never a silent skip |
 
 `tdd-guide` is retired (superseded by `implementer` + superpowers `test-driven-development`).
@@ -44,7 +44,7 @@ All agents live in `.claude/agents/` and are invoked through the Agent tool with
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | functional-tester  | Checks that every acceptance criterion has a test that would fail without the feature; proposes missing ones                                                                 |
 | edge-case-hunter   | Boundaries only (zero, negative and huge amounts, empty lists, month-end and leap days, time zones, Unicode, 200% font, offline); proposes fast-check property tests         |
-| api-tester         | Supabase: Zod contract tests for tables, RPCs and Edge Functions; RLS isolation; error codes; LLM timeout fallback                                                           |
+| api-tester         | Supabase: contract tests (response-shape checks) for tables, RPCs and Edge Functions; RLS isolation; error codes; LLM timeout fallback                                                           |
 | ui-tester          | Maestro flows and screenshots vs `docs/design-mockups/v3`: touch targets ≥ 48, ranges never wrap, colour never the only signal, reduce-motion. Device-bound                  |
 | integration-tester | Cross-component: app ↔ Supabase ↔ admin, and the demo path end to end (try sample → plan within 60 s). Device-bound, runs after `ui-tester`                                   |
 

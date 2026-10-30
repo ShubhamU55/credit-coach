@@ -67,7 +67,7 @@ describe('docs/ai-system.md and the security checklist stay current', () => {
     const aiSystem = read('docs/ai-system.md');
 
     expect(aiSystem).not.toMatch(/Nothing is pushed yet/);
-    expect(aiSystem).toContain('Honest limits (as of 29 Oct 2026)');
+    expect(aiSystem).toContain('Honest limits (as of 30 Oct 2026)');
   });
 
   it('documents session hygiene and cost in ai-system.md', () => {
