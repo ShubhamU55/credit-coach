@@ -1,6 +1,7 @@
 # Maestro run note: PD-17 app-to-Supabase batch (feat/pd-17-app-backend), gesture, 3-button and offline
 
 - Date: 2026-10-30
+- Rebase note: the runs used the branch before a second rebase onto `main` (which added #77 and #78: settings, CODEOWNERS and ledger files, no app or flow code). The hashes below are the pre-rebase ones; after it `a5a804a` is `dcf4100` and `1142a7b` is `cc55e01`. Same content, new hashes.
 - Commit under test: `1142a7b` (last apps/mobile commit; the only change after the APK's source `a5a804a` is a Maestro flow edit, `score-whatif.yaml`, which is not bundled into the app, so the APK is unchanged by it)
 - Build: incremental from the detached worktree `C:\p\t5` at `a5a804a`, generated `android/` reused, `buildStagingDirectory "C:/b/t5"` in place. `gradlew.bat app:assembleRelease -PreactNativeArchitectures=arm64-v8a`. BUILD SUCCESSFUL in 2m 7s (25 executed, 505 up-to-date). The worktree's `.env.local` bakes the live `EXPO_PUBLIC_*` values in (not read by the agent).
 - APK: `C:\apk\credit-coach-live-arm64.apk`, 30482471 bytes, sha256 `80bebe42d39b85ac66973ea94d3d89172756ee06ef1573b13eb0ca5f8a1bc17e` (arm64-v8a only; the fallback `credit-coach-release.apk` is untouched)
