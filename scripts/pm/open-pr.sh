@@ -54,5 +54,10 @@ if [[ -n "$issue" ]]; then
   body="${body}"$'\n\n'"Closes #${issue}"
 fi
 
-GH_TOKEN="$token" gh pr create --repo "$REPO" --base main --head "$branch" --title "$title" --body "$body"
+# Every PR this script opens is agent-built, so it is labelled for counting AI work apart
+# (docs/ai-policy.md, "Review"). --force makes the label call idempotent.
+GH_TOKEN="$token" gh label create ai-assisted --repo "$REPO" --color 5319e7 \
+  --description "Built with AI agents (see the PR's AI-assisted section)" --force >/dev/null
+GH_TOKEN="$token" gh pr create --repo "$REPO" --base main --head "$branch" --title "$title" --body "$body" \
+  --label ai-assisted
 echo "open-pr: opened. CI runs now; merge when green (the owner merges as ${OWNER_ACCOUNT})."

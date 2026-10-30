@@ -39,3 +39,6 @@ CLAUDE.local.md
 .DS_Store
 Thumbs.db
 *.log
+
+# Local Claude Code metrics written by scripts/otel (never committed)
+scripts/otel/data/
