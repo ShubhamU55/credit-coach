@@ -1,4 +1,6 @@
+import { useContext } from 'react';
 import { Pressable, View } from 'react-native';
+import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { Text } from '../primitives/Text';
 import { color, fontFamily, shadow, space } from '../theme';
 
@@ -66,6 +68,9 @@ function NavIcon({ tab, tone }: { tab: NavTab; tone: string }) {
  * accent dot and `selected` state, so it is never colour alone.
  */
 export function FloatingNav({ active, onNavigate }: FloatingNavProps) {
+  // Lifted by the system navigation bar's inset (0 in gesture mode or without a provider, so that
+  // layout is unchanged). Read from the context because `useSafeAreaInsets` throws outside one.
+  const bottomInset = useContext(SafeAreaInsetsContext)?.bottom ?? 0;
   return (
     <View
       testID="floating-nav"
@@ -74,7 +79,7 @@ export function FloatingNav({ active, onNavigate }: FloatingNavProps) {
         position: 'absolute',
         left: 16,
         right: 16,
-        bottom: 20,
+        bottom: 20 + bottomInset,
         // minHeight, not height: the labels must not clip at 200% font scale.
         minHeight: 68,
         flexDirection: 'row',
