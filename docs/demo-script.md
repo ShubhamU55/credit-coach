@@ -7,7 +7,7 @@ the APK does not install, so it has to stand on its own. Target length: about 4 
 
 The numbers and strings below come from the golden fixture (`docs/design.md` section 8), the engine tests on `main`,
 and the screens now merged to `main`: Welcome and Home (#65), Plan and Mark as paid (#68), Score and what-ifs (#69).
-As of 2026-10-30 the whole path also ran as one Maestro flow on a physical phone (PD-15 report, in the open PD-15 PR).
+As of 2026-10-30 the whole path also ran as one Maestro flow on a physical phone (PD-15 report, merged in #70, `9510516`).
 Still unproven: the exact wording and numbers of every screen against this script, which is why the checks below
 remain. So:
 

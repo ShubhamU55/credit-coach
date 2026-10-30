@@ -18,5 +18,5 @@ Evidence of how AI was used to build Credit Coach. One entry per feature, plan o
 | [019](019-pd-16-submission.md)            | PD-16: the product phase, the submission, and what is cut                       |
 
 Numbers are pre-assigned per ticket in `docs/parallel-streams.md`. Entries 008 and 011 to 013 (PD-5, PD-8, PD-9,
-PD-10) are in the directory but not yet in the table above. Entry 009 (PD-6) is in the PD-15 pull request. Entries 015
+PD-10) are in the directory but not yet in the table above. Entry 009 (PD-6) is on `main` (merged in #70, `9510516`). Entries 015
 to 018 (PD-12 to PD-15) were not written.
