@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { utilization } from '@credit-coach/engine';
 import styles from './page.module.css';
 
@@ -7,6 +8,7 @@ export default function Home() {
       <main className={styles.main}>
         <h1>Credit Coach Admin</h1>
         <p data-testid="engine-check">Engine OK: {utilization(4500, 15000)}%</p>
+        <Link href="/rules">Open the control center</Link>
       </main>
     </div>
   );

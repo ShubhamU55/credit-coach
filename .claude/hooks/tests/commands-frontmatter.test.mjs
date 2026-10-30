@@ -28,7 +28,12 @@ const commands = fs
   .map((file) => {
     const text = fs.readFileSync(path.join(commandsDir, file), 'utf8');
     try {
-      return { name: file.slice(0, -3), text, meta: parseFrontmatter(text) ?? {}, parseError: null };
+      return {
+        name: file.slice(0, -3),
+        text,
+        meta: parseFrontmatter(text) ?? {},
+        parseError: null,
+      };
     } catch (error) {
       return { name: file.slice(0, -3), text, meta: {}, parseError: error.message.split('\n')[0] };
     }
@@ -64,7 +69,9 @@ describe('.claude/commands frontmatter', () => {
   });
 
   it('tells the reader when to use every command', () => {
-    const missing = commands.filter(({ meta }) => !/\bUse (when|after|before)\b/.test(meta.description));
+    const missing = commands.filter(
+      ({ meta }) => !/\bUse (when|after|before)\b/.test(meta.description),
+    );
 
     expect(missing.map(({ name }) => name)).toEqual([]);
   });
@@ -94,6 +101,14 @@ describe('.claude/commands frontmatter', () => {
     }
   });
 
+  it('scopes every command with allowed-tools (read-only pre-approvals only)', () => {
+    const unscoped = commands
+      .filter(({ meta }) => allowedToolsOf(meta).length === 0)
+      .map(({ name }) => name);
+
+    expect(unscoped).toEqual([]);
+  });
+
   it('never pre-approves a write, an outward call or a whole tool', () => {
     const offenders = commands.flatMap(({ name, meta }) =>
       allowedToolsOf(meta)
@@ -113,7 +128,10 @@ describe('.claude/skills', () => {
 
   it(`keeps every SKILL.md at or under ${MAX_SKILL_LINES} lines`, () => {
     const tooLong = skillFiles
-      .map((file) => ({ file: path.relative(repoRoot, file), lines: fs.readFileSync(file, 'utf8').split('\n').length }))
+      .map((file) => ({
+        file: path.relative(repoRoot, file),
+        lines: fs.readFileSync(file, 'utf8').split('\n').length,
+      }))
       .filter(({ lines }) => lines > MAX_SKILL_LINES)
       .map(({ file, lines }) => `${file}: ${lines}`);
 
@@ -121,7 +139,9 @@ describe('.claude/skills', () => {
   });
 
   it('pre-approves only the fixed local commands of maestro-android-e2e', () => {
-    const meta = parseFrontmatter(fs.readFileSync(path.join(skillsDir, 'maestro-android-e2e/SKILL.md'), 'utf8'));
+    const meta = parseFrontmatter(
+      fs.readFileSync(path.join(skillsDir, 'maestro-android-e2e/SKILL.md'), 'utf8'),
+    );
     const tools = allowedToolsOf(meta);
 
     expect(tools.length).toBeGreaterThan(0);

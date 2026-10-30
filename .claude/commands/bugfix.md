@@ -2,6 +2,7 @@
 description: 'Fix a bug end to end with the bugfix Workflow (root cause, RED regression test, fix, PR with Fixes #N, /pr-review), or close it after the merge with --close. Use when a ticket or described bug should be fixed end to end, or closed after its PR merged.'
 argument-hint: '<issue#> | "<description>" | <issue#> --close [--pr <n>]'
 disable-model-invocation: true
+allowed-tools: 'Bash(git status --porcelain) Bash(git rev-parse HEAD)'
 ---
 
 Run the `bugfix` Workflow over **$ARGUMENTS**. This is the explicit Workflow opt-in for the bug

@@ -1,0 +1,12 @@
+# Start with: docker compose -f scripts/otel/compose.yaml up -d
+# Claude Code exports to it when .claude/settings.json sets CLAUDE_CODE_ENABLE_TELEMETRY=1.
+services:
+  collector:
+    image: otel/opentelemetry-collector-contrib:0.111.0
+    command: ['--config=/etc/otelcol/collector.yaml']
+    ports:
+      - '127.0.0.1:4317:4317'
+    volumes:
+      - ./collector.yaml:/etc/otelcol/collector.yaml:ro
+      - ./data:/data
+    restart: unless-stopped

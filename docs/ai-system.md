@@ -117,8 +117,18 @@ reads an `## Agent stats` ledger table that no ledger emits yet, so it has no da
   run ledger instead (see `CLAUDE.md`).
 - Run `/cost` at the end of the session and record the total in that run's ledger under `Cost:`.
   No ledger in `docs/agent-runs/` has a `Cost:` line yet.
-- Per-run token accounting inside the workflows is still not built (`stats.tokens` is `null`), so
-  `/cost` is the only cost record.
+- Per-run token accounting inside the workflows is still not built (`stats.tokens` is `null`).
+- **Telemetry:** `.claude/settings.json` turns on Claude Code's OpenTelemetry metrics
+  (`CLAUDE_CODE_ENABLE_TELEMETRY=1`, OTLP to `localhost:4317`) and never sets
+  `OTEL_LOG_USER_PROMPTS`, so no prompt text is exported. `scripts/otel/compose.yaml` runs a local
+  collector that writes sessions, token counts, cost, lines changed, commits and PRs to
+  `scripts/otel/data/` (gitignored). Read it when writing a run ledger or a `/retro`.
+- **Budget and owner:** the owner (ShubhamU55) owns AI spend. The budget is the owner's
+  fixed-price Claude subscription; there is no pay-per-token key for development, so spend cannot
+  run past it. The alert is the plan's usage limits: the `token-meter` status line shows the
+  5-hour and 7-day usage and turns to its warning band near a limit, and Claude Code warns before
+  a limit is reached. Near a limit, the owner moves review lenses to cheaper models
+  (see "Token policy") rather than stopping a gate.
 
 ## Where the evidence lives
 

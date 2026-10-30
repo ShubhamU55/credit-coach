@@ -1,0 +1,22 @@
+# Local OpenTelemetry collector for Claude Code metrics (docs/ai-system.md, "Session hygiene
+# and cost"). It listens only on localhost and writes metrics to ./data as JSON lines; nothing
+# leaves the machine. Claude Code sends no prompt text unless OTEL_LOG_USER_PROMPTS=1, which
+# this repo never sets.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+exporters:
+  file:
+    path: /data/claude-code-metrics.jsonl
+    rotation:
+      max_megabytes: 50
+      max_days: 30
+
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      exporters: [file]
