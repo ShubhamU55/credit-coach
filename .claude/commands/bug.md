@@ -1,7 +1,8 @@
 ---
-description: 'File a bug ticket from the owner''s report (collects the template fields, then runs the bugfix Workflow''s report phase). Use when the owner reports a defect and wants a ticket, not a fix.'
+description: "File a bug ticket from the owner's report (collects the template fields, then runs the bugfix Workflow's report phase). Use when the owner reports a defect and wants a ticket, not a fix."
 argument-hint: '<description>'
 disable-model-invocation: true
+allowed-tools: 'Bash(git rev-parse HEAD)'
 ---
 
 File a GitHub bug ticket for **$ARGUMENTS** with the `bugfix` Workflow's report phase
@@ -59,3 +60,7 @@ content, so gathering the fields is this command's job. Every `gh` call is prefi
    - `duplicate`: an open ticket already covers it. Show that number (`issue`); the new evidence
      was commented onto it. Ask the owner whether to run `/bugfix <issue#>` on it.
    - `blocked` or `failed`: show `reasons` verbatim (e.g. a `gh` auth failure) and stop.
+
+5. **Check before you report `reported` or `duplicate`.** Run
+   `GH_TOKEN=$(gh auth token --user ShubhamU55) gh issue view <issue#> --json state,labels` and
+   confirm the ticket is open and carries the `bug` label. If not, say what you found instead.

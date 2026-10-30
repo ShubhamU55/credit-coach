@@ -11,7 +11,7 @@
 
 - **`docs/PRD.md`** (frozen v1) holds the requirements. Read the relevant section before any feature work. If code and PRD disagree, the PRD wins. Raise the conflict; don't silently pick one.
 - **PRD §4** lists the domain facts F1–F7. The **`credit-domain` skill** expands them. Never contradict them.
-- **`docs/design.md`** (v3 "Midnight") is the **UI design guide for the mobile app**: tokens, components, screens, copy, accessibility and the demo fixture. Read it before building any screen. For mobile visuals it supersedes `.design/`; for requirements, the PRD wins.
+- **`docs/design.md`** (v3 "Midnight") is the **UI design guide for the mobile app**: tokens, components, screens, copy, accessibility and the demo fixture. Read it before building any screen. It is the only committed design source; for requirements, the PRD wins.
 - `docs/tech-stack.md` is the stack and its risks. `docs/adr/` holds the decisions. `docs/superpowers/plans/` holds the implementation plans.
 - **`docs/ai-policy.md`** is the AI usage policy: what agents may touch, what is never allowed, how changes are reviewed, and when the setup is next reviewed.
 
@@ -91,7 +91,7 @@ Several of the agents are adapted from affaan-m/ECC (MIT); see ADR 0002.
 6. **No secrets in the repo.** Only `.env.example` is committed. Agents cannot write `.env*` files (a hook blocks it); ask the owner to fill them in. The Anthropic key lives only in Supabase Edge Function secrets.
 7. **Commits and PRs carry no AI co-author or "Generated with" lines.** Use conventional commits.
 8. **The demo path must work unaided:** "Try sample profile" with no sign-up, an on-screen demo OTP, and no SMS.
-9. `docs/design.md` and `.design/` are owned by the design workflow. Read them for UI work, but don't modify them unless asked.
+9. `docs/design.md` is owned by the design workflow. Read it for UI work, but don't modify it unless asked.
 
 ## Framework notes
 

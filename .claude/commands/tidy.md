@@ -2,7 +2,7 @@
 description: 'Janitor scan (proposals only): expired scratch items and living docs that reference paths that no longer exist. Use before a release or when docs may be stale.'
 disable-model-invocation: true
 argument-hint: '[--today YYYY-MM-DD]'
-allowed-tools: 'Bash(node .claude/hooks/bin/tidy.mjs) Bash(node .claude/hooks/bin/tidy.mjs *)'
+allowed-tools: 'Bash(node .claude/hooks/bin/tidy.mjs) Bash(node .claude/hooks/bin/tidy.mjs *) Bash(git status --porcelain)'
 ---
 
 Run the janitor scan from the repo root. It is **read-only and proposes only**: no command or
@@ -29,6 +29,9 @@ agent in this flow deletes, moves or edits a file (the `journal-writer` janitor 
    `chore(scratch): remove expired <name>`, so history still shows they existed; if one proved
    useful, promote it to its proper home and drop its header instead. For an approved stale
    reference, fix the doc in its own commit. If the owner approves nothing, change nothing.
+
+4. **Check.** Run `git status --porcelain`. With no approvals it must match what it showed before
+   the scan; after approved fixes, every change must be one of those commits. Report anything else.
 
 To have `journal-writer` do a semantic janitor pass (symbols, not just paths), hand it this scan's
 output; it returns `proposedDeletions` and never deletes either.
