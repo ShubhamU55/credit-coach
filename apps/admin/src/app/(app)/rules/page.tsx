@@ -1,16 +1,15 @@
-import { getSession } from '@/lib/session';
-import { supabaseFor } from '@/lib/supabase';
+import { loadAsAdmin } from '@/lib/admin-data';
 import { rawFromRow } from '@/lib/validation';
+import { gateNotice } from '../GateNotice';
 import { RulesForm } from './RulesForm';
 
 export const metadata = { title: 'Coach rules | Credit Coach Admin' };
 
 export default async function RulesPage() {
-  const session = await getSession();
-  const { data, error } = await supabaseFor(session?.token)
-    .from('coach_rules')
-    .select('*')
-    .eq('id', 1);
+  const loaded = await loadAsAdmin((db) => db.from('coach_rules').select('*').eq('id', 1));
+  if (loaded.status !== 'ok') return gateNotice(loaded.status);
+  const { data, error } = loaded.result;
+  if (error) console.error('[admin] rules load failed', error.code, error.message);
   const row = data?.[0];
 
   return (
@@ -21,7 +20,7 @@ export default async function RulesPage() {
         checked against the same ranges the database enforces.
       </p>
       {error || !row ? (
-        <p role="alert">Could not load the rules{error ? `: ${error.message}` : ''}.</p>
+        <p role="alert">Could not load the rules. Try again.</p>
       ) : (
         <RulesForm initial={rawFromRow(row)} />
       )}

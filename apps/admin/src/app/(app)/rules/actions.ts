@@ -13,8 +13,12 @@ export type SaveState = {
 };
 
 export async function saveRules(_prev: SaveState, formData: FormData): Promise<SaveState> {
-  const session = await getSession();
-  if (!session) redirect('/login');
+  const state = await getSession();
+  if (state.kind === 'none') redirect('/login');
+  if (state.kind === 'unavailable') {
+    return { status: 'error', message: 'The sign-in service is unavailable. Try again shortly.' };
+  }
+  const { session } = state;
   if (!session.isAdmin) {
     return { status: 'error', message: 'Not an admin: you cannot edit the rules.' };
   }
@@ -31,8 +35,11 @@ export async function saveRules(_prev: SaveState, formData: FormData): Promise<S
     .update(result.value)
     .eq('id', 1)
     .select('id');
-  if (error)
-    return { status: 'error', message: `The database rejected the change: ${error.message}` };
+  if (error) {
+    // The detail stays on the server: it can name constraints and columns.
+    console.error('[admin] rules update failed', error.code, error.message);
+    return { status: 'error', message: 'The database rejected the change. Nothing was saved.' };
+  }
   if (!data || data.length === 0) {
     return {
       status: 'error',

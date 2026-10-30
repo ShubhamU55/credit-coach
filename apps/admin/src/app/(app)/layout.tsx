@@ -1,13 +1,18 @@
 import { Suspense } from 'react';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { gateNotice } from './GateNotice';
 import { signOut } from '../login/actions';
 import { getSession } from '@/lib/session';
 import styles from '../admin.module.css';
 
 async function AppShell({ children }: { children: React.ReactNode }) {
-  const session = await getSession();
-  if (!session) redirect('/login');
+  const state = await getSession();
+  if (state.kind === 'none') redirect('/login');
+  if (state.kind === 'unavailable') {
+    return <main className={styles.page}>{gateNotice('unavailable')}</main>;
+  }
+  const { session } = state;
 
   return (
     <>
@@ -22,16 +27,7 @@ async function AppShell({ children }: { children: React.ReactNode }) {
           <button type="submit">Sign out</button>
         </form>
       </nav>
-      <main className={styles.page}>
-        {session.isAdmin ? (
-          children
-        ) : (
-          <p role="alert" data-testid="not-admin">
-            Not an admin. This account can sign in but cannot view or edit the control center. Ask
-            the project owner to grant the admin role.
-          </p>
-        )}
-      </main>
+      <main className={styles.page}>{session.isAdmin ? children : gateNotice('not-admin')}</main>
     </>
   );
 }

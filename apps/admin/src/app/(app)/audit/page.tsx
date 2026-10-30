@@ -1,6 +1,6 @@
 import { diffAudit, shortId, type AuditAction } from '@/lib/audit';
-import { getSession } from '@/lib/session';
-import { supabaseFor } from '@/lib/supabase';
+import { loadAsAdmin } from '@/lib/admin-data';
+import { gateNotice } from '../GateNotice';
 import styles from '../../admin.module.css';
 
 export const metadata = { title: 'Audit log | Credit Coach Admin' };
@@ -18,19 +18,25 @@ type AuditRow = {
 };
 
 export default async function AuditPage() {
-  const session = await getSession();
-  const { data, error } = await supabaseFor(session?.token)
-    .from('audit_log')
-    .select('id, changed_at, actor_id, actor_role, table_name, action, row_key, old_data, new_data')
-    .order('changed_at', { ascending: false })
-    .limit(50)
-    .overrideTypes<AuditRow[], { merge: false }>();
+  const loaded = await loadAsAdmin((db) =>
+    db
+      .from('audit_log')
+      .select(
+        'id, changed_at, actor_id, actor_role, table_name, action, row_key, old_data, new_data',
+      )
+      .order('changed_at', { ascending: false })
+      .limit(50)
+      .overrideTypes<AuditRow[], { merge: false }>(),
+  );
+  if (loaded.status !== 'ok') return gateNotice(loaded.status);
+  const { data, error } = loaded.result;
+  if (error) console.error('[admin] audit load failed', error.code, error.message);
 
   return (
     <>
       <h1>Audit log</h1>
       <p>The latest 50 changes to the rules and sample profiles.</p>
-      {error ? <p role="alert">Could not load the audit log: {error.message}</p> : null}
+      {error ? <p role="alert">Could not load the audit log. Try again.</p> : null}
       {!error && (data ?? []).length === 0 ? (
         <p data-testid="audit-empty">No changes recorded yet.</p>
       ) : null}
@@ -47,8 +53,8 @@ export default async function AuditPage() {
             </tr>
           </thead>
           <tbody>
-            {(data ?? []).map((r) => (
-              <tr key={r.id} data-testid="audit-row">
+            {(data ?? []).map((r, i) => (
+              <tr key={r.id} data-testid={`audit-row-${i}`}>
                 <td>{r.changed_at}</td>
                 <td>
                   {r.actor_role} ({shortId(r.actor_id)})

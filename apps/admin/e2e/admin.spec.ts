@@ -49,7 +49,7 @@ test.describe('rules and audit', () => {
 
     await page.getByRole('link', { name: 'Audit log' }).click();
     await expect(page).toHaveURL(/\/audit$/);
-    const row = page.getByTestId('audit-row').first();
+    const row = page.getByTestId('audit-row-0');
     await expect(row).toContainText('coach_rules');
     await expect(row).toContainText('UPDATE');
     await expect(row).toContainText('threshold_pct: 30 → 20');
@@ -80,7 +80,7 @@ test.describe('non-admin', () => {
 
     await page.goto('/audit');
     await expect(page.getByTestId('not-admin')).toBeVisible();
-    await expect(page.getByTestId('audit-row')).toHaveCount(0);
+    await expect(page.getByTestId(/^audit-row-/)).toHaveCount(0);
   });
 });
 
@@ -90,7 +90,7 @@ test.describe('sample profiles', () => {
   }) => {
     await signInAsAdmin(page);
     await page.getByRole('link', { name: 'Sample profiles' }).click();
-    await expect(page.getByTestId('profile-row')).toHaveCount(2);
+    await expect(page.getByTestId(/^profile-row-/)).toHaveCount(2);
     await expect(page.getByText('ABXXXXX34F')).toBeVisible();
     await expect(page.getByText('+91 98XXXXX321')).toBeVisible();
     const html = await page.content();

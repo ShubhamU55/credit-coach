@@ -173,6 +173,8 @@ async function passwordGrant(req, res, url) {
   const u = USERS[email];
   if (url.searchParams.get('grant_type') !== 'password' || !u || u.password !== password) {
     return send(res, 400, {
+      code: 400,
+      error_code: 'invalid_credentials',
       error: 'invalid_grant',
       error_description: 'Invalid login credentials',
     });

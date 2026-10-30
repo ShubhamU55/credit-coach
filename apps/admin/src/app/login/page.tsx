@@ -8,7 +8,7 @@ export const metadata = { title: 'Sign in | Credit Coach Admin' };
 
 // Cache Components: reading the session cookie must sit inside a Suspense boundary.
 async function RedirectIfSignedIn() {
-  if (await getSession()) redirect('/rules');
+  if ((await getSession()).kind === 'ok') redirect('/rules');
   return null;
 }
 

@@ -23,7 +23,8 @@ function form(over: Record<string, string> = {}): FormData {
   return fd;
 }
 
-const admin = { token: 't', userId: 'u', email: 'a@x.io', isAdmin: true };
+const adminSession = { token: 't', userId: 'u', email: 'a@x.io', isAdmin: true };
+const admin = { kind: 'ok', session: adminSession };
 const idle = { status: 'idle' } as const;
 
 describe('saveRules (server action)', () => {
@@ -34,13 +35,16 @@ describe('saveRules (server action)', () => {
   });
 
   it('sends a signed-out caller to /login without touching the database', async () => {
-    getSession.mockResolvedValue(null);
+    getSession.mockResolvedValue({ kind: 'none' });
     await expect(saveRules(idle, form())).rejects.toThrow('redirect:/login');
     expect(from).not.toHaveBeenCalled();
   });
 
   it('refuses a non-admin before any database call', async () => {
-    getSession.mockResolvedValue({ ...admin, isAdmin: false });
+    getSession.mockResolvedValue({
+      kind: 'ok',
+      session: { ...adminSession, isAdmin: false },
+    });
     const r = await saveRules(idle, form());
     expect(r.status).toBe('error');
     expect(r.message).toMatch(/not an admin/i);
@@ -70,10 +74,28 @@ describe('saveRules (server action)', () => {
     expect(r.message).toMatch(/not saved/i);
   });
 
-  it('surfaces a database error', async () => {
-    select.mockResolvedValue({ data: null, error: { message: 'violates check constraint' } });
+  it('refuses, without a database call, when the session service is unavailable', async () => {
+    getSession.mockResolvedValue({ kind: 'unavailable' });
     const r = await saveRules(idle, form());
     expect(r.status).toBe('error');
-    expect(r.message).toContain('violates check constraint');
+    expect(r.message).toMatch(/unavailable/i);
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('reports a database error generically and logs the detail on the server', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    select.mockResolvedValue({
+      data: null,
+      error: { code: '23514', message: 'violates check constraint "coach_rules_threshold_range"' },
+    });
+    const r = await saveRules(idle, form());
+    expect(r.status).toBe('error');
+    expect(r.message).not.toContain('coach_rules_threshold_range');
+    expect(r.message).not.toContain('violates');
+    expect(log).toHaveBeenCalledWith(
+      expect.any(String),
+      '23514',
+      expect.stringContaining('coach_rules_threshold_range'),
+    );
   });
 });
