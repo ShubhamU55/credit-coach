@@ -1,6 +1,6 @@
 ---
 name: api-tester
-description: Checks Supabase changes against local-only contract and RLS isolation rules (user A / user B / anonymous) and proposes Zod contract, RLS and error-code tests. Used by the `qa` workflow whenever `supabase/**` changed (per §8.1's tester-selection table).
+description: Checks Supabase changes against local-only contract and RLS isolation rules (user A / user B / anonymous) and proposes contract (response-shape), RLS and error-code tests. Used by the `qa` workflow whenever `supabase/**` changed (per §8.1's tester-selection table).
 tools: Read, Grep, Glob, Bash
 model: sonnet
 ---
@@ -70,7 +70,7 @@ reset`/`migration up` yourself to apply it. Skipping this check risks a false is
    assert A cannot read or write B's rows and the anonymous role gets none, then delete the
    throwaway users and rows you created. Record only the pass/fail verdict and row counts as
    evidence — never the keys or tokens `supabase status` printed.
-7. Check Edge Function changes for a request/response shape with Zod validation, correct error
+7. Check Edge Function changes for a request/response shape check (no Zod; see `.claude/rules/typescript.md`), correct error
    codes on invalid input, a timeout and rate limiting, and a template fallback the app can use if
    the LLM call fails — the LLM never computes an amount, date or score itself (CLAUDE.md
    non-negotiable 2) — per `docs/security/checklist.md`'s "LLM Edge Function" section.
