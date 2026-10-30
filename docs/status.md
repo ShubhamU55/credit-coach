@@ -2,6 +2,28 @@
 
 > Read this first when starting a new session. Update it at the end of every session (newest entry on top).
 
+## 2026-10-30 (AI-workflow audit, round 2 fixes)
+
+The 30 Oct audit scored 82%. Git & Review stays capped at 2 until 25 Jan 2027, so the target is about 95%. Ledger: `docs/agent-runs/2026-10-30-ai-audit-gaps-2.md`.
+
+- **Merged:**
+  - #73 (command scoping, pre-commit gitleaks hook, `.devcontainer/` sandbox, policy and cost docs);
+  - #74 (TypeScript rules);
+  - #75 (React Native rules).
+
+  #76 was opened by mistake after #73 merged, and closed; its one `ai-policy.md` line moved into part 4.
+
+- **Done by the owner:**
+  - gitleaks 8.30.1 is installed (winget);
+  - ruleset 26139084 now carries the PR rule and all 12 checks, readable by non-admins.
+- **Part 4** is on branch `chore/ai-audit-owner-settings`, based on `main`. It waits for the owner to apply the protected-file patch (settings, `config-protection.cjs`, `pr-body.yml`). No PR is open yet.
+- **Owner steps left:**
+  1. Apply and commit the part 4 patch, then open it and run `/pr-review` on it.
+  2. Run `pnpm install` (it turns on the pre-commit hook).
+  3. Rebuild the dev container once.
+  4. Start `scripts/otel`.
+  5. Re-audit `main` as `ShubhamU55`.
+
 ## 2026-10-30 (submission day: product merged, #70 included; PD-13, PD-12 and PD-14 not shipped)
 
 Newest entry. Where it differs from the entries below, this one wins. Submission is due **30 Oct 2026 23:00 IST** (the time the owner gave; `CLAUDE.md` says only "30 Oct 2026 EOD"). Every ruling and its cost if wrong: `docs/agent-runs/2026-10-30-rulings.md`; the wave summary is the FINAL section of `docs/agent-runs/2026-10-28-coordinator.md`.

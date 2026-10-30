@@ -1,13 +1,17 @@
 /**
  * What counts as a mobile change that needs fresh Maestro evidence: anything under
  * apps/mobile except Markdown, which the app never bundles (e.g. the CLAUDE.md that
- * imports AGENTS.md). The CI paths filter and the gate's git pathspec must agree;
- * tests/maestro-evidence-paths.test.mjs pins both.
+ * imports AGENTS.md), and apps/mobile/.claude/, which is agent configuration (the Expo
+ * plugin's settings), not app code. The CI paths filter and the gate's git pathspec
+ * agree on Markdown; tests/maestro-evidence-paths.test.mjs pins both. The filter still
+ * starts the job for a .claude/-only change, and the gate then passes on the last real
+ * app change.
  */
 export const MOBILE_FILTER_GLOB = 'apps/mobile/**/!(*.md)';
 export const MOBILE_APP_PATHSPEC = Object.freeze([
   'apps/mobile',
   ':(exclude,glob)apps/mobile/**/*.md',
+  ':(exclude)apps/mobile/.claude',
 ]);
 
 /**

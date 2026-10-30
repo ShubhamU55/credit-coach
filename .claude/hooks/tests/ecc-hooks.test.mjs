@@ -449,3 +449,48 @@ describe('config-protection.cjs: no stdin listener attaches on require (module g
     expect(after).toBe(before);
   });
 });
+
+describe(
+  'config-protection.cjs: instruction files ask the owner',
+  { timeout: SPAWN_TIMEOUT_MS },
+  () => {
+    function runProtection(filePath) {
+      return spawnSync(process.execPath, [configProtectionScriptPath], {
+        input: JSON.stringify({ tool_input: { file_path: filePath } }),
+        encoding: 'utf8',
+      });
+    }
+
+    const decisionOf = (result) => JSON.parse(result.stdout).hookSpecificOutput?.permissionDecision;
+
+    it.each([
+      ['the root CLAUDE.md', 'CLAUDE.md'],
+      ['a nested AGENTS.md', 'apps/mobile/AGENTS.md'],
+      ['a nested CLAUDE.md', 'apps/admin/CLAUDE.md'],
+      ['an agent definition', '.claude/agents/implementer.md'],
+      ['a rule', '.claude/rules/typescript.md'],
+      ['a skill', '.claude/skills/credit-domain/SKILL.md'],
+      ['a command', '.claude/commands/verify.md'],
+      ['a workflow', '.claude/workflows/qa.js'],
+      ['a new agent file', '.claude/agents/new-agent.md'],
+      ['a different case', '.CLAUDE/Rules/typescript.md'],
+    ])('asks before editing %s', (_label, relativePath) => {
+      const result = runProtection(path.join(repoRoot, relativePath));
+
+      expect(result.status).toBe(0);
+      expect(decisionOf(result)).toBe('ask');
+    });
+
+    it.each([
+      ['a source file', 'apps/mobile/src/app/plan.tsx'],
+      ['a doc', 'docs/status.md'],
+      ['a hook test', '.claude/hooks/tests/ecc-hooks.test.mjs'],
+      ['a CLAUDE.md outside apps/*', 'docs/CLAUDE.md'],
+    ])('passes %s through unchanged', (_label, relativePath) => {
+      const result = runProtection(path.join(repoRoot, relativePath));
+
+      expect(result.status).toBe(0);
+      expect(JSON.parse(result.stdout).hookSpecificOutput).toBeUndefined();
+    });
+  },
+);

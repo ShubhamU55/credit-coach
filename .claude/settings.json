@@ -5,6 +5,13 @@
     "pr": "",
     "sessionUrl": false
   },
+  "cleanupPeriodDays": 30,
+  "env": {
+    "CLAUDE_CODE_ENABLE_TELEMETRY": "1",
+    "OTEL_METRICS_EXPORTER": "otlp",
+    "OTEL_EXPORTER_OTLP_PROTOCOL": "grpc",
+    "OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4317"
+  },
   "permissions": {
     "deny": [
       "Read(**/.env)",
@@ -42,7 +49,13 @@
       "PowerShell(cat *.env*)",
       "PowerShell(type *.env*)"
     ],
-    "ask": ["Bash(git push *)", "PowerShell(git push *)"]
+    "ask": [
+      "Bash(git push *)",
+      "PowerShell(git push *)",
+      "Bash(gh pr merge*)",
+      "Bash(GH_TOKEN=* gh pr merge*)",
+      "PowerShell(gh pr merge*)"
+    ]
   },
   "hooks": {
     "PreToolUse": [

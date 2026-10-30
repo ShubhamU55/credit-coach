@@ -52,7 +52,13 @@ const REQUIRED_DENY_RULES = [
   'PowerShell(Remove-Item * -Recurse*)',
 ];
 
-const REQUIRED_ASK_RULES = ['Bash(git push *)', 'PowerShell(git push *)'];
+const REQUIRED_ASK_RULES = [
+  'Bash(git push *)',
+  'PowerShell(git push *)',
+  'Bash(gh pr merge*)',
+  'Bash(GH_TOKEN=* gh pr merge*)',
+  'PowerShell(gh pr merge*)',
+];
 
 describe('.claude/settings.json baseline', () => {
   it('denies reading .env files and credential directories, and dangerous shell patterns', () => {
@@ -80,7 +86,7 @@ describe('.claude/settings.json baseline', () => {
     expect(settings.attribution?.sessionUrl).toBe(false);
   });
 
-  it('asks before any git push, from either shell tool', () => {
+  it('asks before any git push or PR merge, from either shell tool', () => {
     const ask = readSettings().permissions?.ask ?? [];
 
     for (const rule of REQUIRED_ASK_RULES) {
@@ -123,5 +129,25 @@ describe('.claude/settings.json baseline', () => {
         entry.hooks?.some((h) => h.command === hookCmd('bin/stop-gate.mjs')),
       ),
     ).toBe(true);
+  });
+
+  it('keeps local transcripts for 30 days (docs/ai-policy.md, "Accounts and retention")', () => {
+    expect(readSettings().cleanupPeriodDays).toBe(30);
+  });
+
+  it('exports metrics to the local collector and never exports prompt text', () => {
+    const env = readSettings().env ?? {};
+
+    expect(env.CLAUDE_CODE_ENABLE_TELEMETRY).toBe('1');
+    expect(env.OTEL_EXPORTER_OTLP_ENDPOINT).toBe('http://localhost:4317');
+    expect(env).not.toHaveProperty('OTEL_LOG_USER_PROMPTS');
+  });
+});
+
+describe('apps/mobile/.claude/settings.json', () => {
+  it('asks before every call to the remote Expo MCP server', () => {
+    const mobile = JSON.parse(fs.readFileSync(path.join(repoRoot, 'apps/mobile/.claude/settings.json'), 'utf8'));
+
+    expect(mobile.permissions?.ask ?? []).toContain('mcp__plugin_expo_expo');
   });
 });

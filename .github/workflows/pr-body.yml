@@ -25,3 +25,13 @@ jobs:
         run: node .claude/hooks/bin/pr-body-check.mjs
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
+      # docs/ai-policy.md: aim for at most about 400 changed lines. A warning, not a failure.
+      - name: Warn when the PR is over 400 changed lines
+        env:
+          ADDITIONS: ${{ github.event.pull_request.additions }}
+          DELETIONS: ${{ github.event.pull_request.deletions }}
+        run: |
+          changed=$((ADDITIONS + DELETIONS))
+          if [ "$changed" -gt 400 ]; then
+            echo "::warning title=PR size::${changed} changed lines (limit about 400). Split it by ticket if you can."
+          fi
