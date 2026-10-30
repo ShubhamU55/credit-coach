@@ -3,15 +3,16 @@
 Hack@FiftyFive "Build With AI" Hackathon 2026. Solo build. Submission due 30 Oct 2026 EOD.
 
 > **How to read the status in this document.** Every "built", "merged" and "tested" claim below is
-> measured against `origin/main` at `abbb1e4` on 29 Oct 2026 (last product merge `23ba4be`, PR #62), or against a named
-> branch and ledger. Nothing that is not on `main` is called shipped. If you are reading this after more
+> measured against `main` with PRs #65, #67, #68 and #69 merged (as read from this branch's history on 30 Oct 2026),
+> plus the open PD-15 pull request, or against a named branch and ledger. Test counts in section 4.3 were taken earlier
+> (at `abbb1e4`, 29 Oct) and are labelled as such. Nothing that is not on `main` is called shipped. If you are reading this after more
 > pull requests merged, the table in section 3 is the thing to re-check; the owner updates it at merge time.
 
 ## Links to fill before submitting (owner)
 
 | Deliverable                  | Link                                                                                           |
 | ---------------------------- | ---------------------------------------------------------------------------------------------- |
-| Release APK (GitHub release) | **Not built for judges yet.** See section 6. Paste the release URL here once PD-15 attaches it |
+| Release APK (GitHub release) | **Built, not published.** All four ABIs, 91,576,747 bytes, sha256 `337a6a61...cd4b7e4`; see [`docs/install.md`](install.md). The APK is not in the repo: paste the release URL here once the owner uploads it |
 | Demo video (3 to 5 min)      | **Not recorded yet.** The shot list is [`docs/demo-script.md`](demo-script.md)                 |
 | Public repo                  | https://github.com/ShubhamU55/credit-coach                                                     |
 | Project board                | https://github.com/users/ShubhamU55/projects/1                                                 |
@@ -42,10 +43,10 @@ only.
 
 ## 3. What was built, and what is cut
 
-Measured at `origin/main` `abbb1e4`'s code (last product merge `23ba4be`), 2026-10-29, with the open PRs and branches read
-with `gh` and `git` (read-only). Run ledgers are in [`docs/agent-runs/`](agent-runs/).
+Measured on 2026-10-30 from this branch's git history (`main` with #65, #67, #68, #69 merged, plus the PD-15 commits), with
+branches read with `git` (read-only). Run ledgers are in [`docs/agent-runs/`](agent-runs/).
 
-**Counts go stale.** Every test count in this document is labelled with the commit and date it was taken at, and changes as PD-8, PD-9 and PD-10 merge. `pnpm --filter @credit-coach/engine test` (and `pnpm --filter @credit-coach/mobile test`) is the reference, not the numbers written here.
+**Counts go stale.** Every test count in this document is labelled with the commit and date it was taken at, and has changed since PD-8, PD-9 and PD-10 merged. `pnpm --filter @credit-coach/engine test` (and `pnpm --filter @credit-coach/mobile test`) is the reference, not the numbers written here.
 
 | Ticket | What                                                                       | State                                                                                                                                                                                                                 |
 | ------ | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -55,33 +56,34 @@ with `gh` and `git` (read-only). Run ledgers are in [`docs/agent-runs/`](agent-r
 | PD-4   | App shell: routes, in-memory `DemoRepository`, Aarav seed data             | **Merged** (#59). Routes are stubs until PD-8 to PD-10 land                                                                                                                                                           |
 | PD-7   | Mobile kit part B: cards, plan and score visuals, chrome, gallery          | **Merged** (#60)                                                                                                                                                                                                      |
 | PD-11  | "Why this plan?": template explanation and Edge Function client            | **Merged** (#62). Not wired into the Plan screen yet; the function is not deployed, so the text is always the template (section 6)                                                                                    |
-| PD-8   | Screens: Welcome and Home                                                  | **Built, PR #65 open, not merged.** Reviewed and fixed. Device evidence recorded: `docs/test-reports/maestro-2026-10-29-pd8-home.md` (moto g73, arm64 release APK, 3 of 3 flows pass, Welcome to Home only)           |
-| PD-9   | Screens: Plan and Mark as paid                                             | **Built, no PR yet, not merged.** Branch `feat/pd-9-plan`, reviewed and fixed. Device evidence recorded on the branch: `maestro-2026-10-29-pd9-plan.md` (moto g73, 4 of 4 flows pass, including Plan to Mark as paid) |
-| PD-10  | Screens: Score, what-ifs and guard                                         | **Built, awaiting device evidence.** Branch `feat/pd-10-score`, no PR yet, reviewed and fixed; no device report on the branch, the Score flow has never run on a device                                               |
-| PD-5   | Supabase: schema, RLS, personas, `explain` Edge Function                   | **Written, not merged, not deployed.** Branch `feat/pd-5-backend`, no PR. Real-stack checks never run (section 6)                                                                                                     |
+| PD-8   | Screens: Welcome and Home                                                  | **Merged** (#65). Device evidence: `docs/test-reports/maestro-2026-10-29-pd8-home.md` (moto g73, arm64 release APK, 3 of 3 flows pass, Welcome to Home only)           |
+| PD-9   | Screens: Plan and Mark as paid                                             | **Merged** (#68). Device evidence: `maestro-2026-10-29-pd9-plan.md` (moto g73, 4 of 4 flows pass, including Plan to Mark as paid); reruns in `maestro-2026-10-30-pd9-rerun*.md` |
+| PD-10  | Screens: Score, what-ifs and guard                                         | **Merged** (#69). The Score flow ran on the phone as part of the PD-15 demo-path flow (see the PD-15 row)                                               |
+| PD-5   | Supabase: schema, RLS, personas, `explain` Edge Function                   | **Merged** (#67), **not deployed.** Real-stack checks (`supabase db reset`, `supabase test db`) never run (section 6)                                                                                                     |
 | PD-16  | This submission                                                            | This PR                                                                                                                                                                                                               |
-| PD-6   | Release APK proof and install guide                                        | **In progress, not merged.** No `docs/install.md` on this branch or `main`                                                                                                                                            |
-| PD-15  | Hardening: demo path on a release APK, security pass, 200% font, final APK | **In progress, not merged**                                                                                                                                                                                           |
+| PD-6   | Release APK proof and install guide                                        | **Done in the open PD-15 PR, so not on `main` until that merges.** [`docs/install.md`](install.md) and the final APK report. Release APK built and sideload-tested over adb only                                                                                                                                            |
+| PD-15  | Hardening: demo path on a release APK, security pass, 200% font, final APK | **Open PR, not merged.** App hardening (backup off, permissions blocked, seed PAN check), the `demo-path` Maestro flow, a security review pass (rulings and owner steps in `docs/agent-runs/2026-10-30-pd-15.md`), and the final all-ABI APK. no 200% font run is recorded (the phone ran at font scale 1.0) |
 | PD-12  | Bureau linking flow with a demo provider (PRD 5.1)                         | **Not built.** No commits                                                                                                                                                                                             |
 | PD-13  | Reminders (PRD 5.7)                                                        | **Parked.** Built on branch `feat/pd-13-reminders` (7 commits, ledger and journal on the branch), no PR, not merged, no device evidence; not part of the judged path                                                  |
 | PD-14  | Admin control center (PRD 6)                                               | **Not built.** `apps/admin` is still the stock Next scaffold                                                                                                                                                          |
 
-"Awaiting device evidence" means: the screens exist on a branch with passing Jest tests, are not on `main`, and no
-device report covers them. PD-8 and PD-9 now have physical-phone reports on their branches (only for the flows named
-above); the Score flow does not. The CI `maestro-evidence` gate requires a committed report before any of these merge.
-No single run has yet covered Home, Plan, Mark as paid and Score as one path.
+The CI `maestro-evidence` gate requires a committed device report before a screen PR merges. The whole path (Try
+sample, Home, Plan, Mark as paid, Score) ran as one flow, `demo-path.yaml`, on a physical moto g73 5G (Android 14) with
+the release APK: it passed on the final all-ABI build in 1m 05s. The first full six-flow run on the arm64 build was
+4 of 6 and a rerun was 6 of 6 (`docs/test-reports/maestro-2026-10-30-pd15-demo-path.md`); the `kit-gallery` failure
+cause was not proven. Those reports are in the open PD-15 PR.
 
 **PRD coverage.** 5.3 planner, 5.4 reporting dates, 5.5 predictor, 5.6 guard and the template half of 5.8 are real
 and tested in the engine on `main`. 5.1 is the sample-profile path only: there is no sign-up, sign-in or bureau
-linking (the PRD allows a no-SMS path; the sample path needs none). 5.2 and the screens of 5.3, 5.5 and 5.6 are the
-PD-8/9/10 branches. 5.7 reminders (parked branch) and section 6 (admin, not built) move to "in scope, planned" in this write-up,
+linking (the PRD allows a no-SMS path; the sample path needs none). 5.2 and the screens of 5.3, 5.5 and 5.6 are
+PD-8/9/10 (now merged). 5.7 reminders (parked branch) and section 6 (admin, not built) move to "in scope, planned" in this write-up,
 which is exactly the order the PRD's cut line (`PRD.md` section 9) and `docs/parallel-streams.md` set.
 
-**What is true on `main` today.** The app opens, the Welcome stub's "Try sample profile" reaches a Home stub, and the
-other routes (Plan, Score, Mark as paid) open stub screens. A `/kit` route renders every kit component (the
-"gallery"). The engine behind the real screens is complete and tested. The judges' path (sample profile, Home, Plan,
-Mark as paid, Score) becomes real when PD-8, PD-9 and PD-10 merge. It has **not** yet been run as one flow on a
-device, so the PRD goal "a plan within 60 seconds of install" is unproven end to end.
+**What is true on `main` today.** "Try sample profile" reaches the real Home, Plan, Mark as paid and Score screens
+(PD-8, PD-9, PD-10 merged). A `/kit` route renders every kit component (the "gallery"). The engine behind the screens
+is complete and tested. The whole path ran as one Maestro flow on a physical phone (evidence in the PD-15 PR, see
+above), and that flow took 53 to 65 seconds including its waits in the runs recorded, so the PRD goal "a plan within
+60 seconds of install" is plausible but was not measured as a stopwatch test from install.
 
 ## 4. How AI was used to build it
 
@@ -146,7 +148,7 @@ An honest description of how it actually ran, because it differs from the design
 
 | What                                                 | Number                                                                                                                                                                                                                                                                                                                 | Source                                                                                                    |
 | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| Product PRs merged                                   | 7 (#55 to #60, #62)                                                                                                                                                                                                                                                                                                    | `git log origin/main`                                                                                     |
+| Product PRs merged                                   | 11 (#55 to #60, #62, #65, #67, #68, #69)                                                                                                                                                                                                                                                                                                    | `git log origin/main`                                                                                     |
 | Reviewer and tester runs on product tickets          | **at least 36** (PD-1 3, PD-2 3, PD-3 4, PD-4 4, PD-7 4, PD-8 4, PD-9 6, PD-10 4, PD-11 4)                                                                                                                                                                                                                             | Counted from the coordinator ledger's dispatch entries; grouped entries such as "react/edge" count as two |
 | Fix rounds                                           | 10 (PD-9 took 2, the rest 1), plus a Sonar fix on PD-4 and a finalize pass on PD-7                                                                                                                                                                                                                                     | Coordinator ledger                                                                                        |
 | Findings a scoped re-review confirmed fixed (wave 1) | 31 (PD-1 5, PD-2 4, PD-3 10, PD-4 6, PD-7 6); wave 2 re-reviews were clean, counts are in the per-ticket ledgers                                                                                                                                                                                                       | Coordinator ledger                                                                                        |
@@ -154,15 +156,15 @@ An honest description of how it actually ran, because it differs from the design
 | Engine tests on `main`                               | **255 passed, 99.66% lines, at `abbb1e4`, 29 Oct 2026** (gate is 90%)                                                                                                                                                                                                                                                  | `pnpm --filter @credit-coach/engine test` at `23ba4be`, 2026-10-29                                        |
 | Mobile and hooks tests on `main`                     | **604 mobile tests (32 suites), at `abbb1e4`, 29 Oct 2026** and **1,714 hook and workflow tests** (they pass when run alone and in CI; under heavy local parallel load some time out at 5 s, so a literal local `pnpm verify` exited 1 in all three runs; detail in `docs/agent-runs/2026-10-28-pd-16.md`, "Commands") | `pnpm verify` steps at the PD-16 head on `23ba4be`'s code, 2026-10-29                                     |
 | Unmerged branch tests (not added to the above)       | PD-9 branch 616 mobile tests (34 suites) and PD-10 branch 627 (34 suites), at the time of their ledgers (29 Oct 2026); PD-5 72 Vitest plus 115 SQL checks on a throwaway embedded Postgres (not the real Supabase stack)                                                                                               | Each branch's run ledger                                                                                  |
-| Device evidence                                      | 7 Maestro run notes under `docs/test-reports/`, all on release APKs on a Pixel 7 emulator, all against the stub screens and the kit gallery                                                                                                                                                                            | `docs/test-reports/maestro-2026-10-2*.md`                                                                 |
+| Device evidence                                      | Maestro run notes under `docs/test-reports/`: the early ones on release APKs on a Pixel 7 emulator against stubs and the kit gallery; from PD-8 on, physical moto g73 5G runs, ending with the PD-15 demo-path run (6 of 6 on rerun, 4 of 6 on the first run)                                                                                                                                                                            | `docs/test-reports/maestro-2026-10-2*.md`                                                                 |
 
 The per-ticket run ledgers: [PD-1](agent-runs/2026-10-28-pd-1.md), [PD-2](agent-runs/2026-10-28-pd-2.md),
 [PD-3](agent-runs/2026-10-28-pd-3.md), [PD-4](agent-runs/2026-10-28-pd-4.md),
-[PD-7](agent-runs/2026-10-28-pd-7.md), [PD-11](agent-runs/2026-10-28-pd-11.md). The ledgers for PD-5, PD-8, PD-9,
-PD-10 and PD-13, and the coordinator ledger `2026-10-28-coordinator.md`, are **on merge**: they exist only on their
-branches today and are listed, not linked, until their PRs merge. The journal
-entries are in [`docs/journal/`](journal/): 000 to 007, 010, 014 on `main`; 008, 011, 012 and 013 land with their PRs;
-019 is this phase.
+[PD-7](agent-runs/2026-10-28-pd-7.md), [PD-11](agent-runs/2026-10-28-pd-11.md). [PD-5](agent-runs/2026-10-28-pd-5.md), [PD-8](agent-runs/2026-10-28-pd-8.md), [PD-9](agent-runs/2026-10-28-pd-9.md),
+[PD-10](agent-runs/2026-10-28-pd-10.md) and [PD-15](agent-runs/2026-10-30-pd-15.md) are on `main` or in the PD-15 PR. The PD-13
+ledger and the coordinator ledger `2026-10-28-coordinator.md` are **not on this branch**: they exist only on their own
+branches and are listed, not linked, until those merge. The journal entries are in [`docs/journal/`](journal/): 000 to
+008, 010 to 014 and 019, plus 009 (PD-6) in the PD-15 PR.
 
 ### 4.4 Where the AI was wrong, and what caught it
 
@@ -207,16 +209,15 @@ These come from `CLAUDE.md` and are the reason several reviews exist. Each has a
 
 ## 6. Honest limits and what the owner still has to do
 
-1. **No release APK for judges exists yet.** The APKs built so far (30 to 68 MB; all but the first x86_64 only) were
-   evidence builds of earlier commits for the emulator. The all-ABI APK is a PD-15 task, in progress and not merged. Until it is attached to a GitHub release,
-   a judge has to build from source (README quick-start, track C) or watch the video.
-2. **PD-8, PD-9, PD-10 are unmerged.** PD-8 and PD-9 have device reports; PD-10 still needs its Maestro run on a phone.
-   Each needs a committed report before the `maestro-evidence` gate lets it merge. Merge order from the coordinator ledger:
-   PD-8, then PD-9 and PD-10 (the PD-9 and PD-8 onboarding flows conflict; take PD-8's).
-3. **The Supabase backend is not deployed and its real-stack checks were never run.** `supabase db reset`,
+1. **The judge APK exists but is not published.** The all-ABI release APK (91,576,747 bytes, sha256 in
+   [`docs/install.md`](install.md)) was built from `06187f0` and is not committed. The owner must attach it to a
+   GitHub release or the submission. It is signed with the debug key (sideload only). Only its arm64 libraries were run on a
+   device, and sideloading through a stock phone's UI was not tried; `adb install` was.
+2. **PD-15 is an open PR.** Hardening, the demo-path flow, the install guide (PD-6) and the final APK report are not
+   on `main` until it merges.
+3. **The Supabase backend is not deployed (merged in #67) and its real-stack checks were never run.** `supabase db reset`,
    `supabase test db` (real pgTAP), the Edge Function under Deno and the live Anthropic call are written and not
-   executed (no Docker, no Deno on the build machine). The owner's commands are in `supabase/OWNER-STEPS.md` on the
-   PD-5 branch. The app does not sign in to Supabase at all today, so "Why this plan?" always shows the template. It is built to work with the function absent, and
+   executed (no Docker, no Deno on the build machine). The owner's commands are in `supabase/OWNER-STEPS.md`. The app does not sign in to Supabase at all today, so "Why this plan?" always shows the template. It is built to work with the function absent, and
    it never depends on the LLM.
 4. **"Why this plan?" is template text with no AI label on any build today.** The PD-9 Plan screen still calls its own
    template; swapping in the PD-11 hook is a recorded one-line follow-up. The hook labels AI text as AI-written only
@@ -232,9 +233,13 @@ These come from `CLAUDE.md` and are the reason several reviews exist. Each has a
    placeholders in `docs/design.md` section 8.
 9. **The hooks test suite is flaky under load** (5-second timeouts when several sessions run at once); it passes alone.
    CI is the authoritative gate.
-10. **Security pass over the whole diff (PD-15) did not run.** A `security-reviewer` ran on PD-4, PD-9 and PD-11 only.
-    PD-5 (RLS, the Edge Function) had the implementer's own security checklist and no reviewer run on record in the
-    coordinator ledger.
+10. **Security review owner steps (from the PD-15 security pass; rulings in `docs/agent-runs/2026-10-30-pd-15.md`).**
+    The pass produced hardening commits and these steps for the owner, none of which we ran: (a) run
+    `supabase db reset && supabase test db` (the RLS pgTAP tests have never been executed); (b) confirm the Anthropic
+    spend cap (the explain rate limit is in memory and anonymous sign-in is on; captcha is optional); (c) after
+    deploy, confirm the proxy hop count the rate limiter relies on, as described in `supabase/OWNER-STEPS.md`.
+    Accepted, with cost recorded: the `/kit` route stays reachable by link in the release APK, CORS `*` on the Edge
+    Functions, a low-impact row-cap race.
 
 ## 7. Decisions worth a judge's time
 
