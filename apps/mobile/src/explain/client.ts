@@ -1,5 +1,6 @@
 import type { ExplainPayload } from '@credit-coach/engine';
 
+import { getAccessToken } from '../backend/session';
 import { isAcceptableAiText } from './grounding';
 
 export type ExplanationSource = 'ai' | 'template';
@@ -17,10 +18,15 @@ export interface ExplainConfig {
    * rejects the bare anon key with 401, so without a session the app simply shows the template.
    */
   accessToken?: string;
+  /**
+   * Read at call time, because the background anonymous sign-in can finish after the config is
+   * built. Wins over `accessToken`; undefined falls back to the anon key (the function then 401s).
+   */
+  getAccessToken?: () => string | undefined;
 }
 
-/** The hard limit the ticket sets; the function itself also caps its model call. */
-export const EXPLAIN_TIMEOUT_MS = 3000;
+/** Hard limit for the call: the server's lookup (1.5 s) plus model call (2.5 s) must fit inside it. */
+export const EXPLAIN_TIMEOUT_MS = 5000;
 const MAX_TEXT_LENGTH = 1500;
 
 /**
@@ -40,10 +46,11 @@ export function readExplainConfig(env: {
 
 /** Expo only inlines `process.env.EXPO_PUBLIC_*` when written out literally, so keep it explicit. */
 export function configFromExpoEnv(): ExplainConfig | null {
-  return readExplainConfig({
+  const config = readExplainConfig({
     url: process.env.EXPO_PUBLIC_SUPABASE_URL,
     anonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
   });
+  return config && { ...config, getAccessToken };
 }
 
 export const explainEndpoint = (config: ExplainConfig): string =>
@@ -110,7 +117,7 @@ async function callFunction(options: {
     headers: {
       'Content-Type': 'application/json',
       apikey: config.anonKey,
-      Authorization: `Bearer ${config.accessToken ?? config.anonKey}`,
+      Authorization: `Bearer ${config.getAccessToken?.() ?? config.accessToken ?? config.anonKey}`,
     },
     body: JSON.stringify(payload),
     signal,

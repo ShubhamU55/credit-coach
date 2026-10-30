@@ -11,7 +11,7 @@ import { CLOSE_CARD_AGE_WARNING, CLOSE_CARD_LIMIT_WARNING, DISCLAIMER_TEXT } fro
 import { ScoreScreen } from './ScoreScreen';
 
 jest.mock('expo-router', () => ({
-  router: { push: jest.fn(), replace: jest.fn(), back: jest.fn() },
+  router: { push: jest.fn(), replace: jest.fn(), back: jest.fn(), navigate: jest.fn() },
 }));
 
 function seedWith(change: (seed: Record<string, any>) => void) {
@@ -97,6 +97,19 @@ describe('Score screen', () => {
     expect(
       screen.getByText('You already have 2 hard inquiries in the last 6 months.'),
     ).toBeTruthy();
+  });
+
+  it('shows the floating nav with Score active and navigates from it', async () => {
+    await renderScore();
+
+    expect(screen.getByTestId('floating-nav')).toBeTruthy();
+    expect(screen.getByTestId('nav-tab-score').props.accessibilityState).toEqual({
+      selected: true,
+    });
+    await fireEvent.press(screen.getByTestId('nav-tab-home'));
+    expect(router.navigate).toHaveBeenCalledWith('/home');
+    await fireEvent.press(screen.getByTestId('nav-tab-plan'));
+    expect(router.navigate).toHaveBeenCalledWith('/plan');
   });
 
   it('goes back to Home', async () => {

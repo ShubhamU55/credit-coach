@@ -36,6 +36,8 @@ export interface DemoRules {
   excellentPct: number;
   reportingBasis: ReportingBasis;
   aimFor10: boolean;
+  /** Application-guard line (hard inquiries in 6 months). Unset means the engine default. */
+  minHardInquiries6m?: number;
 }
 
 export interface DemoCreditHistory {
@@ -96,6 +98,11 @@ export interface DemoRepository {
   /** Lowers the card's outstanding by `amount` and raises its paidSinceStatement. */
   recordPayment(cardId: string, amount: number, date: IsoDate): DemoPayment;
   listPayments(): DemoPayment[];
+  /**
+   * Replaces the coaching rules (the admin's values fetched from the backend). Screens recompute.
+   * A no-op, with no notification, when the rules are unchanged. `reset()` keeps these rules.
+   */
+  applyRules(rules: DemoRules): void;
   /** Restores the seed data and clears recorded payments. */
   reset(): void;
   /** Increments after every successful recordPayment/reset; a stable snapshot for subscribers. */

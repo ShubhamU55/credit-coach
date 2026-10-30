@@ -132,11 +132,24 @@ if the spend cap is ever hit.
    Expect `200` and `{"text": "...", "source": "ai"}`. If the text starts with `Minimums come first`
    and `source` is `template`, the function works but the model path fell back: read the function
    logs (Dashboard -> Edge Functions -> explain -> Logs) for the line `explain fallback <code>`.
-   Codes: `no_key` (secret missing), `http_401` (bad Anthropic key), `http_429`/`http_529` (rate limit
-   or overload at Anthropic), `timeout` (over 2 s), `ungrounded_or_forbidden` (a number the plan does
+   Codes: `no_key` (secret missing), `http_<status>` or `http_<status>_<type>` when Anthropic refused the
+   call (the type is Anthropic's own `error.type`, never its message): `http_401_authentication_error`
+   (bad key), `http_400_invalid_request_error` (bad parameter, or a credit balance that is too low),
+   `http_404_not_found_error` (model name), `http_429_rate_limit_error`/`http_529_overloaded_error`
+   (rate limit or overload), `timeout` (over 2.5 s), `ungrounded_or_forbidden` (a number the plan does
    not have, a score claim, closing a card, a link, numbers spelled out), `unusable_text`,
    `bad_reply` (cut off, refused or malformed), `network`. The log never contains the key, the plan or
    the model's words.
+
+   An auth problem logs one line, `explain auth unavailable <code>`, with `timeout` (the user lookup took
+   over 1.5 s), `http_<status>` (Supabase Auth answered with that status), `network` or `no_config`
+   (SUPABASE_URL or SUPABASE_ANON_KEY missing). It never contains a token, header or body. The caller
+   sees `503 {"error":"auth_unavailable"}` for these.
+
+   Time budgets (a live probe showed 600 ms and 2 s were too tight): user lookup 1.5 s, model call
+   2.5 s, app wait 5 s. The app shows the template at once and swaps the AI text in when it arrives, so
+   the longer wait costs nothing. After these numbers change, redeploy: `pnpm exec supabase functions
+   deploy explain` (the app side ships with the next APK).
 
    Other answers: `401` with `{"error":"unauthenticated"}` means the caller had no user session (the
    bare anon key, or an expired token): get a fresh token. A `401` from the gateway before the function

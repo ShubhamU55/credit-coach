@@ -9,10 +9,13 @@ appId: com.creditcoach.app
     id: 'welcome-try-sample'
 - assertVisible:
     id: 'home-screen'
+- scroll
 - tapOn:
     id: 'home-stat-score'
-- assertVisible:
-    id: 'score-screen'
+- extendedWaitUntil:
+    visible:
+      id: 'score-screen'
+    timeout: 10000
 - assertVisible:
     id: 'score-range'
     text: '708–736'

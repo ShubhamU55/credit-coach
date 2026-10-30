@@ -1,6 +1,7 @@
 import type { ExplainPayload } from '@credit-coach/engine';
 
-import { explainEndpoint, fetchExplanation, readExplainConfig } from './client';
+import { setAccessToken } from '../backend/session';
+import { configFromExpoEnv, explainEndpoint, fetchExplanation, readExplainConfig } from './client';
 
 const PAYLOAD: ExplainPayload = {
   version: 1,
@@ -241,6 +242,72 @@ describe('access token', () => {
     const init = fetchImpl.mock.calls[0]?.[1] as RequestInit;
     expect(init.headers).toMatchObject({ Authorization: 'Bearer anon' });
     expect(result).toEqual({ text: TEMPLATE, source: 'template' });
+  });
+});
+
+describe('access token getter', () => {
+  const okFetch = () =>
+    jest.fn(
+      async (_url: string, _init?: RequestInit) =>
+        ({ ok: true, json: async () => ({ text: 'x', source: 'template' }) }) as Response,
+    );
+  const headersOf = (fetchImpl: ReturnType<typeof okFetch>) =>
+    (fetchImpl.mock.calls[0]?.[1] as RequestInit).headers;
+
+  afterEach(() => setAccessToken(undefined));
+
+  it('reads the token at call time, so a session that arrived after config time is used', async () => {
+    let token: string | undefined;
+    const config = { ...CONFIG, getAccessToken: () => token };
+    token = 'late.session.token';
+    const fetchImpl = okFetch();
+
+    await fetchExplanation({
+      payload: PAYLOAD,
+      template: TEMPLATE,
+      config,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      timeoutMs: 50,
+    });
+
+    expect(headersOf(fetchImpl)).toMatchObject({ Authorization: 'Bearer late.session.token' });
+  });
+
+  it('falls back to the anon key when the getter has no token yet', async () => {
+    const fetchImpl = okFetch();
+
+    await fetchExplanation({
+      payload: PAYLOAD,
+      template: TEMPLATE,
+      config: { ...CONFIG, getAccessToken: () => undefined },
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      timeoutMs: 50,
+    });
+
+    expect(headersOf(fetchImpl)).toMatchObject({ Authorization: 'Bearer anon' });
+  });
+
+  it('wires the in-memory anonymous session into the env-built config', async () => {
+    const previous = { ...process.env };
+    process.env.EXPO_PUBLIC_SUPABASE_URL = 'https://abc.supabase.co';
+    process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY = 'anon';
+    try {
+      const config = configFromExpoEnv();
+      setAccessToken('anon.session.jwt');
+      const fetchImpl = okFetch();
+
+      await fetchExplanation({
+        payload: PAYLOAD,
+        template: TEMPLATE,
+        config,
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        timeoutMs: 50,
+      });
+
+      expect(headersOf(fetchImpl)).toMatchObject({ Authorization: 'Bearer anon.session.jwt' });
+    } finally {
+      process.env = previous;
+    }
   });
 });
 

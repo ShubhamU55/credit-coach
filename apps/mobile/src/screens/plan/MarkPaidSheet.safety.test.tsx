@@ -6,6 +6,7 @@ import { createDemoRepository } from '../../demo/repository';
 import { RepositoryError } from '../../demo/types';
 import { DemoRepositoryProvider } from '../../state/DemoRepositoryContext';
 import { MarkPaidSheet } from './MarkPaidSheet';
+import { GENERIC_RECORDED_LINE } from './markPaidModel';
 
 jest.mock('expo-router', () => ({
   router: {
@@ -204,3 +205,34 @@ describe('accessibility focus', () => {
 });
 
 jest.setTimeout(30000); // first render compiles the kit; slow on a loaded machine
+
+describe('failure after the write', () => {
+  it('shows Done with a generic line and cannot record twice when only the summary throws', async () => {
+    const repository = await renderSheet({ cardId: 'axis-neo' });
+    jest.spyOn(console, 'warn').mockImplementation();
+    // Only the first card read after the write (the summary's) fails; later renders read normally.
+    const realRecord = repository.recordPayment.bind(repository);
+    const realCards = repository.listCards.bind(repository);
+    let armed = false;
+    jest.spyOn(repository, 'recordPayment').mockImplementation((...args) => {
+      const result = realRecord(...args);
+      armed = true;
+      return result;
+    });
+    jest.spyOn(repository, 'listCards').mockImplementation(() => {
+      if (armed) {
+        armed = false;
+        throw new Error('read failed');
+      }
+      return realCards();
+    });
+
+    await fireEvent.press(screen.getByTestId('mark-paid-confirm'));
+
+    expect(repository.recordPayment).toHaveBeenCalledTimes(1);
+    expect(repository.listPayments()).toHaveLength(1);
+    expect(screen.getByTestId('mark-paid-done')).toBeTruthy();
+    expect(screen.getByTestId('mark-paid-result')).toHaveTextContent(GENERIC_RECORDED_LINE);
+    expect(screen.queryByTestId('mark-paid-confirm')).toBeNull();
+  });
+});
