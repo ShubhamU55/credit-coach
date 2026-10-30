@@ -16,6 +16,8 @@ const REQUIRED_OWNED_PATHS = [
   '/apps/mobile/.claude/',
   '/.github/',
   '/docs/ai-policy.md',
+  '/.devcontainer/',
+  '/.githooks/',
 ];
 const TEMPLATE_SECTIONS = ['Summary', 'Test evidence', 'Review checklist', 'AI-assisted'];
 

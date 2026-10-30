@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "disableBypassPermissionsMode": "disable"
+  },
+  "sandbox": {
+    "enabled": true,
+    "autoAllowBashIfSandboxed": false,
+    "network": {
+      "allowedDomains": ["api.github.com", "github.com", "registry.npmjs.org", "docs.expo.dev"]
+    }
+  }
+}
