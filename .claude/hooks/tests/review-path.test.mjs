@@ -8,6 +8,8 @@ const repoRoot = path.resolve(here, '../../..');
 const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), 'utf8');
 
 const OWNER = '@ShubhamU55';
+// docs/ai-policy.md names the backup owner; GitHub accepts the handle because they are a collaborator.
+const BACKUP_OWNER = '@kunsharo';
 const REQUIRED_OWNED_PATHS = [
   '/CLAUDE.md',
   '/.claude/',
@@ -45,10 +47,10 @@ describe('.github/CODEOWNERS', () => {
     .filter((line) => line && !line.startsWith('#'))
     .map((line) => line.split(/\s+/));
 
-  it('assigns the owner to every rule', () => {
+  it('assigns the owner and the backup owner to every rule', () => {
     expect(rules.length).toBeGreaterThan(0);
     for (const [pattern, ...owners] of rules) {
-      expect(owners, pattern).toEqual([OWNER]);
+      expect(owners, pattern).toEqual([OWNER, BACKUP_OWNER]);
     }
   });
 
