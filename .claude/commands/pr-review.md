@@ -2,6 +2,7 @@
 description: 'Run the pr-review Workflow on a PR (G8 merge-gate review), or the end-of-plan dual review on a plan branch. Use before merging a PR, or at the end of a plan branch.'
 argument-hint: '<PR#> | end-of-plan <plan path>'
 disable-model-invocation: true
+allowed-tools: 'Bash(git rev-parse HEAD) Bash(git fetch origin main) Bash(git merge-base origin/main HEAD) Bash(git -c core.quotePath=false diff --name-only *) Bash(git diff *)'
 ---
 
 Run the `pr-review` Workflow for **$ARGUMENTS**: either a PR number (the normal G8 review, which ends

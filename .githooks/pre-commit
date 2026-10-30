@@ -1,0 +1,11 @@
+#!/bin/sh
+# Scan the staged changes for secrets before every commit, by a human or an agent
+# (docs/ai-policy.md). CI's `secrets` job scans the whole history; this stops a secret
+# before it is ever committed. Installed by `pnpm install` (the root `prepare` script
+# sets core.hooksPath to .githooks). Agents cannot skip it: --no-verify is denied.
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "pre-commit: gitleaks is not installed, so the staged changes can't be scanned for secrets." >&2
+  echo "Install gitleaks 8.19 or later (winget install Gitleaks.Gitleaks, or brew install gitleaks) and commit again." >&2
+  exit 1
+fi
+exec gitleaks git --pre-commit --staged --redact --verbose

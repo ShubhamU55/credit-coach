@@ -2,6 +2,7 @@
 description: 'Analyze a PRD section with the feature-analyze Workflow, write a plan, stop for owner approval, then file one issue per task and hand off to /build. Use when starting on a PRD section.'
 argument-hint: '<PRD section, e.g. §5.3>'
 disable-model-invocation: true
+allowed-tools: 'Read Grep Glob'
 ---
 
 Run the `feature-analyze` Workflow over **PRD $ARGUMENTS**, then turn its brief into an approved
