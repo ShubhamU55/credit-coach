@@ -40,6 +40,27 @@ function textOf(body: unknown): string | null {
   return parts.length > 0 ? parts.join('').trim() : null;
 }
 
+const ERROR_TYPE = /^[a-z_]{3,40}$/;
+
+/**
+ * `http_<status>`, plus Anthropic's enumerated error.type when the body has a well-formed one
+ * (e.g. `http_400_invalid_request_error`). Only that allowlisted token is read: error.message can
+ * echo the input, so it is never copied, and any odd or unreadable body leaves the plain code.
+ */
+async function failureReason(response: Response): Promise<string> {
+  const plain = `http_${response.status}`;
+  try {
+    const body: unknown = await response.json();
+    const error =
+      typeof body === 'object' && body !== null ? (body as { error?: unknown }).error : null;
+    const type =
+      typeof error === 'object' && error !== null ? (error as { type?: unknown }).type : null;
+    return typeof type === 'string' && ERROR_TYPE.test(type) ? `${plain}_${type}` : plain;
+  } catch {
+    return plain;
+  }
+}
+
 async function callModel(request: ModelRequest, signal: AbortSignal): Promise<ModelResult> {
   try {
     const response = await request.fetchImpl(ANTHROPIC_URL, {
@@ -58,7 +79,7 @@ async function callModel(request: ModelRequest, signal: AbortSignal): Promise<Mo
       }),
       signal,
     });
-    if (!response.ok) return { ok: false, reason: `http_${response.status}` };
+    if (!response.ok) return { ok: false, reason: await failureReason(response) };
     const text = textOf(await response.json());
     return text === null ? { ok: false, reason: 'bad_reply' } : { ok: true, text };
   } catch (error) {
