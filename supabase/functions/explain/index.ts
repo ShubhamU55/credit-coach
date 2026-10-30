@@ -1,6 +1,6 @@
 // Entry point for `supabase functions deploy explain` (Deno). All logic is in handler.ts.
-// The Anthropic key comes only from the function secret ANTHROPIC_API_KEY (see supabase/OWNER-STEPS.md);
-// it is never in the repository. SUPABASE_URL and SUPABASE_ANON_KEY are set by the Edge runtime.
+// A model key comes only from a function secret, never from the repository: GEMINI_API_KEY (used when
+// set) or ANTHROPIC_API_KEY (see supabase/OWNER-STEPS.md). SUPABASE_URL and SUPABASE_ANON_KEY are set by the Edge runtime.
 
 import { authenticate } from './auth.ts';
 import { handleExplain } from './handler.ts';
@@ -28,6 +28,8 @@ const ipLimiter = createRateLimiter({
 Deno.serve((request: Request) =>
   handleExplain(request, {
     apiKey: Deno.env.get('ANTHROPIC_API_KEY'),
+    geminiApiKey: Deno.env.get('GEMINI_API_KEY') || undefined,
+    geminiModel: Deno.env.get('GEMINI_MODEL') || undefined,
     fetchImpl: fetch,
     authenticate: (req) =>
       authenticate(req, {

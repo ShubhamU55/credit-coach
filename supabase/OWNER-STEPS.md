@@ -96,6 +96,12 @@ pnpm exec supabase secrets set ANTHROPIC_API_KEY=<your key>
 pnpm exec supabase functions deploy explain
 ```
 
+**Using Gemini instead:** set `GEMINI_API_KEY` as a function secret (and optionally `GEMINI_MODEL`,
+default `gemini-3.5-flash-lite`), then deploy. When it is set the function uses Gemini and ignores the
+Anthropic key; unset it (`pnpm exec supabase secrets unset GEMINI_API_KEY`) to go back. Never put a
+Gemini key in `ANTHROPIC_API_KEY`. The free tier may use prompts for product improvement, so keep it
+to demo data. A fallback reason of `http_404_not_found` means the model id is wrong.
+
 The key is read only in `supabase/functions/explain/index.ts` through `Deno.env.get`. Do not put it
 in `.env`, `config.toml` or a commit. Keep `verify_jwt = true` (the default in `config.toml`): do
 not deploy with `--no-verify-jwt`. On top of the gateway check, the function itself requires a
@@ -149,7 +155,7 @@ if the spend cap is ever hit.
    Time budgets (a live probe showed 600 ms and 2 s were too tight): user lookup 1.5 s, model call
    2.5 s, app wait 5 s. The app shows the template at once and swaps the AI text in when it arrives, so
    the longer wait costs nothing. After these numbers change, redeploy: `pnpm exec supabase functions
-   deploy explain` (the app side ships with the next APK).
+deploy explain` (the app side ships with the next APK).
 
    Other answers: `401` with `{"error":"unauthenticated"}` means the caller had no user session (the
    bare anon key, or an expired token): get a fresh token. A `401` from the gateway before the function

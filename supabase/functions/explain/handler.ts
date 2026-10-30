@@ -10,6 +10,7 @@
 
 import { askModel } from './anthropic.ts';
 import type { AuthResult } from './auth.ts';
+import { askGemini } from './gemini.ts';
 import { isAcceptableAiText } from './grounding.ts';
 import { validatePayload, type ExplainPayload } from './payload.ts';
 import { buildUserMessage, SYSTEM_PROMPT } from './prompt.ts';
@@ -22,8 +23,12 @@ export const MAX_TEXT_LENGTH = 1500;
 export const MAX_BODY_BYTES = 16 * 1024;
 
 export interface ExplainDeps {
-  /** From the function secret ANTHROPIC_API_KEY. Absent means template only. */
+  /** From the function secret ANTHROPIC_API_KEY. With no provider key at all, template only. */
   apiKey: string | undefined;
+  /** From the function secret GEMINI_API_KEY. When set, Gemini is used instead of Anthropic. */
+  geminiApiKey?: string;
+  /** From the optional function secret GEMINI_MODEL. */
+  geminiModel?: string;
   fetchImpl: typeof fetch;
   timeoutMs?: number;
   /** Resolves the caller to a real signed-in user (anonymous sign-in users included). */
@@ -151,15 +156,17 @@ export async function handleExplain(request: Request, deps: ExplainDeps): Promis
   const { payload } = parsed;
 
   const fallback = templateFromPayload(payload);
-  if (!deps.apiKey) return template(fallback, 'no_key');
+  if (!deps.geminiApiKey && !deps.apiKey) return template(fallback, 'no_key');
 
-  const reply = await askModel({
-    apiKey: deps.apiKey,
+  const prompt = {
     system: SYSTEM_PROMPT,
     user: buildUserMessage(payload, fallback),
     fetchImpl: deps.fetchImpl,
     timeoutMs: deps.timeoutMs,
-  });
+  };
+  const reply = deps.geminiApiKey
+    ? await askGemini({ ...prompt, apiKey: deps.geminiApiKey, model: deps.geminiModel })
+    : await askModel({ ...prompt, apiKey: deps.apiKey ?? '' });
   if (!reply.ok) return template(fallback, reply.reason);
 
   const text = acceptable(reply.text);
