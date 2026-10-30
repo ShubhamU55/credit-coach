@@ -14,6 +14,7 @@ jest.setTimeout(30000);
 const mockRunWhatIf = jest.fn();
 const mockPlanPayments = jest.fn();
 const mockCheckGuard = jest.fn();
+const mockPredict = jest.fn();
 jest.mock('@credit-coach/engine', () => {
   const actual = jest.requireActual('@credit-coach/engine');
   return {
@@ -21,6 +22,7 @@ jest.mock('@credit-coach/engine', () => {
     runWhatIf: (...args: unknown[]) => mockRunWhatIf(...args),
     planPayments: (...args: unknown[]) => mockPlanPayments(...args),
     checkApplicationGuard: (...args: unknown[]) => mockCheckGuard(...args),
+    predictScore: (...args: unknown[]) => mockPredict(...args),
   };
 });
 
@@ -37,6 +39,7 @@ beforeEach(() => {
   mockRunWhatIf.mockImplementation(actual.runWhatIf);
   mockPlanPayments.mockImplementation(actual.planPayments);
   mockCheckGuard.mockImplementation(actual.checkApplicationGuard);
+  mockPredict.mockImplementation(actual.predictScore);
   jest.spyOn(console, 'warn').mockImplementation();
   jest.spyOn(console, 'error').mockImplementation();
 });
@@ -117,6 +120,46 @@ describe('Score screen when the engine throws', () => {
 
     expect(screen.getByText('Application check unavailable')).toBeTruthy();
     expect(screen.queryByTestId('score-guard')).toBeNull();
+  });
+
+  it('treats a plain planner Error like a refusal: main view, no with-plan range', async () => {
+    mockPlanPayments.mockImplementation(() => {
+      throw new Error('no valid limit');
+    });
+    await renderScore();
+
+    expect(screen.getByTestId('score-range')).toBeTruthy();
+    expect(screen.queryByTestId('score-range-plan')).toBeNull();
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('no valid limit'));
+  });
+
+  it('shows the error view when a tile run hits a plain planner Error', async () => {
+    await renderScore();
+    mockPlanPayments.mockImplementation(() => {
+      throw new Error('no due date');
+    });
+
+    await fireEvent.press(screen.getByTestId('score-tile-follow-plan'));
+
+    expect(screen.getByTestId('score-result-error')).toBeTruthy();
+  });
+
+  it('shows the cannot-estimate view when the predictor throws a plain Error', async () => {
+    mockPredict.mockImplementation(() => {
+      throw new Error('no valid limit');
+    });
+    await renderScore();
+
+    expect(screen.getByTestId('score-unavailable')).toBeTruthy();
+    expect(screen.queryByTestId('score-range')).toBeNull();
+  });
+
+  it('still rethrows a ReferenceError', async () => {
+    mockCheckGuard.mockImplementation(() => {
+      throw new ReferenceError('a real bug');
+    });
+
+    await expect(renderScore()).rejects.toThrow('a real bug');
   });
 
   it('does not swallow an error that is not a RangeError', async () => {

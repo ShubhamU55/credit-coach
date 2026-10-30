@@ -218,6 +218,8 @@ function SheetForm({
     try {
       onConfirm(resolved.card, payAmount);
     } catch (caught) {
+      // recordAndSummarise only throws when recordPayment itself did (nothing was written), so a
+      // retry is safe here. A failure after the write is absorbed there and never reaches this.
       submitted.current = false;
       if (!(caught instanceof RepositoryError)) throw caught;
       setError(caught.message);

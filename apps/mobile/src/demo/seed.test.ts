@@ -95,4 +95,41 @@ describe('parseSeed', () => {
     expect(() => parseSeed(bad)).toThrow(/profile\.mobileMasked/);
     expect(() => parseSeed(bad)).not.toThrow(/9876543210/);
   });
+
+  it.each([
+    ['lowercase x', 'ABxxxxx34F'],
+    ['too few X', 'ABXXXX34F'],
+    ['too many X', 'ABXXXXXX34F'],
+    ['a trailing newline', 'ABXXXXX34F\n'],
+    ['a leading space', ' ABXXXXX34F'],
+  ])('rejects a PAN with %s', (_name, value) => {
+    const bad = mutated((s) => {
+      s.profile.panMasked = value;
+    });
+
+    expect(() => parseSeed(bad)).toThrow(/profile\.panMasked/);
+  });
+
+  it('accepts the masked PAN shape', () => {
+    const ok = mutated((s) => {
+      s.profile.panMasked = 'ABXXXXX34F';
+    });
+
+    expect(parseSeed(ok).profile.panMasked).toBe('ABXXXXX34F');
+  });
+
+  it.each([
+    ['no +91 prefix', '98XXXXX210'],
+    ['no space after +91', '+9198XXXXX210'],
+    ['lowercase x', '+91 98xxxxx210'],
+    ['too few X', '+91 98XXXX210'],
+    ['too many X', '+91 98XXXXXX210'],
+    ['a trailing newline', '+91 98XXXXX210\n'],
+  ])('rejects a mobile number with %s', (_name, value) => {
+    const bad = mutated((s) => {
+      s.profile.mobileMasked = value;
+    });
+
+    expect(() => parseSeed(bad)).toThrow(/profile\.mobileMasked/);
+  });
 });

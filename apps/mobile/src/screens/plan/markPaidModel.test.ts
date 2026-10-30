@@ -7,6 +7,8 @@ import { buildPlanView } from './planModel';
 import {
   parsePlanParams,
   rejectedPlanParams,
+  GENERIC_RECORDED_LINE,
+  recordAndSummarise,
   resolveMarkPaid,
   resultLine,
   validateOther,
@@ -208,5 +210,63 @@ describe('rejectedPlanParams', () => {
     expect(rejectedPlanParams({})).toEqual([]);
     expect(rejectedPlanParams({ aim10: '0', cash: '5' })).toEqual([]);
     expect(rejectedPlanParams({ aim10: 'x', cash: '012' })).toEqual(['aim10', 'cash']);
+  });
+});
+
+describe('recordAndSummarise', () => {
+  function args(repository: ReturnType<typeof createDemoRepository>) {
+    const { cards, view } = setup(repository);
+    const card = cards.find((c) => c.id === 'axis-neo');
+    if (!card) throw new Error('axis-neo missing');
+    return {
+      repository,
+      card,
+      amount: 620,
+      today: DEMO_TODAY,
+      cash: 20000,
+      aimFor10: false,
+      before: view,
+    };
+  }
+
+  it('records once and returns a generic line when the summary throws after the write', () => {
+    const repository = createDemoRepository();
+    const input = args(repository);
+    jest.spyOn(repository, 'listCards').mockImplementation(() => {
+      throw new Error('read failed');
+    });
+    jest.spyOn(console, 'warn').mockImplementation();
+
+    const summary = recordAndSummarise(input);
+
+    expect(repository.listPayments()).toHaveLength(1);
+    expect(summary).toEqual({ amount: 620, line: GENERIC_RECORDED_LINE });
+  });
+
+  it('treats a missing card after a successful write as inconsistent: generic line, dev warning', () => {
+    const repository = createDemoRepository();
+    const input = args(repository);
+    const warn = jest.spyOn(console, 'warn').mockImplementation();
+    const real = repository.listCards.bind(repository);
+    let calls = 0;
+    jest.spyOn(repository, 'listCards').mockImplementation(() => {
+      calls += 1;
+      // The first read feeds the plan view; the lookup of the updated card then finds nothing.
+      return calls === 1 ? real() : real().filter((c) => c.id !== 'axis-neo');
+    });
+
+    const summary = recordAndSummarise(input);
+
+    expect(repository.listPayments()).toHaveLength(1);
+    expect(summary.line).toBe(GENERIC_RECORDED_LINE);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('axis-neo'));
+  });
+
+  it('lets a repository rejection of the write propagate', () => {
+    const repository = createDemoRepository();
+    const input = args(repository);
+
+    expect(() => recordAndSummarise({ ...input, amount: 99999999 })).toThrow();
+    expect(repository.listPayments()).toHaveLength(0);
   });
 });
