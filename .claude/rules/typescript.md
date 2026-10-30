@@ -1,228 +1,63 @@
 ---
 paths:
-  - "**/*.ts"
-  - "**/*.tsx"
-  - "**/*.js"
-  - "**/*.mjs"
+  - '**/*.ts'
+  - '**/*.tsx'
+  - '**/*.js'
+  - '**/*.mjs'
 ---
+
 <!-- Adapted from affaan-m/ECC (MIT) @ 90606c8 -->
 
 # TypeScript rules
 
-## TypeScript/JavaScript Coding Style
+Project rules for TypeScript and JavaScript in this repo. `tsconfig.base.json` (`strict`,
+`noUncheckedIndexedAccess`) and `eslint.shared.cjs` already enforce engine purity, the argless
+`Date` ban, the raw-hex ban and the size limits; this file covers what they can't check.
+`docs/standards.md` holds layout, testIDs and the golden examples.
 
-## Types and Interfaces
+## Types
 
-Use types to make public APIs, shared models, and component props explicit, readable, and reusable.
+- Exported functions declare parameter and return types; locals are inferred.
+- No `any`. Untrusted input enters as `unknown` and is narrowed by a validator before use.
+- String-literal unions, not `enum` (e.g. `ExplanationSource = 'ai' | 'template'`).
+- Shared domain types live in `packages/engine/src/types.ts`. Apps import them from
+  `@credit-coach/engine`; they never redeclare a card, payment or plan shape.
+- With `noUncheckedIndexedAccess`, handle the `undefined` from an index; don't silence it with `!`.
 
-### Public APIs
+## Engine (`packages/engine`)
 
-- Add parameter and return types to exported functions, shared utilities, and public class methods
-- Let TypeScript infer obvious local variable types
-- Extract repeated inline object shapes into named types or interfaces
+- Pure: same inputs, same outputs. "Today", rules and config are parameters (CLAUDE.md rule 1).
+- An expected domain outcome is a typed return value (`number | null`, a result union), never a
+  throw. Throw only for a broken contract the caller must fix (e.g. `maskPan` on a malformed PAN).
+- Money is integer rupees; dates are `YYYY-MM-DD` strings. Paise are rounded half-up at the
+  boundary, not in the engine.
+- Score output is always a range clamped to 300–900 (`formatScoreRange`), never one number.
 
-```typescript
-// WRONG: Exported function without explicit types
-export function formatUser(user) {
-  return `${user.firstName} ${user.lastName}`
-}
+## Boundaries
 
-// CORRECT: Explicit types on public APIs
-interface User {
-  firstName: string
-  lastName: string
-}
+- The repo has no schema library. Each boundary has a hand-written validator that takes
+  `unknown` and returns a typed result: `validatePayload` in `supabase/functions/explain/payload.ts`
+  is the reference. Don't add Zod or another validation dependency without an owner decision.
+- An LLM reply is untrusted text. It is checked for grounding (`isAcceptableAiText`) and capped
+  before display, and the template fallback is always there (CLAUDE.md rule 2).
+- PAN is masked with `maskPan` before it reaches any UI, log or error message.
 
-export function formatUser(user: User): string {
-  return `${user.firstName} ${user.lastName}`
-}
-```
+## Errors and logging
 
-### Interfaces vs. Type Aliases
+- Never swallow an error. A fallback (template text, system fonts) is allowed only when it is
+  visible to the user or logged with `console.warn` and a reason, as `explain/client.ts` does.
+- No `console.log`. `console.warn` is for fallbacks and refused inputs only, and never logs a
+  token, a key, a full PAN or a raw payload.
 
-- Use `interface` for object shapes that may be extended or implemented
-- Use `type` for unions, intersections, tuples, mapped types, and utility types
-- Prefer string literal unions over `enum` unless an `enum` is required for interoperability
+## Secrets
 
-```typescript
-interface User {
-  id: string
-  email: string
-}
+- Only `EXPO_PUBLIC_*` values and the Supabase anon key reach the app. The Anthropic key exists
+  only in Edge Function secrets (CLAUDE.md rule 6).
+- A required secret that is missing turns the feature off (template only); it never crashes.
 
-type UserRole = 'admin' | 'member'
-type UserWithRole = User & {
-  role: UserRole
-}
-```
+## Tests
 
-### Avoid `any`
-
-- Avoid `any` in application code
-- Use `unknown` for external or untrusted input, then narrow it safely
-- Use generics when a value's type depends on the caller
-
-```typescript
-// WRONG: any removes type safety
-function getErrorMessage(error: any) {
-  return error.message
-}
-
-// CORRECT: unknown forces safe narrowing
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message
-  }
-
-  return 'Unexpected error'
-}
-```
-
-### React Props
-
-- Define component props with a named `interface` or `type`
-- Type callback props explicitly
-- Do not use `React.FC` unless there is a specific reason to do so
-
-```typescript
-interface User {
-  id: string
-  email: string
-}
-
-interface UserCardProps {
-  user: User
-  onSelect: (id: string) => void
-}
-
-function UserCard({ user, onSelect }: UserCardProps) {
-  return <button onClick={() => onSelect(user.id)}>{user.email}</button>
-}
-```
-
-### JavaScript Files
-
-- In `.js` and `.jsx` files, use JSDoc when types improve clarity and a TypeScript migration is not practical
-- Keep JSDoc aligned with runtime behavior
-
-```javascript
-/**
- * @param {{ firstName: string, lastName: string }} user
- * @returns {string}
- */
-export function formatUser(user) {
-  return `${user.firstName} ${user.lastName}`
-}
-```
-
-## Immutability
-
-Use spread operator for immutable updates:
-
-```typescript
-interface User {
-  id: string
-  name: string
-}
-
-// WRONG: Mutation
-function updateUser(user: User, name: string): User {
-  user.name = name // MUTATION!
-  return user
-}
-
-// CORRECT: Immutability
-function updateUser(user: Readonly<User>, name: string): User {
-  return {
-    ...user,
-    name
-  }
-}
-```
-
-## Error Handling
-
-Use async/await with try-catch and narrow unknown errors safely:
-
-```typescript
-interface User {
-  id: string
-  email: string
-}
-
-declare function riskyOperation(userId: string): Promise<User>
-
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message
-  }
-
-  return 'Unexpected error'
-}
-
-const logger = {
-  error: (message: string, error: unknown) => {
-    // Replace with your production logger (for example, pino or winston).
-  }
-}
-
-async function loadUser(userId: string): Promise<User> {
-  try {
-    const result = await riskyOperation(userId)
-    return result
-  } catch (error: unknown) {
-    logger.error('Operation failed', error)
-    throw new Error(getErrorMessage(error))
-  }
-}
-```
-
-## Input Validation
-
-Use Zod for schema-based validation and infer types from the schema:
-
-```typescript
-import { z } from 'zod'
-
-const userSchema = z.object({
-  email: z.string().email(),
-  age: z.number().int().min(0).max(150)
-})
-
-type UserInput = z.infer<typeof userSchema>
-
-const validated: UserInput = userSchema.parse(input)
-```
-
-## Console.log
-
-- No `console.log` statements in production code
-- Use proper logging libraries instead
-
-
-## TypeScript/JavaScript Security
-
-## Secret Management
-
-```typescript
-// NEVER: Hardcoded secrets
-const apiKey = "sk-proj-xxxxx"
-
-// ALWAYS: Environment variables
-const apiKey = process.env.API_KEY
-
-if (!apiKey) {
-  throw new Error('API_KEY not configured')
-}
-```
-
-## Agent Support
-
-- Use **security-reviewer** skill for comprehensive security audits
-
-
-## TypeScript/JavaScript Testing
-
-## E2E Testing
-
-Use **Playwright** for `apps/admin` E2E (see the `e2e-testing` skill). The mobile app uses Maestro instead; see `CLAUDE.md` and the `maestro-android-e2e` skill.
+- Vitest for the engine and the hooks, Jest (`jest-expo`) for mobile. Engine coverage ≥ 90% lines.
+- Property tests (`*.property.test.ts`, fast-check) for engine invariants; edge cases in
+  `*.edge.test.ts`; fixed scenario outputs in `*.golden.test.ts`.
+- Use **Playwright** for `apps/admin` E2E (see the `e2e-testing` skill). The mobile app uses Maestro instead; see `CLAUDE.md` and the `maestro-android-e2e` skill.
